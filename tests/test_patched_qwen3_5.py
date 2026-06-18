@@ -1,5 +1,7 @@
 """Tests for the Qwen3.5 monkey patches."""
 
+from pathlib import Path
+
 import pytest
 
 import mlx.core as mx
@@ -36,6 +38,14 @@ REAL_MODEL_CASES = [
         id="moe",
     ),
 ]
+
+
+LMSTUDIO_QWEN36_MODEL = Path(
+    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-40B-Claude-4.6-Opus-Deckard-Heretic-Uncensored-Thinking-8bit"
+)
+LMSTUDIO_QWEN35_9B_MODEL = Path(
+    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit"
+)
 
 
 QWEN3_5_TEXT_CONFIG = {
@@ -641,3 +651,25 @@ def test_vlm_qwen3_5_text_prompt_cache_restore_matches_original_vlm():
         "VLM Qwen3.5 text prompt-cache restore fast path changed logits "
         f"(max diff {diff:.6f})."
     )
+
+
+@pytest.mark.heavy
+def test_lmstudio_qwen36_vocab_only_loads_without_tokenizer_warning(capsys):
+    from mlx_engine.generate import load_model
+
+    kit = load_model(LMSTUDIO_QWEN36_MODEL, vocab_only=True, max_seq_nums=1)
+    captured = capsys.readouterr()
+
+    assert kit.tokenize("'The'")
+    assert "incorrect regex pattern" not in (captured.out + captured.err)
+
+
+@pytest.mark.heavy
+def test_lmstudio_qwen35_9b_vocab_only_loads_without_tokenizer_warning(capsys):
+    from mlx_engine.generate import load_model
+
+    kit = load_model(LMSTUDIO_QWEN35_9B_MODEL, vocab_only=True, max_seq_nums=1)
+    captured = capsys.readouterr()
+
+    assert kit.tokenize("'The'")
+    assert "incorrect regex pattern" not in (captured.out + captured.err)

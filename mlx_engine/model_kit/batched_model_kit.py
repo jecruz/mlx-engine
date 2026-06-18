@@ -111,7 +111,9 @@ class BatchedModelKit:
         self.model_type = config_json.get("model_type", None)
 
         self.model = None
-        self.tokenizer = mlx_lm.tokenizer_utils.load(self._model_path)
+        self.tokenizer = mlx_lm.tokenizer_utils.load(
+            self._model_path, tokenizer_config_extra={"fix_mistral_regex": True}
+        )
         fix_mistral_pre_tokenizer(
             tokenizer=self.tokenizer, model_path=model_path, model_type=self.model_type
         )

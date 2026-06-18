@@ -150,7 +150,9 @@ class BatchedVisionModelKit:
 
     def _init_tokenizer_only(self) -> None:
         self.tokenizer = mlx_lm.tokenizer_utils.load(
-            self._model_path, eos_token_ids=self._get_eos_token_ids()
+            self._model_path,
+            eos_token_ids=self._get_eos_token_ids(),
+            tokenizer_config_extra={"fix_mistral_regex": True},
         )
         fix_mistral_pre_tokenizer(
             tokenizer=self.tokenizer,
