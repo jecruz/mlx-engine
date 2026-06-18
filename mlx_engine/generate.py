@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from queue import Queue
 import uuid
+import importlib
 from mlx_engine.model_kit.batched_model_kit import (
     BatchedGenerationResponse,
     BatchedModelKit,
@@ -184,6 +185,22 @@ def _handle_stop_string_detected(
     )
 
 
+
+def _is_known_vlm_model_type(model_type: str) -> bool:
+    """Check if model_type is a known mlx-vlm vision architecture.
+
+    Some text-only models (e.g. qwen3.6) inherit a ``vision_config`` key from
+    a shared architecture config, so the presence of ``vision_config`` alone
+    is not sufficient to determine whether a model should be routed to the
+    mlx-vlm batched vision backend.
+    """
+    try:
+        importlib.import_module(f"mlx_vlm.models.{model_type}")
+        return True
+    except (ImportError, ValueError):
+        return False
+
+
 def load_model(
     model_path: str | Path,
     *,
@@ -248,14 +265,20 @@ def load_model(
     # 1. BatchedVisionModelKit: mlx-vlm continuous batching for VLMs
     # 2. BatchedModelKit: continuous batching for text-only models
     # 3. ModelKit: fallback for sequential text-only processing
-    if "vision_config" in config_json and vocab_only:
+    # Guard: only route to BatchedVisionModelKit if the model type is actually
+    # a known mlx-vlm vision architecture. Some text-only models inherit
+    # vision_config from a shared architecture config (e.g. qwen35 arch used
+    # by qwen3.6 text models), so "vision_config" alone is not sufficient.
+    model_type = config_json.get("model_type", "").lower().replace("-", "_").replace(".", "_")
+    is_vlm = _is_known_vlm_model_type(model_type)
+    if is_vlm and vocab_only:
         model_kit = ModelKit(
             model_path,
             prefill_step_size=prefill_step_size,
             vocab_only=True,
             seed=seed,
         )
-    elif "vision_config" in config_json:
+    elif is_vlm:
         if any([kv_bits, kv_group_size, quantized_kv_start]):
             raise ValueError(
                 "The mlx-vlm batched vision path does not support KV cache quantization yet"
