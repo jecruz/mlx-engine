@@ -10,7 +10,7 @@ from mlx_engine.model_kit.batched_vision import (
     BatchedVisionModelKit,
 )
 from mlx_engine.model_kit.batched_model_kit_types import RequestCancelled
-from typing import Iterator, List, Optional, TypeAlias
+from typing import Any, Iterator, List, Optional, TypeAlias
 import json
 import logging
 from pathlib import Path
@@ -24,6 +24,7 @@ from mlx_lm.models.cache import make_prompt_cache
 from mlx_vlm.structured import build_json_schema_logits_processor
 
 from mlx_engine.model_kit.model_kit import ModelKit
+from mlx_engine.model_kit.distributed_model_kit import DistributedModelKit
 from mlx_engine.utils.token import Token
 from mlx_engine.utils.eot_tokens import sanitize_eos_tokens
 from mlx_engine.utils.top_logprobs import summarize_top_logprobs
@@ -61,13 +62,22 @@ from mlx_engine.utils.generation_helpers import (
     should_yield_token,
 )
 from mlx_engine.utils.sampling import create_sampler
+from mlx_engine.utils.mlx_lm_stream import (
+    log_mlx_generation_exception,
+    log_mlx_stream_state,
+    prepare_mlx_lm_generation_stream,
+)
+
+MAX_TOP_LOGPROBS = 10
 
 
 logger = logging.getLogger(__name__)
 
 SequentialGenerationKit: TypeAlias = ModelKit
 BatchedGenerationKit: TypeAlias = BatchedModelKit | BatchedVisionModelKit
-LoadedModelKit: TypeAlias = SequentialGenerationKit | BatchedGenerationKit
+LoadedModelKit: TypeAlias = (
+    SequentialGenerationKit | BatchedGenerationKit | DistributedModelKit
+)
 
 
 class _SequentialModelKitGenerator(Iterator[GenerationResult]):
@@ -212,6 +222,8 @@ def load_model(
     kv_group_size: Optional[int] = None,
     quantized_kv_start: Optional[int] = None,
     prefill_step_size: Optional[int] = None,
+    distributed: bool = False,
+    distributed_group: Any = None,
 ) -> LoadedModelKit:
     """
     Load a language model or vision-language model from the specified path.
@@ -232,12 +244,17 @@ def load_model(
         quantized_kv_start (Optional[int]): Step to begin KV cache quantization when enabled.
         prefill_step_size (Optional[int]): Number of tokens to process per prefill chunk.
             Defaults to PROMPT_PROCESSING_CHUNK_SIZE when None.
+        distributed (bool): Load the model through DistributedModelKit for MLX distributed
+            tensor parallel inference.
+        distributed_group (Any): Optional initialized MLX distributed group. If omitted,
+            DistributedModelKit initializes the group.
 
     Returns:
         LoadedModelKit: An initialized model instance:
             - ModelKit: for sequential text-only models and vocab-only loads
             - BatchedModelKit: for text-only continuous batching
             - BatchedVisionModelKit: for mlx-vlm continuous batching
+            - DistributedModelKit: for distributed tensor parallel text-only models
 
     Raises:
         FileNotFoundError: If config.json is not found in the specified model path
@@ -246,6 +263,37 @@ def load_model(
     """
     set_seed(seed)
     prefill_step_size = validate_prefill_step_size(prefill_step_size)
+
+    if distributed:
+        if vocab_only:
+            raise ValueError("Distributed loading does not support vocab_only")
+        if any([kv_bits, kv_group_size, quantized_kv_start]):
+            raise ValueError(
+                "Distributed loading does not currently support KV cache quantization"
+            )
+        logger.info(
+            "Creating DistributedModelKit model_path=%s max_kv_size=%s max_seq_nums=%s prefill_step_size=%s distributed_group_provided=%s",
+            model_path,
+            max_kv_size,
+            max_seq_nums,
+            prefill_step_size,
+            distributed_group is not None,
+        )
+        model_kit = DistributedModelKit(
+            model_path,
+            prefill_step_size=prefill_step_size,
+            max_kv_size=max_kv_size,
+            max_seq_nums=max_seq_nums,
+            trust_remote_code=trust_remote_code,
+            distributed_group=distributed_group,
+        )
+        logger.info("Sanitizing EOS tokens for DistributedModelKit")
+        sanitize_eos_tokens(model_kit)
+        logger.info("Starting DistributedModelKit")
+        model_kit.start()
+        logger.info("DistributedModelKit start completed")
+        return model_kit
+
     model_path = Path(model_path)
     config_json = json.loads((model_path / "config.json").read_text())
     parallel_requested = max_seq_nums is not None and max_seq_nums > 1
@@ -435,14 +483,34 @@ def create_generator(
     Raises:
         ValueError: If top_logprobs exceeds MAX_TOP_LOGPROBS or if any parameters are invalid
     """
-    if isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit)):
+    if isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit)) or (
+        isinstance(model_kit, DistributedModelKit)
+        and model_kit.uses_distributed_batching()
+    ):
         return _batched_generation(model_kit, prompt_tokens, **kwargs)
+    if isinstance(model_kit, DistributedModelKit):
+        request_id = kwargs.get("request_id")
+        logger.info(
+            "Routing sequential distributed generation request_id=%s prompt_tokens=%s "
+            "through distributed model thread",
+            request_id,
+            len(prompt_tokens),
+        )
+        return model_kit.run_generator_on_model_thread(
+            description=f"sequential-generation request_id={request_id}",
+            callback=lambda: _sequential_generation(
+                model_kit,
+                prompt_tokens,
+                **kwargs,
+            ),
+        )
     return _SequentialModelKitGenerator(model_kit, prompt_tokens, kwargs)
 
 
 @contextmanager
 def _sequential_gen_abort_handler(
-    model_kit: SequentialGenerationKit, request_id: Optional[str]
+    model_kit: SequentialGenerationKit | DistributedModelKit,
+    request_id: Optional[str],
 ):
     """
     Acquires the generation lock for sequential generation, with support for cancellation.
@@ -484,7 +552,7 @@ def _sequential_gen_abort_handler(
 
 
 def _sequential_generation(
-    model_kit: SequentialGenerationKit,
+    model_kit: SequentialGenerationKit | DistributedModelKit,
     prompt_tokens: List[int],
     *,
     prompt_progress_reporter: Optional[PromptProgressReporter] = None,
@@ -599,6 +667,28 @@ def _sequential_generation(
         else:
             mlx_lm_callback = None
 
+        is_distributed_model = isinstance(model_kit, DistributedModelKit)
+        distributed_group = model_kit.group if is_distributed_model else None
+        generation_details = (
+            f"mode=sequential distributed={is_distributed_model} "
+            f"prompt_tokens={len(prompt_tokens)} input_tokens={len(input_tokens)} "
+            f"max_tokens={max_tokens} prefill_step_size={model_kit.prefill_step_size} "
+            f"max_kv_size={getattr(model_kit, 'max_kv_size', None)} "
+            f"cross_prompt_cache={model_kit.is_cross_prompt_cache_active()}"
+        )
+        prepare_mlx_lm_generation_stream(
+            reason="sequential-generation",
+            request_id=request_id,
+            distributed_group=distributed_group,
+            use_default_stream=is_distributed_model,
+        )
+        log_mlx_stream_state(
+            reason="before-stream-generate",
+            request_id=request_id,
+            distributed_group=distributed_group,
+            details=generation_details,
+        )
+
         stream = stream_generate(
             model=model_kit.model,
             tokenizer=tokenizer,
@@ -610,15 +700,47 @@ def _sequential_generation(
             prefill_step_size=model_kit.prefill_step_size,
             **generate_args,
         )
+        log_mlx_stream_state(
+            reason="after-stream-generate-created",
+            request_id=request_id,
+            distributed_group=distributed_group,
+            details=generation_details,
+        )
 
+        received_first_generation_result = False
         while not model_kit.is_shutdown() and not cancel_event.is_set():
             try:
+                if not received_first_generation_result:
+                    log_mlx_stream_state(
+                        reason="before-first-generation-next",
+                        request_id=request_id,
+                        distributed_group=distributed_group,
+                        details=generation_details,
+                    )
                 generation_result = next(stream)
+                if not received_first_generation_result:
+                    received_first_generation_result = True
+                    log_mlx_stream_state(
+                        reason="after-first-generation-next",
+                        request_id=request_id,
+                        distributed_group=distributed_group,
+                        details=(
+                            f"{generation_details} token={generation_result.token} "
+                            f"text_len={len(generation_result.text)}"
+                        ),
+                    )
             except StopIteration:
                 break
             except StopPromptProcessing:
                 yield construct_user_cancelled_result()
                 return
+            except Exception:
+                log_mlx_generation_exception(
+                    reason="sequential-generation",
+                    request_id=request_id,
+                    distributed_group=distributed_group,
+                )
+                raise
 
             # Token processor
             token = generation_result.token
@@ -663,6 +785,16 @@ def _sequential_generation(
 
             # Standard yield - yield when a non-empty text segment is available or eos token is hit
             should_yield, stop_condition = should_yield_token(text, token, tokenizer)
+            if (
+                stop_condition is None
+                and generation_result.finish_reason == "length"
+            ):
+                should_yield = True
+                stop_condition = GenerationStopCondition(
+                    stop_reason="token_limit",
+                    stop_string="",
+                    stop_tokens=[],
+                )
             if should_yield:
                 yield GenerationResult(
                     text=text,
@@ -679,7 +811,7 @@ def _sequential_generation(
 
 
 def _batched_generation(
-    model_kit: BatchedGenerationKit,
+    model_kit: BatchedGenerationKit | DistributedModelKit,
     prompt_tokens: List[int],
     *,
     prompt_progress_reporter: Optional[PromptProgressReporter] = None,
@@ -701,12 +833,29 @@ def _batched_generation(
     num_draft_tokens: Optional[int] = None,
     request_id: str | None = None,
 ) -> Iterator[GenerationResult]:
+    is_distributed_batched = isinstance(model_kit, DistributedModelKit)
+    if is_distributed_batched:
+        if images_b64 is not None and len(images_b64) > 0:
+            raise ValueError("Distributed batched generation does not support images yet")
+        if speculative_decoding_toggle is True or num_draft_tokens is not None:
+            raise ValueError(
+                "Distributed batched generation does not support speculative decoding yet"
+            )
+        if json_schema is not None:
+            raise ValueError(
+                "Distributed batched generation does not support structured JSON output yet"
+            )
+        if seed is not None:
+            raise ValueError(
+                "Distributed batched generation does not support request-level seeds yet"
+            )
+
     # We need a request_id so that we can communicate with the batched backend
     if request_id is None or request_id == "":
         logger.warning(
             "Received a generation request without a request_id! Please send a request_id"
         )
-        request_id = uuid.uuid4()
+        request_id = str(uuid.uuid4())
 
     input_tokens = prompt_tokens
     if prompt_progress_reporter is None:
@@ -732,7 +881,30 @@ def _batched_generation(
     )
     sampler = create_sampler(temp, top_p, min_p, min_tokens_to_keep, top_k)
 
-    if isinstance(model_kit, BatchedVisionModelKit):
+    if is_distributed_batched:
+        prompt_progress_callback = BatchedMlxLmReporterAdapter(
+            prompt_progress_reporter, emit_begin=True
+        )
+        stream = model_kit.generate(
+            prompt_tokens=input_tokens,
+            request_id=request_id,
+            max_tokens=max_tokens,
+            sampler=sampler,
+            logits_processors=logits_processors,
+            prompt_progress_callback=prompt_progress_callback,
+            top_logprobs=top_logprobs,
+            sampling={
+                "temperature": temp,
+                "topP": top_p,
+                "topK": top_k,
+                "minP": min_p,
+                "seed": seed,
+            },
+            repetition_penalty=repetition_penalty,
+            repetition_context_size=repetition_context_size,
+            min_tokens_to_keep=min_tokens_to_keep,
+        )
+    elif isinstance(model_kit, BatchedVisionModelKit):
         # `max_image_size` is legacy-only; batched VLM lets mlx-vlm processors resize.
         if json_schema is not None:
             logits_processors.append(
@@ -787,6 +959,16 @@ def _batched_generation(
         except StopPromptProcessing:
             yield construct_user_cancelled_result()
             return
+        except Exception:
+            distributed_group = (
+                model_kit.group if isinstance(model_kit, DistributedModelKit) else None
+            )
+            log_mlx_generation_exception(
+                reason="batched-generation",
+                request_id=request_id,
+                distributed_group=distributed_group,
+            )
+            raise
 
         # Token processor
         token = generation_result.token
@@ -863,7 +1045,10 @@ def stop_generation(
         logger.error("request_id cannot be empty in stop request")
         return
 
-    if isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit)):
+    if isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit)) or (
+        isinstance(model_kit, DistributedModelKit)
+        and model_kit.uses_distributed_batching()
+    ):
         model_kit.remove(request_id)
         return
 

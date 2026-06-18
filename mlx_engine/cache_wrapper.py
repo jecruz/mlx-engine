@@ -1,10 +1,10 @@
 import copy
 import logging
-from typing import Any, List, Literal, Optional
+from typing import Any, List, Literal, Optional, Sequence
 
 import mlx.core as mx
 import mlx.nn as nn
-from mlx_lm.generate import generation_stream, maybe_quantize_kv_cache
+from mlx_lm.generate import maybe_quantize_kv_cache
 from mlx_lm.models.cache import (
     LRUPromptCache,
     can_trim_prompt_cache,
@@ -12,6 +12,7 @@ from mlx_lm.models.cache import (
     trim_prompt_cache,
 )
 
+from mlx_engine.utils.mlx_lm_stream import prepare_mlx_lm_generation_stream
 from mlx_engine.utils.prompt_progress_reporter import (
     PromptProgressReporter,
     StopPromptProcessing,
@@ -96,7 +97,7 @@ class CacheWrapper:
 
     def _store_snapshot(
         self,
-        tokens: List[int],
+        tokens: Sequence[int],
         cache: List[Any],
         *,
         cache_type: Literal["user", "assistant"],
@@ -143,7 +144,7 @@ class CacheWrapper:
         prompt_tokens: mx.array,
         prompt_token_list: List[int],
     ) -> tuple[Optional[List[Any]], mx.array]:
-        if len(prompt_tokens) == 0:
+        if len(prompt_token_list) == 0:
             return None, prompt_tokens
 
         cache, rest = self._history.fetch_nearest_cache(
@@ -152,12 +153,12 @@ class CacheWrapper:
         )
         if cache is not None:
             if len(rest) > 0:
-                return cache, prompt_tokens[len(prompt_tokens) - len(rest) :]
+                return cache, prompt_tokens[len(prompt_token_list) - len(rest) :]
 
             if can_trim_prompt_cache(cache) and trim_prompt_cache(cache, 1) == 1:
                 return cache, prompt_tokens[-1:]
 
-        if len(prompt_tokens) <= 1:
+        if len(prompt_token_list) <= 1:
             return None, prompt_tokens
 
         # Exact hits need one token outside the cache to seed decode. If the
@@ -237,6 +238,7 @@ class CacheWrapper:
         prompt_tokens: mx.array,
         reporter: PromptProgressReporter,
     ) -> mx.array:
+        prompt_token_list = prompt_tokens.tolist()
         total_prompt_tokens = len(prompt_tokens)
         prompt_token_list = prompt_tokens.tolist()
 
@@ -276,6 +278,9 @@ class CacheWrapper:
             if checkpoint_prefix_len is not None and checkpoint_prefix_len <= 0:
                 checkpoint_prefix_len = None
 
+        generation_stream = prepare_mlx_lm_generation_stream(
+            reason="cache-prefill"
+        )
         with mx.stream(generation_stream):
             if self._draft_model is not None:
                 draft_cache = self._live_cache[len(self.model.layers) :]

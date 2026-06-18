@@ -18,6 +18,7 @@ from queue import Empty as QueueEmpty
 import time
 from mlx_lm.server import LRUPromptCache
 from mlx_engine.utils.token import Token
+from mlx_engine.utils.mlx_lm_stream import prepare_mlx_lm_generation_stream
 
 from mlx_engine.model_kit.batched_model_kit_types import (
     BatchedGenerationResponse,
@@ -305,6 +306,9 @@ class BatchedModelKit:
             mx.clear_cache()
         self._startup_complete.set()
 
+        generation_stream = prepare_mlx_lm_generation_stream(
+            reason="batched-scheduler"
+        )
         batch_generator = BatchGenerator(
             self.model,
             max_tokens=10000000,
@@ -318,6 +322,7 @@ class BatchedModelKit:
             sampler=None,
             logits_processors=None,
             max_kv_size=self._max_kv_size,
+            stream=generation_stream,
         )
         # only using one model, so model key name value does not matter
         current_model_key = "lmstudio"

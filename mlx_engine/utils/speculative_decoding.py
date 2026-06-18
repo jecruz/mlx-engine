@@ -3,6 +3,7 @@ import mlx.nn as nn
 import logging
 
 from mlx_engine.model_kit.model_kit import ModelKit
+from mlx_engine.model_kit.distributed_model_kit import DistributedModelKit
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +17,20 @@ def is_speculative_decoding_supported(model_kit: object) -> bool:
 
 
 def determine_draft_model_for_generation(
-    model_kit: ModelKit, speculative_decoding_toggle: Optional[bool]
+    model_kit: ModelKit | DistributedModelKit,
+    speculative_decoding_toggle: Optional[bool],
 ) -> Optional[nn.Module]:
     """
     Based on ModelKit and speculative_decoding_toggle, determine draft model to use for
     generation, or None
     """
+    if isinstance(model_kit, DistributedModelKit):
+        if speculative_decoding_toggle is True:
+            raise ValueError(
+                "Speculative decoding is not supported for distributed models"
+            )
+        return None
+
     if speculative_decoding_toggle is None:
         # toggle not set, use draft model if available
         return model_kit.draft_model
@@ -40,7 +49,7 @@ def determine_draft_model_for_generation(
 
 
 def configure_num_draft_tokens_in_generate_args(
-    model_kit: ModelKit,
+    model_kit: ModelKit | DistributedModelKit,
     draft_model: Optional[nn.Module],
     num_draft_tokens: Optional[int],
     generate_args: dict,
