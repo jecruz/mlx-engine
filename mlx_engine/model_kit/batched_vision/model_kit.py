@@ -178,11 +178,16 @@ class BatchedVisionModelKit:
             image_processor.input_data_format = ChannelDimension.FIRST
 
     def _load_model(self) -> None:
-        self.model, _ = mlx_vlm.utils.load_model(
+        # mlx-vlm's load_model return shape changed across versions: older
+        # revisions returned a ``(model, config)`` tuple, while newer ones
+        # (>=0.6) return the model module directly. Normalize both so we never
+        # bind ``self.model`` to an unpacked child key (a str).
+        loaded = mlx_vlm.utils.load_model(
             self._model_path,
             lazy=False,
             trust_remote_code=self._trust_remote_code,
         )
+        self.model = loaded[0] if isinstance(loaded, tuple) else loaded
         mx.synchronize()
         mx.clear_cache()
 
