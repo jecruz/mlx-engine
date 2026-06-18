@@ -43,7 +43,6 @@ from mlx_vlm.models.qwen3_5.language import (
     Qwen3_5Attention as VlmQwen3_5Attention,
     Qwen3_5GatedDeltaNet as VlmQwen3_5GatedDeltaNet,
     Qwen3_5RotaryEmbedding,
-    apply_multimodal_rotary_pos_emb,
 )
 
 # Stable aliases to the pristine mlx-lm classes captured before apply_patches()
@@ -266,8 +265,13 @@ class PatchedDecoderLayer(DecoderLayer):
             0, 2, 1, 3
         )
 
-        cos, sin = self._mrope(values, position_ids)
-        queries, keys = apply_multimodal_rotary_pos_emb(queries, keys, cos, sin)
+        # Use the rotary module's apply_rotary, which selects the compiled fused
+        # MRoPE kernel when available (Metal). This matches native mlx-vlm
+        # Qwen3_5Attention (which calls self.rotary_emb.apply_rotary) and is
+        # ~20% faster than the two-step cos/sin + apply path. See Redmine #1123.
+        queries, keys = self._mrope.apply_rotary(
+            queries, keys, position_ids, unsqueeze_dim=1
+        )
 
         if cache is not None:
             keys, values = cache.update_and_fetch(keys, values)
