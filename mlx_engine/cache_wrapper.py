@@ -240,7 +240,6 @@ class CacheWrapper:
     ) -> mx.array:
         prompt_token_list = prompt_tokens.tolist()
         total_prompt_tokens = len(prompt_tokens)
-        prompt_token_list = prompt_tokens.tolist()
 
         self._flush_live_cache()
 
