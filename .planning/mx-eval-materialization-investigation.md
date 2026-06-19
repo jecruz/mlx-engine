@@ -246,3 +246,10 @@ the short-prompt mismatch is likely a pre-existing edge case.
 The per-record eager eval approach **works** for reducing `mx.eval` cost. The
 materialization overhead is eliminated by overlapping GPU transfers with disk I/O.
 Quality gate needs verification with the standard benchmark prompt before promotion.
+
+### Later Smoke Attempts (2026-06-19)
+
+Subsequent benchmark attempts from this workspace on both `vlm_image_long_quality.json`
+and `vlm_image_quality.json` exited with `runner exited -9` before emitting prompt rows.
+That makes the current blocker an environment/runtime issue rather than a code-path
+regression signal from the retained eager-eval implementation.
