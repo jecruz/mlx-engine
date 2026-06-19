@@ -61,6 +61,12 @@ def _record_key(chunk: PromptPrefixChunk, record_kind: str) -> str:
     return make_record_key(chunk.key, record_kind)
 
 
+def _record_key_span(
+    chunk: PromptPrefixChunk, record_kind: str, span_start: int, span_end: int
+) -> str:
+    return f"{_record_key(chunk, record_kind)}:span:{span_start}:{span_end}"
+
+
 def test_restore_planner_selects_records_by_cache_kind():
     """KV needs every chunk, SWA needs the target window, state needs target only."""
     chunks = [_chunk(0, 256), _chunk(256, 512), _chunk(512, 768)]
@@ -107,3 +113,71 @@ def test_restore_planner_returns_none_when_required_record_is_missing():
     ).restore_record_keys_for_chunk_chain(chunks)
 
     assert record_keys_by_chunk is None
+
+
+def test_restore_planner_prefers_span_kv_record_and_skips_covered_chunks():
+    """Span-aware KV records should be used and earlier covered chunks should be skipped."""
+    chunks = [_chunk(0, 256), _chunk(256, 512), _chunk(512, 768)]
+    coalesced_span = _record_key_span(chunks[1], RECORD_KIND_KV_DELTA, 0, 512)
+    existing_records = {
+        coalesced_span,
+        _record_key(chunks[1], RECORD_KIND_KV_DELTA),
+        _record_key(chunks[1], RECORD_KIND_ROTATING_DELTA),
+        _record_key(chunks[2], RECORD_KIND_KV_DELTA),
+        _record_key(chunks[2], RECORD_KIND_ROTATING_DELTA),
+        _record_key(chunks[2], RECORD_KIND_STATE_CHECKPOINT),
+    }
+
+    metadata_by_key = {
+        coalesced_span: PromptCacheRecordMetadata(
+            chunk_key=chunks[1].key,
+            record_kind=RECORD_KIND_KV_DELTA,
+            layer_indices=[],
+            chunk_span=[0, 512],
+        ),
+        _record_key(chunks[1], RECORD_KIND_KV_DELTA): PromptCacheRecordMetadata(
+            chunk_key=chunks[1].key,
+            record_kind=RECORD_KIND_KV_DELTA,
+            layer_indices=[],
+        ),
+        _record_key(chunks[1], RECORD_KIND_ROTATING_DELTA): PromptCacheRecordMetadata(
+            chunk_key=chunks[1].key,
+            record_kind=RECORD_KIND_ROTATING_DELTA,
+            layer_indices=[],
+        ),
+        _record_key(chunks[2], RECORD_KIND_KV_DELTA): PromptCacheRecordMetadata(
+            chunk_key=chunks[2].key,
+            record_kind=RECORD_KIND_KV_DELTA,
+            layer_indices=[],
+        ),
+        _record_key(chunks[2], RECORD_KIND_ROTATING_DELTA): PromptCacheRecordMetadata(
+            chunk_key=chunks[2].key,
+            record_kind=RECORD_KIND_ROTATING_DELTA,
+            layer_indices=[],
+        ),
+        _record_key(chunks[2], RECORD_KIND_STATE_CHECKPOINT): PromptCacheRecordMetadata(
+            chunk_key=chunks[2].key,
+            record_kind=RECORD_KIND_STATE_CHECKPOINT,
+            layer_indices=[],
+        ),
+    }
+
+    planner = PromptCacheRestorePlanner(
+        layout=_layout(),
+        record_metadata_by_key=metadata_by_key,
+        record_exists=existing_records.__contains__,
+    )
+    record_keys_by_chunk = planner.restore_record_keys_for_chunk_chain(chunks)
+
+    assert record_keys_by_chunk == {
+        chunks[0].key: [],
+        chunks[1].key: [
+            coalesced_span,
+            _record_key(chunks[1], RECORD_KIND_ROTATING_DELTA),
+        ],
+        chunks[2].key: [
+            _record_key(chunks[2], RECORD_KIND_KV_DELTA),
+            _record_key(chunks[2], RECORD_KIND_ROTATING_DELTA),
+            _record_key(chunks[2], RECORD_KIND_STATE_CHECKPOINT),
+        ],
+    }

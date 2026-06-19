@@ -19,6 +19,7 @@ from mlx_engine.model_kit.batched_vision.prompt_cache.records import (
     assemble_prompt_cache_chunks,
     make_prompt_cache_layout,
     prepare_prompt_cache_records_for_chunk,
+    _slice_kv_cache,
 )
 from mlx_engine.model_kit.batched_vision.prompt_cache.restore_planner import (
     PromptCacheRestorePlanner,
@@ -68,6 +69,7 @@ _READABLE_PERSISTENT_CACHE_FORMAT_VERSIONS = frozenset({1})
 _PERSISTENT_CACHE_INDEX_FILENAME = "prompt-cache-index.json"
 _DEFAULT_PERSISTENT_MIN_SAVE_TOKENS = 512
 _MAX_PREPARED_PROMPT_METADATA_ENTRIES = 128
+_RECORD_SPAN_KEY = "chunk_span"
 
 
 @dataclass
@@ -81,6 +83,32 @@ class DiskPromptCacheRestorePlan:
     cached_prefix_len: int
     chunks: list[PromptPrefixChunk]
     record_keys_by_chunk_key: dict[str, list[str]]
+
+
+def _make_record_key(
+    chunk_key: str,
+    record_kind: RecordKind,
+    *,
+    chunk_start: int | None = None,
+    chunk_end: int | None = None,
+) -> str:
+    """Return a cache record key, including optional span metadata."""
+    base_key = make_record_key(chunk_key, record_kind)
+    if chunk_start is None or chunk_end is None:
+        return base_key
+    if chunk_start <= 0:
+        return base_key
+    return f"{base_key}:span:{chunk_start}:{chunk_end}"
+
+
+def _chunk_span_from_metadata(metadata: PromptCacheRecordMetadata) -> tuple[int, int] | None:
+    span = metadata.chunk_span
+    if not span or len(span) != 2:
+        return None
+    span_start, span_end = span
+    if not isinstance(span_start, int) or not isinstance(span_end, int):
+        return None
+    return span_start, span_end
 
 
 def _prefix_len_splits_image_span(
@@ -430,20 +458,72 @@ class VlmPromptCacheStore:
             if not layer_indices:
                 continue
 
+            chunk_record_caches = [
+                record_caches[idx]
+                for idx in layer_indices
+            ]
             records.append(
                 self._prepare_record_save(
                     chunk_key=chunk.key,
                     record_kind=record_kind,
                     layer_indices=layer_indices,
-                    record_cache=[record_caches[idx] for idx in layer_indices],
+                    record_cache=chunk_record_caches,
+                    chunk_start=(
+                        chunk.start
+                        if record_kind == RECORD_KIND_KV_DELTA
+                        else None
+                    ),
+                    chunk_end=(
+                        chunk.end if record_kind == RECORD_KIND_KV_DELTA else None
+                    ),
                 )
             )
+            if record_kind == RECORD_KIND_KV_DELTA:
+                kv_span_start = self._kv_span_start(
+                    chunk=chunk,
+                    prefix_chunks=prefix_chunks,
+                )
+                if kv_span_start is not None:
+                    records.append(
+                        self._prepare_record_save(
+                            chunk_key=chunk.key,
+                            record_kind=record_kind,
+                            layer_indices=layer_indices,
+                            record_cache=[
+                                _slice_kv_cache(
+                                    cache=prompt_cache[layer_idx],
+                                    chunk_start=kv_span_start,
+                                    chunk_end=chunk.end,
+                                )
+                                for layer_idx in layer_indices
+                            ],
+                            chunk_start=kv_span_start,
+                            chunk_end=chunk.end,
+                        )
+                    )
 
         return PendingPromptCacheSave(
             prefix_chunks=prefix_chunks,
             cache_layout=layout,
             records=records,
         )
+
+    def _kv_span_start(
+        self,
+        *,
+        chunk: PromptPrefixChunk,
+        prefix_chunks: list[PromptPrefixChunk],
+    ) -> int | None:
+        """Return the start token for one-step KV coalescing with the prior chunk."""
+        if len(prefix_chunks) <= 1:
+            return None
+        chunk_index = prefix_chunks.index(chunk)
+        if chunk_index == 0:
+            return None
+        prev_chunk = prefix_chunks[chunk_index - 1]
+        if prev_chunk.end != chunk.start:
+            return None
+        return prev_chunk.start
 
     def budget_update_from_completed_cache(self, prompt_cache: list[Any]) -> int | None:
         """Return the empirical cache store budget from a completed cache."""
@@ -620,6 +700,9 @@ class VlmPromptCacheStore:
                     chunk_key=metadata["chunk_key"],
                     record_kind=metadata["record_kind"],
                     layer_indices=list(metadata["layer_indices"]),
+                    chunk_span=(
+                        metadata.get(_RECORD_SPAN_KEY)
+                    ),
                 )
                 self._key_sizes[record_key] = self._blob_store.size(record_key)
             except Exception:
@@ -700,8 +783,15 @@ class VlmPromptCacheStore:
         record_kind: RecordKind,
         layer_indices: list[int],
         record_cache: list[Any],
+        chunk_start: int | None = None,
+        chunk_end: int | None = None,
     ) -> PreparedPromptRecord:
-        record_key = make_record_key(chunk_key, record_kind)
+        record_key = _make_record_key(
+            chunk_key,
+            record_kind,
+            chunk_start=chunk_start,
+            chunk_end=chunk_end,
+        )
         cache_data = [cache.state for cache in record_cache]
         cache_meta_states = [cache.meta_state for cache in record_cache]
         cache_arrays = dict(tree_flatten(cache_data))
@@ -724,10 +814,11 @@ class VlmPromptCacheStore:
         return PreparedPromptRecord(
             key=record_key,
             metadata=PromptCacheRecordMetadata(
-                chunk_key=chunk_key,
-                record_kind=record_kind,
-                layer_indices=layer_indices,
-            ),
+            chunk_key=chunk_key,
+            record_kind=record_kind,
+            layer_indices=layer_indices,
+            chunk_span=[chunk_start, chunk_end] if chunk_start is not None and chunk_end is not None else None,
+        ),
             snapshot_arrays=snapshot_arrays,
             safetensor_metadata=safetensor_metadata,
         )

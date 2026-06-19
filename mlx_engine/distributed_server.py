@@ -10,6 +10,7 @@ from typing import Any, Optional
 import mlx.core as mx
 
 from mlx_engine.generate import create_generator, load_model, unload
+from mlx_engine.utils.chat_template_args import resolve_chat_template_args
 
 
 logger = logging.getLogger(__name__)
@@ -310,10 +311,11 @@ def max_tokens_from_value(value: Any) -> int:
 
 def format_prompt(model_kit, body: dict[str, Any], default_template_args: dict[str, Any]) -> list[int]:
     messages = normalize_messages(body.get("messages"))
-    template_args = dict(default_template_args)
-    request_template_args = body.get("chat_template_kwargs")
-    if isinstance(request_template_args, dict):
-        template_args.update(request_template_args)
+    template_args = resolve_chat_template_args(
+        getattr(model_kit, "tokenizer", None),
+        default_template_args,
+        body.get("chat_template_kwargs"),
+    )
 
     prompt = model_kit.tokenizer.apply_chat_template(
         messages,

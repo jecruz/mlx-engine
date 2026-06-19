@@ -71,11 +71,18 @@ class PromptCacheRecordMetadata:
 
     A record stores one record kind for one chunk, usually covering one or more
     cache layers.
+
+    `chunk_span` is optional and preserved for compatibility with newer/older
+    index formats:
+    - [chunk_start, chunk_end] when a record covers exactly one chunk.
+    - [span_start, span_end] when the record was pre-concatenated across
+      multiple contiguous chunks during save.
     """
 
     chunk_key: str
     record_kind: RecordKind
     layer_indices: list[int]
+    chunk_span: list[int] | None = None
 
 
 @dataclass

@@ -4,6 +4,7 @@ from mlx_engine.model_kit.batched_vision.prompt_cache.types import (
     PromptCacheLayout,
     PromptCacheRecordMetadata,
     PromptPrefixChunk,
+    RECORD_KIND_KV_DELTA,
     RECORD_KIND_ROTATING_DELTA,
     RECORD_KIND_STATE_CHECKPOINT,
     RECORD_WRITE_ORDER,
@@ -50,11 +51,43 @@ class PromptCacheRestorePlanner:
         target_chunk = chunks[-1]
         target_chunk_end = target_chunk.end
         rotating_window_size = self._layout.rotating_window_size
+        chunk_index_by_start = {chunk.start: idx for idx, chunk in enumerate(chunks)}
+        chunk_indices = list(enumerate(chunks))
+        covered_kv_chunk_indices: set[int] = set()
+        kv_record_key_by_chunk_key: dict[str, str] = {}
+
+        for idx, chunk in reversed(chunk_indices):
+            if idx in covered_kv_chunk_indices:
+                continue
+
+            if not self._layout.layer_indices_by_kind.get(RECORD_KIND_KV_DELTA):
+                continue
+
+            kv_record_key = self._select_kv_record_key(chunk)
+            if not kv_record_key:
+                return None
+
+            kv_record_key_by_chunk_key[chunk.key] = kv_record_key
+            metadata = self._record_metadata_by_key[kv_record_key]
+            metadata_span_start, _ = self._metadata_span(metadata)
+            if (
+                metadata_span_start is not None
+                and metadata_span_start < chunk.start
+            ):
+                span_start_index = chunk_index_by_start.get(metadata_span_start)
+                if span_start_index is None:
+                    return None
+                covered_kv_chunk_indices.update(
+                    range(span_start_index, idx)
+                )
+
         record_keys_by_chunk_key: dict[str, list[str]] = {}
-        for chunk in chunks:
+        for idx, chunk in chunk_indices:
             record_keys: list[str] = []
             for record_kind in RECORD_WRITE_ORDER:
                 if not self._layout.layer_indices_by_kind.get(record_kind):
+                    continue
+                if record_kind == RECORD_KIND_KV_DELTA and idx in covered_kv_chunk_indices:
                     continue
                 if record_kind == RECORD_KIND_STATE_CHECKPOINT:
                     # Opaque state caches are exact-boundary checkpoints.
@@ -70,18 +103,68 @@ class PromptCacheRestorePlanner:
                     ):
                         continue
 
-                record_key = make_record_key(chunk.key, record_kind)
+                record_key = (
+                    kv_record_key_by_chunk_key.get(chunk.key)
+                    if record_kind == RECORD_KIND_KV_DELTA
+                    else make_record_key(chunk.key, record_kind)
+                )
+                if record_key is None:
+                    return None
                 if not self._has_record(record_key):
                     return None
+
                 record_keys.append(record_key)
             record_keys_by_chunk_key[chunk.key] = record_keys
 
         return record_keys_by_chunk_key
 
+    @staticmethod
+    def _metadata_span(
+        metadata: PromptCacheRecordMetadata,
+    ) -> tuple[int | None, int | None]:
+        span = metadata.chunk_span
+        if not span or len(span) != 2:
+            return None, None
+        try:
+            return int(span[0]), int(span[1])
+        except (TypeError, ValueError):
+            return None, None
+
     def _has_record(self, record_key: str) -> bool:
         return record_key in self._record_metadata_by_key and self._record_exists(
             record_key
         )
+
+    def _select_kv_record_key(
+        self, chunk: PromptPrefixChunk
+    ) -> str | None:
+        """Return the preferred KV record key for a chunk, with span metadata support."""
+        plain_record_key = make_record_key(chunk.key, RECORD_KIND_KV_DELTA)
+        span_candidate_keys = []
+        for (
+            record_key,
+            metadata,
+        ) in self._record_metadata_by_key.items():
+            if (
+                metadata.chunk_key != chunk.key
+                or metadata.record_kind != RECORD_KIND_KV_DELTA
+                or not self._has_record(record_key)
+            ):
+                continue
+            chunk_span = self._metadata_span(metadata)
+            if chunk_span == (None, None):
+                continue
+            span_start, span_end = chunk_span
+            if span_start is None or span_end is None:
+                continue
+            if span_start <= chunk.start <= span_end and span_end >= chunk.end:
+                span_candidate_keys.append((span_start, span_end, record_key))
+        if span_candidate_keys:
+            span_candidate_keys.sort(key=lambda item: (item[0], -item[1]))
+            return span_candidate_keys[0][2]
+        if self._has_record(plain_record_key):
+            return plain_record_key
+        return None
 
     def _rotating_chunk_overlaps_target_window(
         self,
