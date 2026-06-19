@@ -1,0 +1,143 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-06-19T00:33:24Z",
+  "context": "research",
+  "status": "paused",
+  "project": "MLX-engine prompt/inference performance",
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-prompt-cache-perf",
+  "redmine_issue": 1190,
+  "active_goal": "Improve MLX-engine inference performance until further optimization no longer produces promotion-worthy end-to-end gains, while preserving response quality, stability, and reproducibility.",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "Baseline and comparison harness",
+      "status": "done",
+      "evidence": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md"
+    },
+    {
+      "id": 2,
+      "name": "VLM persistent prompt-cache restore improvements",
+      "status": "done",
+      "summary": "Persistent cache, exact prepared-prompt metadata restore, cached image text-suffix fast path, adaptive restore chunk sizing, and path-based safetensor mx.load are retained."
+    },
+    {
+      "id": 3,
+      "name": "Response-quality gate",
+      "status": "done",
+      "summary": "Path-load repeat quality compare passed; faster unsafe candidates were rejected when quality, decode stability, or runtime stability failed."
+    },
+    {
+      "id": 4,
+      "name": "Restore-path profiling",
+      "status": "done",
+      "summary": "KV-delta load was reduced from 21.052 ms to 1.546-1.861 ms; remaining restore cost is dominated by mx.eval materialization."
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 1,
+      "name": "Package retained changes into reviewable commit or PR slice",
+      "status": "not_started",
+      "notes": "Current worktree is intentionally dirty with broad code, test, and doc changes."
+    },
+    {
+      "id": 2,
+      "name": "Investigate restore-time mx.eval materialization",
+      "status": "not_started",
+      "notes": "Do not simply remove mx.eval; no-restore-eval failed warm restore with a cross-thread GPU stream runtime error."
+    },
+    {
+      "id": 3,
+      "name": "Broaden model and workload coverage",
+      "status": "not_started",
+      "notes": "Retained gains are strongest for cached image-bearing VLM flows; validate text-only, dense, MoE, and longer-context paths before calling the engine broadly improved."
+    },
+    {
+      "id": 4,
+      "name": "Update Redmine issue after next milestone",
+      "status": "not_started",
+      "notes": "Issue #1190 tracks this optimization thread."
+    }
+  ],
+  "key_metrics": {
+    "overall_vs_quality_baseline": {
+      "ttft_change": "-48.650%",
+      "total_latency_change": "-47.435%",
+      "decode_tps_change": "-12.263%",
+      "quality": "pass",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T000646Z-lfm25-vl-path-load-r2-quality-compare.json"
+    },
+    "path_load_vs_profiled_restore_baseline": {
+      "kv_delta_load_ms_before": 21.052,
+      "kv_delta_load_ms_after_range": "1.546-1.861",
+      "restore_detail_ms_before": 38.03,
+      "restore_detail_ms_after_range": "19.912-20.104",
+      "warm_ttft_s_before": 0.059,
+      "warm_ttft_s_after_range": "0.040-0.042"
+    }
+  },
+  "decisions": [
+    {
+      "decision": "Keep restore-time mx.eval safety barrier",
+      "rationale": "Removing it failed the warm restore path with RuntimeError: There is no Stream(gpu, 3) in current thread."
+    },
+    {
+      "decision": "Reject prefix checkpoint restore",
+      "rationale": "It reduced restore time but failed the response-quality/decode stability gate twice."
+    },
+    {
+      "decision": "Reject no-contiguous KV concat",
+      "rationale": "Quality passed, but TTFT, total latency, and decode TPS were worse than the retained path."
+    },
+    {
+      "decision": "Keep path-based safetensor loading",
+      "rationale": "It preserved quality and reduced KV-delta record-load time by roughly 91-93%."
+    }
+  ],
+  "blockers": [
+    {
+      "description": "No current hard blocker; next work requires lower-level MLX restore/materialization investigation.",
+      "type": "technical",
+      "workaround": "Treat mx.eval optimization as a new subsystem investigation with quality and stream-lifecycle validation."
+    }
+  ],
+  "human_actions_pending": [],
+  "background_processes": [],
+  "validation": [
+    {
+      "command": "python3 -m py_compile mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_batched_vision_cache_store.py tests/test_batched_vision_coordinator.py",
+      "result": "21 passed, 2 warnings"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_load_model_default_seq_nums.py tests/test_batched_vision_model_kit.py tests/test_batched_vision_cache_store.py tests/test_batched_vision_coordinator.py tests/test_batched_vision_cache_io_thread.py tests/test_batched_vision_prompt_inputs.py tests/test_batched_vision_batch_generator.py tests/test_batched_vision_chunks.py tests/test_batched_vision_disk_budget.py tests/test_batched_vision_blob_store.py",
+      "result": "95 passed, 2 warnings"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_prompt_processing_specprefill.py",
+      "result": "2 passed, 2 warnings"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_specprefill_helpers.py tests/test_specprefill_options.py tests/test_generate_specprefill_cleanup.py",
+      "result": "17 passed, 2 warnings"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_model_kit_startup.py tests/test_patched_qwen3_5.py",
+      "result": "22 passed, 9 skipped, 2 warnings"
+    }
+  ],
+  "required_reading": [
+    "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/.continue-here.md",
+    "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619-pause-handoff.md",
+    "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md"
+  ],
+  "next_action": "Create a clean review slice for retained VLM prompt-cache changes, then start a separate investigation into mx.eval restore materialization without removing the safety barrier."
+}
