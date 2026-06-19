@@ -187,3 +187,62 @@ If no improvement:
 - [ ] Quality compare passes (output text matches baseline)
 - [ ] No cross-thread stream errors
 - [ ] No decode TPS regression
+
+## Phase 2 Test Results (2026-06-19 01:10 UTC)
+
+### Test Setup
+- Model: LFM2.5-VL-1.6B-MLX-8bit
+- Prompt: 97 tokens ("<image>\nDescribe this image in detail.")
+- Image: toucan.jpeg
+- Cache: persistent, min_save_tokens=0, namespace=eager-eval-test
+- MLX_ENGINE_BATCHED_TIMING=1
+
+### Cold Run
+- TTFT: 1394.3ms
+- prepare_inputs_ms: 13.265ms (image processing)
+- No cache hit
+
+### Warm Run (Cache Hit: 96/97 tokens)
+- TTFT: 124.8ms
+- metadata_hit: true (prepared prompt metadata reused, skipped image processing)
+- prepare_inputs_ms: 0.0ms
+
+### Key Timing Events
+
+| Event | Before (path-load baseline) | After (eager eval) | Change |
+|-------|---------------------------|-------------------|--------|
+| `vlm_cache_restore_detail.eval_ms` | ~13.936ms | **0.064ms** | **-99.5%** |
+| `vlm_cache_restore_detail.duration_ms` | ~20ms | **1.381ms** | **-93.1%** |
+| `vlm_cache_restore_detail.load_chunks_ms` | ~1.5ms | 1.244ms | similar |
+| `vlm_cache_record_eager_eval` (kv_delta, 6 layers) | N/A (new) | 0.379ms | new event |
+| `vlm_cache_record_eager_eval` (state_checkpoint, 10 layers) | N/A (new) | 0.3ms | new event |
+
+### Analysis
+
+The per-record eager eval successfully eliminates the final `mx.eval` cost:
+- GPU transfers happen during record load (0.379ms + 0.3ms = 0.679ms total)
+- Final `mx.eval` only materializes concat/contiguous (0.064ms)
+- Total materialization cost: 0.679 + 0.064 = 0.743ms (vs ~14ms before)
+
+The restore detail time dropped from ~20ms to 1.381ms, a 93% reduction.
+
+### Quality Flag
+
+⚠️ **Output mismatch on short prompt test:**
+- Cold: "This image features a toucan perched on a moss-covered branch..."
+- Warm: "This is a picture of a toucan. The toucan is black and yellow..."
+
+Both runs used temp=0.0 but produced different outputs. This may be:
+1. A pre-existing KV cache quality issue with LFM2.5-VL (unrelated to eager eval)
+2. A subtle correctness issue introduced by eager eval
+3. A short-prompt edge case (96 cached, 1 new token — very small delta)
+
+**Next step:** Run quality compare with the standard `image_long_toucan` prompt
+(7374 tokens) that was used in the previous passing quality gate. If that passes,
+the short-prompt mismatch is likely a pre-existing edge case.
+
+### Conclusion
+
+The per-record eager eval approach **works** for reducing `mx.eval` cost. The
+materialization overhead is eliminated by overlapping GPU transfers with disk I/O.
+Quality gate needs verification with the standard benchmark prompt before promotion.
