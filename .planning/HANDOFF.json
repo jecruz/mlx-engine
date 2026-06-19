@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-19T02:47:00Z",
+  "timestamp": "2026-06-19T03:00:00Z",
   "context": "research",
   "status": "paused",
   "project": "MLX-engine prompt/inference performance",
@@ -50,14 +50,14 @@
     {
       "id": 3,
       "name": "Broaden model and workload coverage",
-      "status": "in_progress",
-      "notes": "Text-only sequential Qwen3.5-9B validation improved performance versus the older baseline and had no backend errors. A deterministic text-quality profile was added and passed repeat comparison; use it for future text promotion gates."
+      "status": "done",
+      "notes": "Dense/code Qwen2.5-Coder-14B passed the deterministic text-quality gate. MoE Qwen3.6-35B-A3B ran successfully but failed quality because it emitted visible thinking text across the suite."
     },
     {
       "id": 4,
-      "name": "Update Redmine issue after next milestone",
+      "name": "Persistent VLM record-layout candidate",
       "status": "not_started",
-      "notes": "Issue #1190 tracks this optimization thread."
+      "notes": "Next implementation target: pre-concatenate compatible KV-delta records during save while keeping existing record format readable."
     }
   ],
   "key_metrics": {
@@ -97,6 +97,10 @@
     {
       "decision": "Add deterministic text-quality profile before further text-path promotion",
       "rationale": "The task-diverse text suite showed strong performance improvement but failed one quality check because both baseline and candidate emit thinking text and hit token_limit on instruction_format. The deterministic profile adds prompt-specific caps, forbidden visible-thinking checks, and exact JSON-key validation."
+    },
+    {
+      "decision": "Target persistent VLM record layout next",
+      "rationale": "Dense/code validation passed, MoE validation is quality-blocked by model behavior, and unsafe mx.eval removal already produced cross-thread stream failures. The next likely performance win is reducing restore assembly/materialization cost without removing the safety barrier."
     }
   ],
   "blockers": [
@@ -196,6 +200,18 @@
     {
       "command": "python3 quality_compare.py --baseline reports/20260619T024334Z-shared-bench.json --candidate reports/20260619T024422Z-shared-bench.json --out reports/20260619T024422Z-task-diverse-deterministic-quality-compare.json",
       "result": "status=pass; failed_prompts=-; all five deterministic prompts passed structured checks"
+    },
+    {
+      "command": "env PYTHONPATH=. pytest tests/test_shared_bench.py tests/test_quality_compare.py",
+      "result": "21 passed after adding single-report quality inspection and report metadata preservation"
+    },
+    {
+      "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/models/unsloth/Qwen3.6-35B-A3B-UD-MLX-4bit --runs 1 --max-tokens 160 --prompt-suite-json prompt_suites/task_diverse_deterministic_quality.json --mlx-engine-force-sequential --temperature 0 --top-p 1 --include-output-text",
+      "result": "runtime passed; report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T025449Z-shared-bench.json; quality inspect failed all five prompts due to visible thinking and strict JSON failure"
+    },
+    {
+      "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/models/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit --runs 1 --max-tokens 160 --prompt-suite-json prompt_suites/task_diverse_deterministic_quality.json --mlx-engine-force-sequential --temperature 0 --top-p 1 --include-output-text",
+      "result": "runtime passed; report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T025355Z-shared-bench.json; quality inspect passed all five prompts"
     }
   ],
   "required_reading": [
@@ -203,5 +219,5 @@
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619-pause-handoff.md",
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md"
   ],
-  "next_action": "Run the deterministic text-quality profile against a MoE model and a larger dense/code model, then decide whether the next implementation target should be persistent record layout or stream-safe ownership transfer."
+  "next_action": "Design a persistent VLM record-layout candidate that pre-concatenates compatible KV-delta records during save while keeping existing record format readable."
 }
