@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-19T00:33:24Z",
+  "timestamp": "2026-06-19T02:22:24Z",
   "context": "research",
   "status": "paused",
   "project": "MLX-engine prompt/inference performance",
@@ -39,7 +39,7 @@
       "id": 1,
       "name": "Package retained changes into reviewable commit or PR slice",
       "status": "not_started",
-      "notes": "Current worktree is intentionally dirty with broad code, test, and doc changes."
+      "notes": "Current worktree is clean; retained changes are already committed on mlx-vlm-prompt-cache-perf."
     },
     {
       "id": 2,
@@ -97,9 +97,9 @@
   ],
   "blockers": [
     {
-      "description": "No current hard blocker; next work requires lower-level MLX restore/materialization investigation.",
+      "description": "Earlier runner SIGKILL was localized to the default .venv interpreter. Use .venv-py312 for shared_bench.py reruns.",
       "type": "technical",
-      "workaround": "Treat mx.eval optimization as a new subsystem investigation with quality and stream-lifecycle validation."
+      "workaround": "Pass --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python. Avoid inline env assignments in this Codex tool session until Metal initialization behavior is rechecked."
     }
   ],
   "human_actions_pending": [],
@@ -132,6 +132,18 @@
     {
       "command": ".venv-py312/bin/python -m pytest tests/test_model_kit_startup.py tests/test_patched_qwen3_5.py",
       "result": "22 passed, 9 skipped, 2 warnings"
+    },
+    {
+      "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/models/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --runs 2 --max-tokens 8 --prompt-suite-json prompt_suites/vlm_image_quality.json",
+      "result": "passed; report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022103Z-shared-bench.json"
+    },
+    {
+      "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/models/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --runs 2 --max-tokens 32 --prompt-suite-json prompt_suites/vlm_image_long_quality.json",
+      "result": "passed; warm_ttft_s 0.030382; report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022121Z-shared-bench.json"
+    },
+    {
+      "command": "python3 quality_compare.py --baseline reports/20260619T000646Z-shared-bench.json --candidate reports/20260619T022121Z-shared-bench.json --out reports/20260619T022121Z-lfm25-vl-py312-rerun-quality-compare.json",
+      "result": "status=pass; ttft_change_pct=-1.911; decode_tps_change_pct=-19.811; total_change_pct=3.361"
     }
   ],
   "required_reading": [
@@ -139,5 +151,5 @@
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619-pause-handoff.md",
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md"
   ],
-  "next_action": "Create a clean review slice for retained VLM prompt-cache changes, then start a separate investigation into mx.eval restore materialization without removing the safety barrier."
+  "next_action": "Continue the mx.eval restore-materialization investigation using --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python, then compare against reports/20260619T000646Z-shared-bench.json."
 }
