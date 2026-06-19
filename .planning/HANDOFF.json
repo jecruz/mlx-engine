@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-19T02:35:00Z",
+  "timestamp": "2026-06-19T02:40:00Z",
   "context": "research",
   "status": "paused",
   "project": "MLX-engine prompt/inference performance",
@@ -50,8 +50,8 @@
     {
       "id": 3,
       "name": "Broaden model and workload coverage",
-      "status": "not_started",
-      "notes": "Retained gains are strongest for cached image-bearing VLM flows; validate text-only, dense, MoE, and longer-context paths before calling the engine broadly improved."
+      "status": "in_progress",
+      "notes": "Text-only sequential Qwen3.5-9B validation improved performance versus the older baseline and had no backend errors, but the task-diverse quality compare exposed a model/prompt-sensitive instruction_format warning. Add a deterministic text-quality profile before promoting further text-path optimizations."
     },
     {
       "id": 4,
@@ -93,6 +93,10 @@
     {
       "decision": "Keep path-based safetensor loading",
       "rationale": "It preserved quality and reduced KV-delta record-load time by roughly 91-93%."
+    },
+    {
+      "decision": "Add deterministic text-quality profile before further text-path promotion",
+      "rationale": "The task-diverse text suite showed strong performance improvement but failed one quality check because both baseline and candidate emit thinking text and hit token_limit on instruction_format."
     }
   ],
   "blockers": [
@@ -164,6 +168,18 @@
     {
       "command": "python3 quality_compare.py --baseline reports/20260619T000646Z-shared-bench.json --candidate reports/20260619T023205Z-shared-bench.json --out reports/20260619T023205Z-lfm25-vl-post-revert-rerun-quality-compare.json",
       "result": "status=pass; ttft_change_pct=-3.899; decode_tps_change_pct=-11.186; total_change_pct=-2.782"
+    },
+    {
+      "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit --runs 3 --max-tokens 256 --prompt-suite-json prompt_suites/task_diverse_quality.json --mlx-engine-force-sequential --include-output-text",
+      "result": "passed; report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T023533Z-shared-bench.json; avg TTFT improved 8.767-13.744%, decode TPS improved 18.956-19.551%, total latency improved 15.121-19.560% across five prompts versus 20260618T213838Z"
+    },
+    {
+      "command": "python3 quality_compare.py --baseline reports/20260618T213838Z-shared-bench.json --candidate reports/20260619T023533Z-shared-bench.json --out reports/20260619T023533Z-task-diverse-post-revert-quality-compare.json",
+      "result": "status=fail; failed_prompts=instruction_format; candidate repeated 5-gram count 4 exceeded threshold 3 while both baseline and candidate emitted thinking text and hit token_limit"
+    },
+    {
+      "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit --runs 2 --max-tokens 64 --prompt-suite-json prompt_suites/task_diverse_quality.json --mlx-engine-force-sequential --temperature 0 --top-p 1 --include-output-text",
+      "result": "passed without backend errors; report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T023728Z-shared-bench.json; quality compare failed code_python and short_nyc due to shorter cap missing expected keywords"
     }
   ],
   "required_reading": [
@@ -171,5 +187,5 @@
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619-pause-handoff.md",
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md"
   ],
-  "next_action": "Verify the reverted branch still matches retained path-load behavior, then move to a different subsystem focus such as persistent record layout, stream-safe ownership transfer, or broader workload validation."
+  "next_action": "Add a deterministic text-quality profile to the shared harness so broad text workloads can be judged separately from model-specific thinking/token-limit behavior."
 }
