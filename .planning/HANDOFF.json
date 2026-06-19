@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-19T02:40:00Z",
+  "timestamp": "2026-06-19T02:47:00Z",
   "context": "research",
   "status": "paused",
   "project": "MLX-engine prompt/inference performance",
@@ -51,7 +51,7 @@
       "id": 3,
       "name": "Broaden model and workload coverage",
       "status": "in_progress",
-      "notes": "Text-only sequential Qwen3.5-9B validation improved performance versus the older baseline and had no backend errors, but the task-diverse quality compare exposed a model/prompt-sensitive instruction_format warning. Add a deterministic text-quality profile before promoting further text-path optimizations."
+      "notes": "Text-only sequential Qwen3.5-9B validation improved performance versus the older baseline and had no backend errors. A deterministic text-quality profile was added and passed repeat comparison; use it for future text promotion gates."
     },
     {
       "id": 4,
@@ -96,7 +96,7 @@
     },
     {
       "decision": "Add deterministic text-quality profile before further text-path promotion",
-      "rationale": "The task-diverse text suite showed strong performance improvement but failed one quality check because both baseline and candidate emit thinking text and hit token_limit on instruction_format."
+      "rationale": "The task-diverse text suite showed strong performance improvement but failed one quality check because both baseline and candidate emit thinking text and hit token_limit on instruction_format. The deterministic profile adds prompt-specific caps, forbidden visible-thinking checks, and exact JSON-key validation."
     }
   ],
   "blockers": [
@@ -180,6 +180,22 @@
     {
       "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit --runs 2 --max-tokens 64 --prompt-suite-json prompt_suites/task_diverse_quality.json --mlx-engine-force-sequential --temperature 0 --top-p 1 --include-output-text",
       "result": "passed without backend errors; report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T023728Z-shared-bench.json; quality compare failed code_python and short_nyc due to shorter cap missing expected keywords"
+    },
+    {
+      "command": "python3 -m py_compile shared_bench.py quality_compare.py runners/mlx_engine_runner.py",
+      "result": "passed in /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness"
+    },
+    {
+      "command": "env PYTHONPATH=. pytest tests/test_shared_bench.py tests/test_quality_compare.py",
+      "result": "17 passed"
+    },
+    {
+      "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit --runs 2 --max-tokens 160 --prompt-suite-json prompt_suites/task_diverse_deterministic_quality.json --mlx-engine-force-sequential --temperature 0 --top-p 1 --include-output-text",
+      "result": "baseline report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T024334Z-shared-bench.json; repeat report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T024422Z-shared-bench.json"
+    },
+    {
+      "command": "python3 quality_compare.py --baseline reports/20260619T024334Z-shared-bench.json --candidate reports/20260619T024422Z-shared-bench.json --out reports/20260619T024422Z-task-diverse-deterministic-quality-compare.json",
+      "result": "status=pass; failed_prompts=-; all five deterministic prompts passed structured checks"
     }
   ],
   "required_reading": [
@@ -187,5 +203,5 @@
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619-pause-handoff.md",
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md"
   ],
-  "next_action": "Add a deterministic text-quality profile to the shared harness so broad text workloads can be judged separately from model-specific thinking/token-limit behavior."
+  "next_action": "Run the deterministic text-quality profile against a MoE model and a larger dense/code model, then decide whether the next implementation target should be persistent record layout or stream-safe ownership transfer."
 }
