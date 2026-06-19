@@ -393,6 +393,40 @@ def test_vlm_qwen3_5_gated_delta_fast_path_skips_upstream_decode_conv(monkeypatc
     assert calls[0][1]["use_kernel"] is True
 
 
+def test_vlm_qwen3_5_gated_delta_fast_path_contiguous_cache_write(monkeypatch):
+    calls = []
+    contiguous_inputs = []
+
+    def fake_gated_delta_update(*args, **kwargs):
+        calls.append((args, kwargs))
+        q = args[0]
+        state = args[7]
+        return mx.ones_like(q), state
+
+    original_contiguous = qwen3_5_patches.mx.contiguous
+
+    def fake_contiguous(value):
+        contiguous_inputs.append(value)
+        return original_contiguous(value)
+
+    monkeypatch.setattr(qwen3_5_patches, "gated_delta_update", fake_gated_delta_update)
+    monkeypatch.setattr(qwen3_5_patches.mx, "contiguous", fake_contiguous)
+
+    layer = _FakeVlmGatedDeltaNet()
+    inputs = mx.ones((1, 1, layer.hidden_size))
+    cache = [None, None]
+
+    qwen3_5_patches._patched_vlm_qwen3_5_gated_delta_net_call(
+        layer,
+        inputs,
+        cache=cache,
+    )
+
+    assert len(calls) == 1
+    assert len(contiguous_inputs) == 1
+    assert cache[0].shape == (1, layer.conv_kernel_size - 1, layer.conv_dim)
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [

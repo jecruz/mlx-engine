@@ -68,6 +68,8 @@ python demo.py --model mlx-community/Mistral-Small-Instruct-2409-4bit --prompt "
 ```
 [mlx-community/Mistral-Small-Instruct-2409-4bit](https://model.lmstudio.ai/download/mlx-community/Mistral-Small-Instruct-2409-4bit) - 12.52 GB
 
+`demo.py` loads text models with the low-latency sequential path by default. Use `batched_demo.py` and pass `max_seq_nums=4` if you want the continuous-batching path instead.
+
 ### Vision Model Demo
 Run the `demo.py` script with an MLX vision model:
 ```bash
@@ -128,6 +130,61 @@ To test specific vision models:
 ```bash
 python -m pytest tests/test_vision_models.py -k pixtral
 ```
+
+## Prefill Tuning
+
+Batched `qwen3_5_text` inference uses a default prompt-processing chunk size of `4096`
+tokens. That setting is tuned for better time-to-first-token on the current batched Qwen
+benchmarks, especially long prompts.
+
+Sequential loads, vision paths, `qwen3_5_moe_text`, and other batched text families keep the
+standard `2048` default unless you override `prefill_step_size` at load time to experiment
+with a different tradeoff for a specific model or deployment.
+
+## Batched Timing Diagnostics
+
+Set `MLX_ENGINE_BATCHED_TIMING=1` to emit structured log events for the batched text
+and batched vision inference paths. The diagnostic events cover model load,
+generation-stream preparation, startup warmup cases, prompt-cache preparation,
+`BatchGenerator.insert`, and first-token latency.
+Events are emitted at warning level so they are visible in default benchmark and demo
+logging configurations.
+
+Example:
+
+```bash
+MLX_ENGINE_BATCHED_TIMING=1 python batched_demo.py --model /path/to/model
+```
+
+The switch is disabled by default so normal benchmark runs are not affected by diagnostic
+logging overhead.
+
+## VLM Prompt Cache Persistence
+
+Vision-model prompt-cache records are temporary by default and are cleaned up
+when the model unloads or the process exits. For benchmark experiments, the VLM
+backend can opt into a persistent prompt-cache store:
+
+```python
+from mlx_engine import load_model
+
+model_kit = load_model(
+    "/path/to/vlm-model",
+    max_seq_nums=4,
+    vlm_prompt_cache_storage_root="/tmp/mlx-engine-vlm-cache",
+    vlm_prompt_cache_namespace="qwen-vl-benchmark",
+    vlm_prompt_cache_min_save_tokens=512,
+)
+```
+
+`vlm_prompt_cache_storage_root` is only valid for VLM models routed to
+`BatchedVisionModelKit`. `vlm_prompt_cache_namespace` isolates cache records
+within that root; when omitted, the resolved model path is used.
+`vlm_prompt_cache_min_save_tokens` controls persistent-cache admission. Persistent
+stores default to `512` reusable prompt tokens so tiny prompts do not pay
+safetensor/index overhead; set it to `0` for experiments that need to persist
+every cacheable prompt. Persistent mode is opt-in so normal LM Studio and
+benchmark runs keep the existing temporary cache behavior.
 
 ## Attribution
 

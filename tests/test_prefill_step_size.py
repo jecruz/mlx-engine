@@ -11,10 +11,24 @@ from mlx_engine.cache_wrapper import (
 from mlx_engine.model_kit.batched_model_kit import BatchedModelKit
 from mlx_engine.model_kit.batched_vision import BatchedVisionModelKit
 from mlx_engine.model_kit.model_kit import ModelKit
-from tests.shared import model_getter, RecordingReporter
-from mlx_engine.generate import load_model, create_generator, tokenize, unload
+from tests.shared import RecordingReporter
+from mlx_engine.generate import (
+    DEFAULT_BATCHED_PREFILL_STEP_SIZE,
+    create_generator,
+    load_model,
+    resolve_batched_prefill_step_size,
+    resolve_sequential_text_prefill_step_size,
+    tokenize,
+    unload,
+)
 
 CUSTOM_PREFILL_STEP_SIZE = 256
+TEXT_MODEL_PATH = Path(
+    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/models/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit"
+)
+VLM_MODEL_PATH = Path(
+    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/models/mlx-community/gemma-4-12B-it-8bit"
+)
 
 
 @pytest.mark.parametrize("prefill_step_size", [None, CUSTOM_PREFILL_STEP_SIZE])
@@ -38,7 +52,94 @@ def test_load_model_rejects_invalid_prefill_step_size(prefill_step_size):
     with pytest.raises(
         ValueError, match="prefill_step_size must be a positive integer"
     ):
-        load_model(model_path="unused", prefill_step_size=prefill_step_size)
+        load_model(model_path=TEXT_MODEL_PATH, prefill_step_size=prefill_step_size)
+
+
+@pytest.mark.parametrize(
+    "prefill_step_size,prefill_step_size_was_unspecified,use_batched_kit,model_type,expected",
+    [
+        (
+            PROMPT_PROCESSING_CHUNK_SIZE,
+            True,
+            False,
+            "qwen3_5_text",
+            PROMPT_PROCESSING_CHUNK_SIZE,
+        ),
+        (
+            PROMPT_PROCESSING_CHUNK_SIZE,
+            True,
+            True,
+            "qwen3_5_moe_text",
+            PROMPT_PROCESSING_CHUNK_SIZE,
+        ),
+        (
+            PROMPT_PROCESSING_CHUNK_SIZE,
+            True,
+            True,
+            "qwen3_5_text",
+            DEFAULT_BATCHED_PREFILL_STEP_SIZE,
+        ),
+        (PROMPT_PROCESSING_CHUNK_SIZE, True, True, "gemma4_unified", PROMPT_PROCESSING_CHUNK_SIZE),
+        (2048, False, True, "qwen3_5_text", 2048),
+        (2048, False, False, "qwen3_5_text", 2048),
+    ],
+)
+def test_resolve_batched_prefill_step_size(
+    prefill_step_size,
+    prefill_step_size_was_unspecified,
+    use_batched_kit,
+    model_type,
+    expected,
+):
+    assert (
+        resolve_batched_prefill_step_size(
+            prefill_step_size,
+            prefill_step_size_was_unspecified,
+            use_batched_kit,
+            model_type=model_type,
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "prefill_step_size,prefill_step_size_was_unspecified,model_type,expected",
+    [
+        (
+            PROMPT_PROCESSING_CHUNK_SIZE,
+            True,
+            "qwen2",
+            DEFAULT_BATCHED_PREFILL_STEP_SIZE,
+        ),
+        (
+            PROMPT_PROCESSING_CHUNK_SIZE,
+            True,
+            "qwen3_5_text",
+            DEFAULT_BATCHED_PREFILL_STEP_SIZE,
+        ),
+        (
+            PROMPT_PROCESSING_CHUNK_SIZE,
+            True,
+            "gemma4_unified",
+            PROMPT_PROCESSING_CHUNK_SIZE,
+        ),
+        (2048, False, "qwen2", 2048),
+    ],
+)
+def test_resolve_sequential_text_prefill_step_size(
+    prefill_step_size,
+    prefill_step_size_was_unspecified,
+    model_type,
+    expected,
+):
+    assert (
+        resolve_sequential_text_prefill_step_size(
+            prefill_step_size,
+            prefill_step_size_was_unspecified,
+            model_type=model_type,
+        )
+        == expected
+    )
 
 
 def _expected_batched_prefill_updates(
@@ -73,7 +174,7 @@ def _expected_sequential_prefill_updates(
     any chunks (with prefill_tokens_processed=0), then one update per chunk,
     then finish.
 
-    The main-model sequential path also checkpoints four tokens before the end
+    The main-model sequential path also checkpoints one token before the end
     of the prompt. When that checkpoint boundary lands inside a chunk, the
     chunk is split so the checkpoint can be materialized, which adds one extra
     update event.
@@ -106,10 +207,10 @@ Who is this passage about? Only say the name, and nothing else<|im_end|>
 @pytest.fixture
 def batched_model_kit_custom_prefill():
     """Load batched model with a custom prefill_step_size and large KV cache."""
-    model_path = model_getter("lmstudio-community/Qwen2.5-0.5B-Instruct-MLX-8bit")
     kit = load_model(
-        model_path=model_path,
+        model_path=TEXT_MODEL_PATH,
         max_kv_size=20000,
+        max_seq_nums=4,
         seed=0,
         prefill_step_size=CUSTOM_PREFILL_STEP_SIZE,
     )
@@ -120,9 +221,8 @@ def batched_model_kit_custom_prefill():
 @pytest.fixture
 def sequential_model_kit_custom_prefill():
     """Load sequential model with a custom prefill_step_size and large KV cache."""
-    model_path = model_getter("lmstudio-community/Qwen2.5-0.5B-Instruct-MLX-8bit")
     kit = load_model(
-        model_path=model_path,
+        model_path=TEXT_MODEL_PATH,
         max_kv_size=20000,
         max_seq_nums=1,
         seed=0,
@@ -135,9 +235,8 @@ def sequential_model_kit_custom_prefill():
 @pytest.fixture
 def batched_vision_model_kit_custom_prefill():
     """Load a BatchedVisionModelKit with a custom prefill_step_size."""
-    model_path = model_getter("mlx-community/Qwen2.5-VL-7B-Instruct-4bit")
     kit = load_model(
-        model_path=model_path,
+        model_path=VLM_MODEL_PATH,
         max_kv_size=20000,
         seed=0,
         prefill_step_size=CUSTOM_PREFILL_STEP_SIZE,

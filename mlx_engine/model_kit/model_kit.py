@@ -9,14 +9,19 @@ import mlx.nn as nn
 import mlx.core as mx
 import logging
 from mlx_engine.utils.prompt_processing import process_prompt_text_only
+from mlx_engine.utils.specprefill import SpecPrefillOptions
 from mlx_engine.utils.fix_mistral_pre_tokenizer import fix_mistral_pre_tokenizer
-from mlx_engine.utils.prompt_progress_reporter import PromptProgressReporter
+from mlx_engine.utils.prompt_progress_reporter import (
+    DefaultPromptProgressReporter,
+    PromptProgressReporter,
+)
 from mlx_engine.utils.eot_tokens import sanitize_eos_tokens
 from mlx_engine.utils.mlx_threading import (
     install_mlx_compile_cache_cleanup_for_thread,
 )
 from mlx_engine.utils.set_seed import set_seed
 import threading
+from types import SimpleNamespace
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +99,109 @@ class ModelKit:
         self.quantized_kv_start = quantized_kv_start
         logger.info("Model loaded successfully")
 
+    def _build_startup_warmup_prompt_tokens(self, target_len: int) -> List[int]:
+        """Build a synthetic prompt of the requested length for startup priming."""
+        warmup_tokens = self._tokenize("warmup")
+        if not warmup_tokens:
+            return [0] * max(2, target_len)
+
+        target_len = max(2, target_len)
+        if len(warmup_tokens) >= target_len:
+            return warmup_tokens[:target_len]
+
+        repeats = (target_len + len(warmup_tokens) - 1) // len(warmup_tokens)
+        return (warmup_tokens * repeats)[:target_len]
+
+    def _run_startup_warmup(self) -> None:
+        """Prime sequential prompt-processing kernels before the first request."""
+        if self.model is None or self.tokenizer is None:
+            return
+
+        warmup_cases = [
+            2,
+            25,
+            min(self.prefill_step_size, 512) + 1,
+            self.prefill_step_size * 2 - 1,
+        ]
+        reporter = DefaultPromptProgressReporter()
+
+        for target_len in warmup_cases:
+            warmup_cache = CacheWrapper(
+                self.model,
+                self.max_kv_size,
+                kv_bits=self.kv_bits,
+                kv_group_size=self.kv_group_size,
+                quantized_kv_start=self.quantized_kv_start,
+                chunk_size=self.prefill_step_size,
+                history_capacity=1,
+            )
+
+            def warmup_process_prompt(
+                prompt_tokens,
+                images_b64,
+                prompt_progress_reporter,
+                generate_args,
+                max_image_size,
+                speculative_decoding_toggle=None,
+                draft_model_override=None,
+                specprefill_options=None,
+            ):
+                """Process startup warmup prompts through the isolated warmup cache."""
+                if images_b64 is not None and len(images_b64) > 0:
+                    raise ValueError("Startup warmup does not support images")
+                return (
+                    process_prompt_text_only(
+                        mx.array(prompt_tokens),
+                        warmup_cache,
+                        generate_args,
+                        (
+                            self.draft_model
+                            if draft_model_override is None
+                            else draft_model_override
+                        ),
+                        speculative_decoding_toggle,
+                        prompt_progress_reporter,
+                        specprefill_options=specprefill_options,
+                    ),
+                    None,
+                )
+
+            warmup_kit = SimpleNamespace(
+                model=self.model,
+                tokenizer=self.tokenizer,
+                cache_wrapper=warmup_cache,
+                draft_model=self.draft_model,
+                prefill_step_size=self.prefill_step_size,
+                pending_requests={},
+                generation_lock=threading.Lock(),
+                _shutdown=threading.Event(),
+                max_kv_size=self.max_kv_size,
+                kv_bits=self.kv_bits,
+                kv_group_size=self.kv_group_size,
+                quantized_kv_start=self.quantized_kv_start,
+                is_shutdown=lambda: False,
+                is_cross_prompt_cache_active=lambda: True,
+                record_token_to_cache=warmup_cache.record_generated_token,
+                process_prompt=warmup_process_prompt,
+                cleanup_specprefill=warmup_cache.cleanup_specprefill,
+            )
+            from mlx_engine.generate import _sequential_generation
+
+            stream = _sequential_generation(
+                warmup_kit,
+                self._build_startup_warmup_prompt_tokens(target_len),
+                prompt_progress_reporter=reporter,
+                max_tokens=1,
+                request_id="startup-warmup",
+            )
+            try:
+                next(stream)
+            except StopIteration:
+                pass
+            finally:
+                stream.close()
+            mx.synchronize()
+
     def __init__(
         self,
         model_path: Path,
@@ -139,6 +247,7 @@ class ModelKit:
 
     def start(self):
         self._executor.submit(mx.synchronize).result()
+        self._executor.submit(self._run_startup_warmup).result()
 
     def tokenize(self, prompt: str) -> List[int]:
         return self._executor.submit(self._tokenize, prompt).result()
@@ -157,6 +266,8 @@ class ModelKit:
         generate_args: dict,
         max_image_size: tuple[int, int] | None,
         speculative_decoding_toggle: Optional[bool] = None,
+        draft_model_override: Optional[nn.Module] = None,
+        specprefill_options: Optional[SpecPrefillOptions] = None,
     ) -> Tuple[mx.array, Optional[mx.array]]:
         is_text_only_processing = images_b64 is None or len(images_b64) == 0
         if not is_text_only_processing:
@@ -174,9 +285,10 @@ class ModelKit:
             mx.array(prompt_tokens),
             self.cache_wrapper,
             generate_args,
-            self.draft_model,
+            self.draft_model if draft_model_override is None else draft_model_override,
             speculative_decoding_toggle,
             prompt_progress_reporter,
+            specprefill_options=specprefill_options,
         ), None
 
     def is_cross_prompt_cache_active(self) -> bool:
@@ -188,6 +300,11 @@ class ModelKit:
 
     def record_token_to_cache(self, token: int) -> None:
         self.cache_wrapper.record_generated_token(token)
+
+    def cleanup_specprefill(self) -> None:
+        """Restore transient SpecPrefill state owned by the cache wrapper."""
+        if self.cache_wrapper is not None:
+            self.cache_wrapper.cleanup_specprefill()
 
     def is_draft_model_compatible(self, path: str | Path) -> bool:
         return self._executor.submit(self._is_draft_model_compatible, path).result()
@@ -219,6 +336,21 @@ class ModelKit:
         self.draft_model, _ = mlx_lm.utils.load(path)
         self.cache_wrapper.set_draft_model(self.draft_model)
         logger.info("Draft model loaded")
+
+    def load_specprefill_draft_model(self, path: str | Path) -> None:
+        """Load a draft model for SpecPrefill scoring without draft KV cache."""
+        self._executor.submit(self._load_specprefill_draft_model, path).result()
+
+    def _load_specprefill_draft_model(self, path: str | Path) -> None:
+        """Load a compatible draft model without enabling decode speculation."""
+        logger.info(f"Loading SpecPrefill draft model from {path}...")
+        path = Path(path)
+        if self.model is None:
+            raise ValueError("Main model must be loaded before loading a draft model")
+        if not self._is_draft_model_compatible(path):
+            raise ValueError("Draft model is not compatible with main model")
+        self.draft_model, _ = mlx_lm.utils.load(path)
+        logger.info("SpecPrefill draft model loaded")
 
     def unload_draft_model(self) -> None:
         self._executor.submit(self._unload_draft_model).result()

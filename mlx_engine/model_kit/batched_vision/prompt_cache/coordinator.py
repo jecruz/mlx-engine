@@ -274,7 +274,7 @@ class VlmPromptCacheCoordinator:
         snapshot_len: int,
     ) -> None:
         """Prepare and enqueue crossed prompt-cache chunks from one snapshot."""
-        if not self._cache_store.can_store_records():
+        if not self._cache_store.should_save_prompt(prefix_chunks):
             return
 
         for chunk_idx in range(start_chunk_idx, end_chunk_idx):
@@ -284,8 +284,9 @@ class VlmPromptCacheCoordinator:
                     chunk=chunk,
                     prefix_chunks=prefix_chunks[: chunk_idx + 1],
                     prompt_cache=prompt_cache,
-                    # Opaque state caches are only exact at this model-call end.
-                    save_state_checkpoint=chunk.end == snapshot_len,
+                    # Opaque state caches are only exact at the end of this
+                    # snapshot, not necessarily at the end of a fixed-size chunk.
+                    save_state_checkpoint=chunk_idx == end_chunk_idx - 1,
                 )
                 self._enqueue_pending_save(pending_save)
             except PromptCacheRecordCoverageError as exc:

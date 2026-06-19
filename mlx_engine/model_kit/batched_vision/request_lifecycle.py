@@ -56,6 +56,10 @@ class ActiveRequest:
     image_spans: list[PromptImageSpan]
     cached_tokens: int
     prompt_progress_finished: bool = False
+    prompt_tokens: int = 0
+    rest_tokens: int = 0
+    inserted_at: float | None = None
+    first_token_logged: bool = False
 
 
 @dataclass

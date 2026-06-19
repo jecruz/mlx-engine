@@ -485,6 +485,7 @@ if __name__ == "__main__":
         kv_bits=args.kv_bits,
         kv_group_size=args.kv_group_size,
         quantized_kv_start=args.quantized_kv_start,
+        max_seq_nums=4,
     )
     print("\rModel load complete ✓", end="\n", flush=True)
 

@@ -6,11 +6,17 @@ The batcher only owns language-model prefill/decode plus RoPE delta handoff.
 
 import contextlib
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 import mlx.core as mx
 import mlx.nn as nn
+from mlx_engine.utils.batched_timing import (
+    batched_timing_enabled,
+    elapsed_ms,
+    log_batched_timing,
+)
 from mlx_engine.model_kit.batched_vision.prompt_cache.chunks import (
     extend_prefix_cache_chunks,
 )
@@ -41,16 +47,25 @@ from mlx_engine.processors.repetition_penalty_processor import (
 
 logger = logging.getLogger(__name__)
 
+DEFERRED_CLEAR_DELAY_STEPS = 8
+
 PromptCacheSaveCallback = Callable[
     [list[Any], list[PromptPrefixChunk], int, int, int], None
 ]
 LogitsProcessor = Callable[[mx.array, mx.array], mx.array]
 
 
+def _sync_and_clear_cache() -> None:
+    """Synchronize in-flight MLX work before clearing the Metal cache."""
+    mx.synchronize()
+    mx.clear_cache()
+
+
 @dataclass
 class _PrefixCacheSaveState:
     chunks: list[PromptPrefixChunk]
     next_chunk_idx: int
+    prefix_chunk_size: int
     image_spans: list[PromptImageSpan]
     callback: PromptCacheSaveCallback | None
 
@@ -72,6 +87,7 @@ class _GenerationRow:
 @dataclass
 class _PendingSequence:
     uid: int
+    request_id: str | None
     prompt: list[int]
     max_tokens: int
     top_logprobs: int
@@ -491,10 +507,46 @@ class GenerationBatch:
         # restores intentionally recompute RoPE side state during prompt prep.
         return mx.contiguous(self._rope_deltas[idx : idx + 1])
 
+    def _eval_pending_state(self) -> None:
+        targets = []
+
+        def append_arrays(value):
+            if isinstance(value, mx.array):
+                targets.append(value)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    append_arrays(item)
+            elif isinstance(value, dict):
+                for item in value.values():
+                    append_arrays(item)
+
+        append_arrays(
+            (
+                self._current_tokens,
+                self._current_token_logprobs,
+                self._next_tokens,
+                self._next_token_logprobs,
+                self._next_top_idx,
+                self._next_top_logprobs,
+                self._rope_deltas,
+            )
+        )
+        for cache in self.prompt_cache:
+            try:
+                append_arrays(cache.state)
+            except (AttributeError, TypeError):
+                pass
+
+        if targets:
+            mx.eval(*targets)
+
     def append_prefilled_sequence(self, prefilled: "GenerationBatch"):
         """Append the one sequence that just finished prompt prefill."""
         count = len(self)
         prefilled_count = len(prefilled)
+        if count > 0 and prefilled_count > 0:
+            self._eval_pending_state()
+            prefilled._eval_pending_state()
 
         self._rows.extend(prefilled._rows)
         self.prompt_cache = _extend_cache(self.prompt_cache, prefilled.prompt_cache)
@@ -568,6 +620,9 @@ class GenerationBatch:
         self.top_logprobs_k = next_top_logprobs_k
 
     def filter(self, keep: list[int]):
+        if len(keep) < len(self._rows):
+            self._eval_pending_state()
+
         self._rows = [self._rows[idx] for idx in keep]
         self.top_logprobs_k = max(
             (row.top_logprobs for row in self._rows),
@@ -625,7 +680,8 @@ class GenerationBatch:
             next_chunk_end = (
                 chunks[next_chunk_idx].end
                 if next_chunk_idx < len(chunks)
-                else (chunks[-1].end if chunks else 0) + DEFAULT_PREFIX_CHUNK_SIZE
+                else (chunks[-1].end if chunks else 0)
+                + save_state.prefix_chunk_size
             )
             if current_len < next_chunk_end:
                 return
@@ -634,6 +690,7 @@ class GenerationBatch:
                 row.tokens,
                 save_state.image_spans,
                 chunks,
+                prefix_chunk_size=save_state.prefix_chunk_size,
             )
             end_chunk_idx = len(chunks)
             save_state.next_chunk_idx = end_chunk_idx
@@ -744,9 +801,11 @@ class _PromptPrefill:
         cache: Optional[list[Any]] = None,
         all_tokens: Optional[list[int]] = None,
         rope_deltas: Any | None = None,
+        request_id: str | None = None,
     ):
         self.model = model
         self.uid = uid
+        self.request_id = request_id
         self.max_tokens = max_tokens
         self.top_logprobs = top_logprobs
         self.sampler = sampler
@@ -790,6 +849,9 @@ class _PromptPrefill:
 
     def prompt_step(self) -> int:
         n = self._next_prompt_step_size()
+        timing_enabled = batched_timing_enabled()
+        processed_before = self._processed_prefix_len
+        step_start = time.perf_counter() if timing_enabled else None
         prompt_kwargs = self._prompt_kwargs_for_next(n)
         # Prompt kwargs with explicit MRoPE state belong to an image prompt; otherwise
         # this text-only chunk must not inherit state from the active decode batch.
@@ -809,7 +871,18 @@ class _PromptPrefill:
         self._drop_processed_prompt_kwargs(n)
         self._processed_prefix_len += n
         self._emit_cache_save_snapshots()
-        mx.clear_cache()
+        if timing_enabled:
+            log_batched_timing(
+                logger,
+                "vlm_prefill_chunk",
+                uid=self.uid,
+                request_id=self.request_id,
+                chunk_tokens=n,
+                processed_before=processed_before,
+                processed_after=self._processed_prefix_len,
+                remaining_tokens=self._inputs_embeds.shape[1],
+                duration_ms=elapsed_ms(step_start),
+            )
         return n
 
     def _next_prompt_step_size(self) -> int:
@@ -852,8 +925,8 @@ class _PromptPrefill:
             # Opaque state caches are restorable only at exact saved boundaries.
             max_reusable_prefix_len = self._processed_prefix_len + remaining_tokens - 1
             target_prefix_len = (
-                max_reusable_prefix_len // DEFAULT_PREFIX_CHUNK_SIZE
-            ) * DEFAULT_PREFIX_CHUNK_SIZE
+                max_reusable_prefix_len // self._prefix_cache_save_state.prefix_chunk_size
+            ) * self._prefix_cache_save_state.prefix_chunk_size
             if target_prefix_len > self._processed_prefix_len:
                 return target_prefix_len - self._processed_prefix_len
 
@@ -892,10 +965,12 @@ class _PromptPrefill:
 
             processed = self._processed_prefix_len
             start_chunk_idx = save_state.next_chunk_idx
-            end_chunk_idx = min(
-                processed // DEFAULT_PREFIX_CHUNK_SIZE,
-                len(save_state.chunks),
-            )
+            end_chunk_idx = start_chunk_idx
+            while (
+                end_chunk_idx < len(save_state.chunks)
+                and save_state.chunks[end_chunk_idx].end <= processed
+            ):
+                end_chunk_idx += 1
             if start_chunk_idx >= end_chunk_idx:
                 return
 
@@ -916,6 +991,8 @@ class _PromptPrefill:
 
     def generate(self, stop_criteria) -> tuple[GenerationBatch, list[Response]]:
         # This final prompt pass runs after active batched decode in the same tick.
+        timing_enabled = batched_timing_enabled()
+        generate_start = time.perf_counter() if timing_enabled else None
         prompt_kwargs = self._prompt_kwargs_for_final()
         _clear_qwen3_5_text_rope_state(self.model, prompt_kwargs)
         try:
@@ -942,6 +1019,22 @@ class _PromptPrefill:
         first_tokens, first_logprobs, top_idx, top_logprobs = _sample_next_token(
             logprobs, [self.sampler], self.top_logprobs
         )
+        if timing_enabled:
+            eval_targets = [first_tokens, first_logprobs]
+            if top_idx is not None:
+                eval_targets.extend([top_idx, top_logprobs])
+            mx.eval(*eval_targets)
+            log_batched_timing(
+                logger,
+                "vlm_prefill_final",
+                uid=self.uid,
+                request_id=self.request_id,
+                prompt_tokens=len(self._prompt_token_ids),
+                cached_tokens=len(self._all_tokens),
+                final_tokens=self._inputs_embeds.shape[1],
+                total_processed=self._processed_prefix_len,
+                duration_ms=elapsed_ms(generate_start),
+            )
 
         gen_batch = GenerationBatch(
             model=self.model,
@@ -1017,6 +1110,7 @@ class BatchGenerator:
         self._unprocessed_sequences: list[_PendingSequence] = []
 
         self._steps_counter = 0
+        self._deferred_clear_at: int | None = None
 
         self._wire_stack = contextlib.ExitStack()
         self._wire_stack.enter_context(wired_limit(model))
@@ -1025,7 +1119,26 @@ class BatchGenerator:
             self.stop_criteria,
         )
 
+    def _schedule_deferred_clear(self) -> None:
+        """Schedule Metal cache cleanup after recent work has aged a few steps."""
+        target = self._steps_counter + DEFERRED_CLEAR_DELAY_STEPS
+        if self._deferred_clear_at is None or target > self._deferred_clear_at:
+            self._deferred_clear_at = target
+
+    def _maybe_clear_cache(self) -> None:
+        """Run a pending deferred Metal cache cleanup when its delay expires."""
+        if (
+            self._deferred_clear_at is None
+            or self._steps_counter < self._deferred_clear_at
+        ):
+            return
+        self._deferred_clear_at = None
+        _sync_and_clear_cache()
+
     def close(self):
+        if self._deferred_clear_at is not None:
+            self._deferred_clear_at = None
+            _sync_and_clear_cache()
         if self._wire_stack is not None:
             self._wire_stack.close()
             self._wire_stack = None
@@ -1049,13 +1162,16 @@ class BatchGenerator:
         all_tokens: list[int],
         rope_deltas: Any | None = None,
         next_prefix_cache_chunk_idx: int,
+        prefix_chunk_size: int = DEFAULT_PREFIX_CHUNK_SIZE,
         prompt_cache_save_callback: Optional[PromptCacheSaveCallback] = None,
+        request_id: str | None = None,
     ) -> int:
         uid = self.uid_count
         self.uid_count += 1
         self._unprocessed_sequences.append(
             _PendingSequence(
                 uid=uid,
+                request_id=request_id,
                 prompt=prompt,
                 max_tokens=self.max_tokens if max_tokens is None else max_tokens,
                 top_logprobs=(
@@ -1072,6 +1188,7 @@ class BatchGenerator:
                 prefix_cache_save_state=_PrefixCacheSaveState(
                     chunks=list(prefix_cache_chunks),
                     next_chunk_idx=next_prefix_cache_chunk_idx,
+                    prefix_chunk_size=prefix_chunk_size,
                     image_spans=list(image_spans),
                     callback=prompt_cache_save_callback,
                 ),
@@ -1091,7 +1208,7 @@ class BatchGenerator:
         if self._prompt_batch is not None and uid == self._prompt_batch.uid:
             self._prompt_batch.prompt_cache = []
             self._prompt_batch = None
-            mx.clear_cache()
+            self._schedule_deferred_clear()
             return True
 
         if uid in self._generation_batch.uids:
@@ -1109,8 +1226,9 @@ class BatchGenerator:
         if len(self._generation_batch) > 0:
             generation_responses = self._generation_batch.next()
             self._steps_counter += 1
+            self._maybe_clear_cache()
             if self._steps_counter % 512 == 0:
-                mx.clear_cache()
+                _sync_and_clear_cache()
 
         if len(self._generation_batch) >= self.completion_batch_size:
             return prompt_responses, generation_responses
@@ -1118,6 +1236,7 @@ class BatchGenerator:
         if self._prompt_batch is not None:
             if self._prompt_batch.needs_processing():
                 self._prompt_batch.prompt_step()
+                self._schedule_deferred_clear()
                 prompt_responses = self._prompt_batch.progress_responses()
                 return prompt_responses, generation_responses
 
@@ -1126,7 +1245,7 @@ class BatchGenerator:
             )
             self._generation_batch.append_prefilled_sequence(gen_batch)
             self._prompt_batch = None
-            mx.clear_cache()
+            self._schedule_deferred_clear()
             return prompt_responses, generation_responses
 
         num_active = len(self._generation_batch)
@@ -1149,10 +1268,12 @@ class BatchGenerator:
                 cache=sequence.cache,
                 all_tokens=sequence.all_tokens,
                 rope_deltas=sequence.rope_deltas,
+                request_id=sequence.request_id,
             )
 
             if self._prompt_batch.needs_processing():
                 self._prompt_batch.prompt_step()
+                self._schedule_deferred_clear()
                 prompt_responses = self._prompt_batch.progress_responses()
             else:
                 gen_batch, prompt_responses = self._prompt_batch.generate(
@@ -1160,7 +1281,7 @@ class BatchGenerator:
                 )
                 self._generation_batch.append_prefilled_sequence(gen_batch)
                 self._prompt_batch = None
-                mx.clear_cache()
+                self._schedule_deferred_clear()
 
             return prompt_responses, generation_responses
 

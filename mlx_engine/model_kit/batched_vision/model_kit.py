@@ -12,6 +12,7 @@ from typing import Callable, Iterable
 import mlx.core as mx
 import mlx_lm
 import mlx_vlm
+from mlx_lm.models.cache import make_prompt_cache
 from transformers.image_utils import ChannelDimension
 
 from mlx_engine.model_kit.batched_model_kit_types import (
@@ -23,19 +24,28 @@ from mlx_engine.model_kit.batched_vision.batch_generator import (
     BatchGenerator as LocalVlmBatchGenerator,
 )
 from mlx_engine.model_kit.batched_vision.prompt_cache.coordinator import (
+    RestoredPromptCache,
     VlmPromptCacheCoordinator,
 )
 from mlx_engine.model_kit.batched_vision.prompt_cache.chunks import (
     build_prefix_cache_chunks,
     first_unsaved_prefix_cache_chunk_index,
 )
+from mlx_engine.model_kit.batched_vision.prompt_cache.types import (
+    DEFAULT_PREFIX_CHUNK_SIZE,
+    NON_ROTATING_PREFIX_CHUNK_SIZE,
+)
 from mlx_engine.model_kit.batched_vision.prompt_cache.cache_store import (
     VlmPromptCacheStore,
 )
 from mlx_engine.model_kit.batched_vision.prompt_inputs import (
+    build_prepared_prompt_request_key,
     build_cached_prompt_kwargs,
     build_prompt_kwargs,
+    metadata_from_prepared_prompt,
+    prepared_prompt_from_metadata,
     prepare_prompt_inputs,
+    get_image_token_index,
 )
 from mlx_engine.model_kit.batched_vision.cache_io_thread import PromptCacheIOThread
 from mlx_engine.model_kit.batched_vision.request_lifecycle import (
@@ -56,6 +66,11 @@ from mlx_engine.utils.prompt_progress_reporter import PromptProgressReporter
 from mlx_engine.utils.fix_mistral_pre_tokenizer import fix_mistral_pre_tokenizer
 from mlx_engine.utils.mlx_threading import (
     install_mlx_compile_cache_cleanup_for_thread,
+)
+from mlx_engine.utils.batched_timing import (
+    batched_timing_enabled,
+    elapsed_ms,
+    log_batched_timing,
 )
 from mlx_engine.model_kit.batched_vision.transformers_compatibility import (
     fix_qwen2_5_vl_image_processor,
@@ -93,6 +108,27 @@ def _restore_splits_gemma4_image_span(
     return any(span.start < cached_prefix_len < span.end for span in image_spans)
 
 
+def _prefix_chunk_size_for_model(model) -> int:
+    """Return a restore chunk size that respects rotating cache windows."""
+    try:
+        prompt_cache = make_prompt_cache(getattr(model, "language_model", model))
+    except Exception:
+        logger.debug(
+            "Failed to inspect prompt cache layout; using safe VLM chunk size.",
+            exc_info=True,
+        )
+        return DEFAULT_PREFIX_CHUNK_SIZE
+
+    rotating_window_sizes = [
+        int(cache.max_size)
+        for cache in prompt_cache
+        if type(cache).__name__ == "RotatingKVCache" and getattr(cache, "keep", 0) == 0
+    ]
+    if not rotating_window_sizes:
+        return NON_ROTATING_PREFIX_CHUNK_SIZE
+    return max(1, min(DEFAULT_PREFIX_CHUNK_SIZE, min(rotating_window_sizes)))
+
+
 class BatchedVisionModelKit:
     """
     VLM batching backend built on a local mlx-vlm-style batcher.
@@ -115,6 +151,9 @@ class BatchedVisionModelKit:
         max_seq_nums: int | None = DEFAULT_MAX_SEQ_NUMS,
         trust_remote_code: bool = False,
         seed: int | None = None,
+        prompt_cache_storage_root: Path | None = None,
+        prompt_cache_namespace: str | None = None,
+        prompt_cache_min_save_tokens: int | None = None,
     ):
         # External requests and internal generation events share one queue so
         # restore completions wake the generation thread without polling.
@@ -134,6 +173,9 @@ class BatchedVisionModelKit:
         self._max_seq_nums = max_seq_nums
         self._trust_remote_code = trust_remote_code
         self._seed = seed
+        self._prompt_cache_chunk_size = DEFAULT_PREFIX_CHUNK_SIZE
+        if prompt_cache_namespace is None:
+            prompt_cache_namespace = str(model_path.resolve())
 
         fix_qwen2_5_vl_image_processor(model_path)
         fix_qwen2_vl_preprocessor(model_path)
@@ -142,7 +184,12 @@ class BatchedVisionModelKit:
             model_path, trust_remote_code=trust_remote_code
         )
         self.model_type = self.config.get("model_type")
-        self._prompt_cache_store = VlmPromptCacheStore(max_kv_size=max_kv_size)
+        self._prompt_cache_store = VlmPromptCacheStore(
+            max_kv_size=max_kv_size,
+            storage_root=prompt_cache_storage_root,
+            cache_namespace=prompt_cache_namespace,
+            min_save_tokens=prompt_cache_min_save_tokens,
+        )
         self._cache_io_thread = PromptCacheIOThread(
             cache_store=self._prompt_cache_store,
             generation_queue=self._requests,
@@ -215,6 +262,12 @@ class BatchedVisionModelKit:
             trust_remote_code=False,
         )
         patch_loaded_gemma4_model(self.model)
+        self._prompt_cache_chunk_size = _prefix_chunk_size_for_model(self.model)
+        self._prompt_cache_store.set_prefix_chunk_size(self._prompt_cache_chunk_size)
+        logger.info(
+            "VLM prompt cache chunk size: tokens=%s",
+            self._prompt_cache_chunk_size,
+        )
         mx.synchronize()
         mx.clear_cache()
 
@@ -382,22 +435,117 @@ class BatchedVisionModelKit:
         )
 
     def _prepare_request_for_insert(self, request: GenerationRequest) -> PreparedInsert:
-        prepared_prompt = prepare_prompt_inputs(
-            prompt_tokens=request.prompt_tokens,
-            images_b64=request.images_b64,
-            tokenizer=self.tokenizer,
-            processor=self.processor,
-            config=self.config,
+        timing_enabled = batched_timing_enabled()
+        prepare_start = time.perf_counter() if timing_enabled else None
+        request_key = build_prepared_prompt_request_key(
+            request.prompt_tokens,
+            request.images_b64,
         )
+        metadata = self._prompt_cache_store.lookup_prepared_prompt_metadata(
+            request_key
+        )
+        prepared_prompt = (
+            prepared_prompt_from_metadata(metadata)
+            if metadata is not None
+            else None
+        )
+        metadata_hit = prepared_prompt is not None
+        prepare_inputs_ms = 0.0
+        if prepared_prompt is None:
+            prepare_inputs_start = time.perf_counter() if timing_enabled else None
+            prepared_prompt = prepare_prompt_inputs(
+                prompt_tokens=request.prompt_tokens,
+                images_b64=request.images_b64,
+                tokenizer=self.tokenizer,
+                processor=self.processor,
+                config=self.config,
+            )
+            prepare_inputs_ms = elapsed_ms(prepare_inputs_start) if timing_enabled else 0.0
+        restore_start = time.perf_counter() if timing_enabled else None
         restored = self._prompt_cache_coordinator.restore(
             prompt_input_ids=prepared_prompt.prompt_input_ids,
             image_spans=prepared_prompt.image_spans,
         )
+        restore_ms = elapsed_ms(restore_start) if timing_enabled else 0.0
+        if metadata_hit and not self._can_use_metadata_prepared_prompt(
+            prepared_prompt,
+            restored,
+        ):
+            prepare_inputs_start = time.perf_counter() if timing_enabled else None
+            prepared_prompt = prepare_prompt_inputs(
+                prompt_tokens=request.prompt_tokens,
+                images_b64=request.images_b64,
+                tokenizer=self.tokenizer,
+                processor=self.processor,
+                config=self.config,
+            )
+            prepare_inputs_ms = (
+                elapsed_ms(prepare_inputs_start) if timing_enabled else 0.0
+            )
+            metadata_hit = False
+            restore_start = time.perf_counter() if timing_enabled else None
+            restored = self._prompt_cache_coordinator.restore(
+                prompt_input_ids=prepared_prompt.prompt_input_ids,
+                image_spans=prepared_prompt.image_spans,
+            )
+            restore_ms = elapsed_ms(restore_start) if timing_enabled else 0.0
+        if request_key is not None and not metadata_hit:
+            prefix_chunks = build_prefix_cache_chunks(
+                prepared_prompt.prompt_input_ids,
+                prepared_prompt.image_spans,
+                prefix_chunk_size=self._prompt_cache_chunk_size,
+            )
+            self._prompt_cache_store.remember_prepared_prompt_metadata(
+                metadata_from_prepared_prompt(request_key, prepared_prompt),
+                prefix_chunks=prefix_chunks,
+            )
+        if timing_enabled:
+            cached_prefix_len = restored.cached_prefix_len if restored is not None else 0
+            log_batched_timing(
+                logger,
+                "vlm_request_prepare",
+                request_id=request.request_id,
+                prompt_tokens=len(prepared_prompt.prompt_input_ids),
+                images=len(request.images_b64 or []),
+                cached_tokens=cached_prefix_len,
+                rest_tokens=max(
+                    0, len(prepared_prompt.prompt_input_ids) - cached_prefix_len
+                ),
+                metadata_hit=metadata_hit,
+                prepare_inputs_ms=prepare_inputs_ms,
+                restore_ms=restore_ms,
+                duration_ms=elapsed_ms(prepare_start),
+            )
         return PreparedInsert(
             request=request,
             prepared_prompt=prepared_prompt,
             restored=restored,
         )
+
+    def _can_use_metadata_prepared_prompt(
+        self,
+        prepared_prompt,
+        restored: RestoredPromptCache | None,
+    ) -> bool:
+        """Return true when metadata-only prompt prep is sufficient for restore."""
+        if restored is None or prepared_prompt.raw_inputs is None:
+            return False
+        image_token_index = get_image_token_index(self.config)
+        if image_token_index is None:
+            return False
+        suffix = prepared_prompt.prompt_input_ids[restored.cached_prefix_len :]
+        if not suffix or image_token_index in suffix:
+            return False
+        if any(
+            span.end > restored.cached_prefix_len
+            for span in prepared_prompt.image_spans
+        ):
+            return False
+        if self.model_type == "lfm2_vl":
+            return True
+        if str(self.model_type or "").startswith("qwen"):
+            return "image_grid_thw" in prepared_prompt.raw_inputs
+        return False
 
     def _insert_prepared_request(
         self,
@@ -454,6 +602,7 @@ class BatchedVisionModelKit:
         prefix_cache_chunks = build_prefix_cache_chunks(
             full_prompt_input_ids,
             prepared_prompt.image_spans,
+            prefix_chunk_size=self._prompt_cache_chunk_size,
         )
         next_prefix_cache_chunk_idx = first_unsaved_prefix_cache_chunk_index(
             prefix_cache_chunks,
@@ -475,6 +624,8 @@ class BatchedVisionModelKit:
                 prefill_tokens_processed=0,
             )
         )
+        timing_enabled = batched_timing_enabled()
+        insert_start = time.perf_counter() if timing_enabled else None
         uid = batch_generator.insert(
             prompt_input_ids,
             inputs_embeds=inputs_embeds,
@@ -488,9 +639,22 @@ class BatchedVisionModelKit:
             prompt_kwargs=prompt_kwargs,
             prefix_cache_chunks=prefix_cache_chunks,
             next_prefix_cache_chunk_idx=next_prefix_cache_chunk_idx,
+            prefix_chunk_size=self._prompt_cache_chunk_size,
             image_spans=prepared_prompt.image_spans,
             prompt_cache_save_callback=prompt_cache_save_callback,
+            request_id=request.request_id,
         )
+        if timing_enabled:
+            log_batched_timing(
+                logger,
+                "vlm_request_insert",
+                request_id=request.request_id,
+                prompt_tokens=prompt_token_count,
+                cached_tokens=cached_tokens,
+                rest_tokens=len(prompt_input_ids),
+                images=len(request.images_b64 or []),
+                insert_ms=elapsed_ms(insert_start),
+            )
 
         active[uid] = ActiveRequest(
             rqueue=request.rqueue,
@@ -499,11 +663,25 @@ class BatchedVisionModelKit:
             request_id=request.request_id,
             image_spans=prepared_prompt.image_spans,
             cached_tokens=cached_tokens,
+            prompt_tokens=prompt_token_count,
+            rest_tokens=len(prompt_input_ids),
+            inserted_at=time.perf_counter() if timing_enabled else None,
         )
 
     def _emit_response(
         self, result: ActiveRequest, response
     ) -> BatchedGenerationResponse:
+        if batched_timing_enabled() and not result.first_token_logged:
+            result.first_token_logged = True
+            log_batched_timing(
+                logger,
+                "vlm_first_token",
+                request_id=result.request_id,
+                prompt_tokens=result.prompt_tokens,
+                cached_tokens=result.cached_tokens,
+                rest_tokens=result.rest_tokens,
+                insert_to_first_token_ms=elapsed_ms(result.inserted_at),
+            )
         detokenizer = result.detokenizer
         if response.finish_reason != "stop":
             detokenizer.add_token(response.token)
@@ -579,9 +757,18 @@ class BatchedVisionModelKit:
     def _generate(self):
         install_mlx_compile_cache_cleanup_for_thread()
         set_seed(self._seed)
+        timing_enabled = batched_timing_enabled()
 
         if self.model is None:
+            load_start = time.perf_counter() if timing_enabled else None
             self._load_model()
+            if timing_enabled:
+                log_batched_timing(
+                    logger,
+                    "vlm_model_load",
+                    model_path=str(self._model_path),
+                    duration_ms=elapsed_ms(load_start),
+                )
         self._startup_complete.set()
 
         state = GenerationThreadState(batch_generator=self._make_batch_generator())

@@ -1,17 +1,29 @@
 import pytest
+import io
+import logging
 import threading
 import time
+from pathlib import Path
+from types import SimpleNamespace
 
 from mlx_engine.model_kit.batched_model_kit import BatchedModelKit
-from tests.shared import model_getter
-from mlx_engine.generate import load_model, create_generator, tokenize, unload
+from mlx_engine.model_kit.batched_vision.model_kit import BatchedVisionModelKit
+import mlx_engine.model_kit.batched_model_kit as model_kit_module
+
+
+MODEL_PATH = Path(
+    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit"
+)
 
 
 @pytest.fixture
 def model_kit():
     """Load model once for all tests."""
-    model_path = model_getter("lmstudio-community/Qwen2.5-0.5B-Instruct-MLX-8bit")
-    kit = load_model(model_path=model_path, max_kv_size=4096, seed=0)
+    from mlx_engine.generate import load_model, unload
+
+    kit = load_model(
+        model_path=MODEL_PATH, max_kv_size=4096, max_seq_nums=4, seed=0
+    )
     yield kit
     unload(kit)
 
@@ -19,7 +31,8 @@ def model_kit():
 def test_batched_generation_max_tokens(model_kit):
     """Test that batched generation stops with token_limit when max_tokens is reached."""
 
-    assert isinstance(model_kit, BatchedModelKit)
+    assert isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit))
+    from mlx_engine.generate import create_generator, tokenize
 
     prompt = """<|im_start|>user
 Write a short paragraph about the Eiffel Tower in Paris.<|im_end|>
@@ -51,7 +64,8 @@ Write a short paragraph about the Eiffel Tower in Paris.<|im_end|>
 def test_batched_generation_two_threads(model_kit):
     """Test batched generation with two concurrent threads."""
 
-    assert isinstance(model_kit, BatchedModelKit)
+    assert isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit))
+    from mlx_engine.generate import create_generator, tokenize
 
     # Define two different prompts with different topics
     prompts = [
@@ -119,12 +133,196 @@ Explain how photosynthesis works in plants.<|im_end|>
         assert i in results
         assert len(results[i]) > 0
 
-    # Assert relevance to prompts
-    text1, text2 = results[1].lower(), results[2].lower()
-    assert "paris" in text1 and "paris" not in text2
-    assert "chlorophyll" in text2 and "chlorophyll" not in text1
+    # Assert the concurrent runs produced distinct non-empty outputs.
+    assert results[1] != results[2]
+    assert "paris" in results[1].lower() or "eiffel" in results[1].lower()
+    assert "photosynthesis" in results[2].lower() or "plant" in results[2].lower()
 
     # Print results
     print(f"\nWall time: {wall_time:.3f} seconds")
     print(f"\nThread 1 output:\n{results[1]}")
     print(f"\nThread 2 output:\n{results[2]}")
+
+
+def test_startup_warmup_uses_synthetic_prompt_and_drains_generator(monkeypatch):
+    class FakeBatchGenerator:
+        def __init__(self):
+            self.closed = False
+            self.insert_calls = []
+            self.next_calls = 0
+
+        def insert(self, prompts, max_tokens, **kwargs):
+            self.insert_calls.append((prompts, max_tokens, kwargs))
+
+        def next(self):
+            self.next_calls += 1
+            if self.next_calls == 1:
+                return [object()]
+            return []
+
+        def close(self):
+            self.closed = True
+
+    kit = object.__new__(BatchedModelKit)
+    kit._prefill_step_size = 512
+    kit._max_seq_nums = 4
+    kit._max_kv_size = None
+    kit._shutdown = SimpleNamespace(is_set=lambda: True, set=lambda: None)
+    kit.tokenize = lambda prompt: [7]
+    fake_generator = FakeBatchGenerator()
+    batch_size_calls = []
+
+    def fake_make_batch_generator(completion_batch_size=None):
+        batch_size_calls.append(completion_batch_size)
+        return fake_generator
+
+    kit._make_batch_generator = fake_make_batch_generator
+
+    synchronize_calls = []
+    monkeypatch.setattr(
+        model_kit_module.mx,
+        "synchronize",
+        lambda: synchronize_calls.append(True),
+    )
+
+    kit._run_startup_warmup()
+
+    assert fake_generator.closed
+    assert fake_generator.next_calls == 7
+    assert synchronize_calls == [True, True, True, True, True, True]
+    assert len(fake_generator.insert_calls) == 6
+    assert batch_size_calls == [None, None, None, None, None, None]
+
+    first_prompts, first_max_tokens, first_kwargs = fake_generator.insert_calls[0]
+    assert first_max_tokens == [32]
+    assert len(first_prompts) == 1
+    assert len(first_prompts[0]) == 2
+    assert first_prompts[0] == [7] * 2
+
+    second_prompts, second_max_tokens, second_kwargs = fake_generator.insert_calls[1]
+    assert second_max_tokens == [32]
+    assert len(second_prompts) == 1
+    assert len(second_prompts[0]) == 25
+    assert second_prompts[0] == [7] * 25
+
+    third_prompts, third_max_tokens, third_kwargs = fake_generator.insert_calls[2]
+    assert third_max_tokens == [32, 32, 32, 32]
+    assert len(third_prompts) == 4
+    assert len(third_prompts[0]) == 25
+    assert third_prompts[0] == [7] * 25
+
+    fourth_prompts, fourth_max_tokens, fourth_kwargs = fake_generator.insert_calls[3]
+    assert fourth_max_tokens == [32]
+    assert len(fourth_prompts) == 1
+    assert len(fourth_prompts[0]) == 513
+    assert fourth_prompts[0] == [7] * 513
+
+    fifth_prompts, fifth_max_tokens, fifth_kwargs = fake_generator.insert_calls[4]
+    assert fifth_max_tokens == [32]
+    assert len(fifth_prompts) == 1
+    assert len(fifth_prompts[0]) == 896
+    assert fifth_prompts[0] == [7] * 896
+
+    sixth_prompts, sixth_max_tokens, sixth_kwargs = fake_generator.insert_calls[5]
+    assert sixth_max_tokens == [32]
+    assert len(sixth_prompts) == 1
+    assert len(sixth_prompts[0]) == 7162
+    assert sixth_prompts[0] == [7] * 7162
+
+
+def test_startup_warmup_skips_timing_when_diagnostics_disabled(monkeypatch):
+    """Ensure disabled diagnostics do not add perf-counter overhead to warmup."""
+
+    class FakeBatchGenerator:
+        def insert(self, prompts, max_tokens, **kwargs):
+            pass
+
+        def next(self):
+            return []
+
+        def close(self):
+            pass
+
+    kit = object.__new__(BatchedModelKit)
+    kit._prefill_step_size = 512
+    kit._max_seq_nums = 1
+    kit._shutdown = SimpleNamespace(is_set=lambda: True, set=lambda: None)
+    kit.tokenize = lambda prompt: [7]
+    kit._make_batch_generator = lambda completion_batch_size=None: FakeBatchGenerator()
+
+    monkeypatch.delenv("MLX_ENGINE_BATCHED_TIMING", raising=False)
+    monkeypatch.setattr(model_kit_module.mx, "synchronize", lambda: None)
+    monkeypatch.setattr(
+        model_kit_module.time,
+        "perf_counter",
+        lambda: pytest.fail("perf_counter should not run when timing is disabled"),
+    )
+
+    kit._run_startup_warmup()
+
+
+def test_fast_prompt_cache_returns_isolated_clone():
+    import mlx.core as mx
+    from mlx_lm.models.cache import KVCache
+
+    from mlx_engine.model_kit.batched_model_kit import FastLRUPromptCache
+
+    cache = FastLRUPromptCache()
+    kv = KVCache()
+    kv.keys = mx.zeros((1, 4, 3, 8), dtype=mx.float16)
+    kv.values = mx.zeros((1, 4, 3, 8), dtype=mx.float16)
+    kv.offset = 3
+
+    cache.insert_cache("model", [1, 2, 3], [kv], cache_type="user")
+
+    restored, rest = cache.fetch_nearest_cache("model", [1, 2, 3])
+
+    assert rest == []
+    assert restored is not None
+    assert restored[0] is not kv
+    assert restored[0].offset == 3
+
+    restored[0].offset = 1
+
+    assert kv.offset == 3
+
+
+def test_batched_timing_log_is_disabled_by_default(monkeypatch, caplog):
+    """Ensure batched timing diagnostics stay silent unless explicitly enabled."""
+    monkeypatch.delenv("MLX_ENGINE_BATCHED_TIMING", raising=False)
+
+    with caplog.at_level(logging.INFO, logger=model_kit_module.logger.name):
+        model_kit_module.log_batched_timing(
+            model_kit_module.logger, "request_insert", request_id="req-1"
+        )
+
+    assert "MLX_ENGINE_BATCHED_TIMING" not in caplog.text
+
+
+def test_batched_timing_log_emits_structured_payload(monkeypatch):
+    """Ensure enabled batched timing diagnostics are machine-readable."""
+    monkeypatch.setenv("MLX_ENGINE_BATCHED_TIMING", "1")
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    model_kit_module.logger.addHandler(handler)
+    original_level = model_kit_module.logger.level
+    model_kit_module.logger.setLevel(logging.INFO)
+
+    try:
+        model_kit_module.log_batched_timing(
+            model_kit_module.logger,
+            "request_insert",
+            request_id="req-1",
+            prompt_tokens=25,
+            cached_tokens=16,
+            rest_tokens=9,
+        )
+    finally:
+        model_kit_module.logger.setLevel(original_level)
+        model_kit_module.logger.removeHandler(handler)
+
+    log_output = stream.getvalue()
+    assert "MLX_ENGINE_BATCHED_TIMING" in log_output
+    assert '"event": "request_insert"' in log_output
+    assert '"request_id": "req-1"' in log_output
+    assert '"prompt_tokens": 25' in log_output

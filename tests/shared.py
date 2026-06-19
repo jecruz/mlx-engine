@@ -4,7 +4,6 @@ import sys
 import subprocess
 from typing import Optional
 
-from mlx_engine.generate import load_model, load_draft_model, tokenize
 from mlx_engine.utils.prompt_progress_reporter import PromptProgressReporter
 
 
@@ -131,6 +130,8 @@ def model_load_and_tokenize_prompt(
     max_seq_nums=None,
 ):
     """Helper method to test a model"""
+    from mlx_engine.generate import load_draft_model, load_model, tokenize
+
     print(f"Testing model {model_name}")
 
     # Check if model exists, if not prompt user to download

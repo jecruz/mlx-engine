@@ -6,10 +6,11 @@ import mlx.core as mx
 from mlx_engine.cache_wrapper import (
     CacheWrapper,
     DEFAULT_CHECKPOINT_TAIL_TOKENS,
+    DEFERRED_CLEAR_DELAY_STEPS,
     StopPromptProcessing,
 )
-from mlx_engine.generate import load_model, tokenize
-from tests.shared import CancellingReporter, RecordingReporter, model_getter
+from mlx_engine.utils.specprefill import SpecPrefillOptions, SpecPrefillResult
+from tests.shared import CancellingReporter, RecordingReporter
 
 
 class FakeCache:
@@ -55,6 +56,49 @@ class FakeModel:
             entry.offset += n_tokens
 
 
+class CloneableCache:
+    def __init__(self, values):
+        self.values = list(values)
+        self.offset = len(self.values)
+
+    @property
+    def state(self):
+        return self.values
+
+    @state.setter
+    def state(self, value):
+        self.values = list(value)
+        self.offset = len(self.values)
+
+    @property
+    def meta_state(self):
+        return (str(self.offset),)
+
+    @meta_state.setter
+    def meta_state(self, value):
+        self.offset = int(value[0])
+
+    def is_trimmable(self):
+        return True
+
+    def trim(self, n):
+        n = min(self.offset, n)
+        self.offset -= n
+        self.values = self.values[: self.offset]
+        return n
+
+    @property
+    def nbytes(self):
+        return len(self.values)
+
+    @classmethod
+    def from_state(cls, state, meta_state):
+        clone = cls.__new__(cls)
+        clone.state = state
+        clone.meta_state = meta_state
+        return clone
+
+
 def _no_op_stream(_stream):
     return nullcontext()
 
@@ -75,6 +119,7 @@ class TestCacheWrapper(unittest.TestCase):
         session,
         prompt_tokens,
         reporter=None,
+        **kwargs,
     ):
         reporter = reporter or RecordingReporter()
         with (
@@ -85,33 +130,28 @@ class TestCacheWrapper(unittest.TestCase):
             result_tokens = session.update_cache(
                 prompt_tokens=prompt_tokens,
                 reporter=reporter,
+                **kwargs,
             )
         return result_tokens, reporter
 
     def test_prompt_processing_cancellation(self):
         """Test that progress is saved when processing is cancelled and cache is reused on retry"""
 
-        model_path = model_getter("lmstudio-community/Qwen2.5-0.5B-Instruct-MLX-8bit")
-        model_kit = load_model(model_path=model_path, max_kv_size=4096)
-
         chunk_size = 20  # Small chunk size to ensure multiple progress callbacks
-        model_kit.cache_wrapper = CacheWrapper(
-            model_kit.model,
+        model = FakeModel()
+        cache_wrapper = CacheWrapper(
+            model,
             max_kv_size=4096,
             chunk_size=chunk_size,
         )
 
-        long_prompt = (
-            "This is a test prompt that needs to be long enough to require multiple chunks for processing. "
-            * 50
-        )
-        prompt_tokens = mx.array(tokenize(model_kit, long_prompt))
+        prompt_tokens = mx.array(list(range(1, 101)), dtype=mx.int32)
 
         # First attempt: Reporter that cancels after 3 events
         cancelling_reporter = CancellingReporter(cancel_after=3)
 
         with self.assertRaises(StopPromptProcessing):
-            model_kit.cache_wrapper.update_cache(
+            cache_wrapper.update_cache(
                 prompt_tokens=prompt_tokens,
                 reporter=cancelling_reporter,
             )
@@ -119,7 +159,7 @@ class TestCacheWrapper(unittest.TestCase):
         # Second attempt: Reporter that doesn't cancel
         recording_reporter = RecordingReporter()
 
-        result_tokens = model_kit.cache_wrapper.update_cache(
+        result_tokens = cache_wrapper.update_cache(
             prompt_tokens=prompt_tokens,
             reporter=recording_reporter,
         )
@@ -213,12 +253,14 @@ class TestCacheWrapper(unittest.TestCase):
 
         checkpoint_prefix_len = len(prompt) - DEFAULT_CHECKPOINT_TAIL_TOKENS
         prefillable_tokens = len(prompt) - 1
-        remaining_after_checkpoint = prefillable_tokens - checkpoint_prefix_len
         expected_calls = [
             checkpoint_prefix_len,
-            chunk_size,
-            remaining_after_checkpoint - chunk_size,
+            min(chunk_size, prefillable_tokens - checkpoint_prefix_len),
+            prefillable_tokens - checkpoint_prefix_len - min(
+                chunk_size, prefillable_tokens - checkpoint_prefix_len
+            ),
         ]
+        expected_calls = [count for count in expected_calls if count > 0]
 
         self.assertEqual(model.calls, expected_calls)
         self.assertEqual(result_tokens.tolist(), prompt[-1:].tolist())
@@ -243,10 +285,52 @@ class TestCacheWrapper(unittest.TestCase):
         self.assertEqual(reporter.events[0]["cached_tokens"], 4)
         self.assertEqual(result_tokens.tolist(), [5])
 
+    def test_deferred_cache_clear_waits_for_generation_steps(self):
+        session, _ = self._make_session(
+            cache_trimmable=False,
+            checkpoint_tail_tokens=100,
+        )
+        prompt = mx.array([1, 2, 3], dtype=mx.int32)
+
+        with (
+            patch("mlx_engine.cache_wrapper.mx.stream", side_effect=_no_op_stream),
+            patch("mlx_engine.cache_wrapper.mx.eval"),
+            patch("mlx_engine.cache_wrapper.mx.clear_cache") as clear_cache,
+            patch("mlx_engine.cache_wrapper.mx.synchronize"),
+        ):
+            session.update_cache(prompt_tokens=prompt, reporter=RecordingReporter())
+            self.assertEqual(clear_cache.call_count, 0)
+
+            for _ in range(DEFERRED_CLEAR_DELAY_STEPS - 1):
+                session.record_generated_token(99)
+            self.assertEqual(clear_cache.call_count, 0)
+
+            session.record_generated_token(100)
+            self.assertEqual(clear_cache.call_count, 1)
+
+    def test_store_snapshot_clones_cache_entries(self):
+        model = FakeModel()
+        session = CacheWrapper(model, max_kv_size=None, chunk_size=1)
+        live_cache = [CloneableCache([1, 2, 3])]
+
+        session._store_snapshot([1, 2, 3], live_cache, cache_type="user")
+        live_cache[0].values[0] = 99
+        live_cache[0].offset = 1
+
+        stored_cache, rest = session._history.fetch_nearest_cache(
+            session._history_key,
+            [1, 2, 3],
+        )
+
+        self.assertEqual(rest, [])
+        self.assertIsNotNone(stored_cache)
+        self.assertEqual(stored_cache[0].values, [1, 2, 3])
+        self.assertEqual(stored_cache[0].offset, 3)
+
     def test_user_checkpoint_survives_assistant_snapshot_eviction_pressure(self):
         session, _ = self._make_session(
             cache_trimmable=False,
-            history_capacity=2,
+            history_capacity=3,
         )
         prompt = mx.array(list(range(1, 16)), dtype=mx.int32)
 
@@ -360,6 +444,120 @@ class TestCacheWrapper(unittest.TestCase):
         ):
             _, reporter = self._run_update_cache(session, prompt)
         self.assertEqual(reporter.events[0]["cached_tokens"], 0)
+
+    def test_specprefill_skips_when_below_threshold(self):
+        session, model = self._make_session(chunk_size=8)
+        prompt = mx.array([1, 2, 3, 4, 5], dtype=mx.int32)
+        options = SpecPrefillOptions(enabled=True, threshold=len(prompt))
+
+        with patch("mlx_engine.cache_wrapper.try_sparse_prefill") as sparse_prefill:
+            result_tokens, _ = self._run_update_cache(
+                session,
+                prompt,
+                draft_model=FakeModel(),
+                specprefill_options=options,
+            )
+
+        sparse_prefill.assert_not_called()
+        self.assertEqual(model.calls, [4])
+        self.assertEqual(result_tokens.tolist(), [5])
+
+    def test_specprefill_failure_falls_back_to_full_prefill(self):
+        session, model = self._make_session(chunk_size=8)
+        prompt = mx.array(list(range(1, 9)), dtype=mx.int32)
+        options = SpecPrefillOptions(enabled=True, threshold=1)
+
+        with patch(
+            "mlx_engine.cache_wrapper.try_sparse_prefill",
+            side_effect=RuntimeError("sparse failed"),
+        ) as sparse_prefill:
+            result_tokens, _ = self._run_update_cache(
+                session,
+                prompt,
+                draft_model=FakeModel(),
+                specprefill_options=options,
+            )
+
+        sparse_prefill.assert_called_once()
+        self.assertEqual(model.calls, [7])
+        self.assertEqual(result_tokens.tolist(), [8])
+
+    def test_specprefill_success_returns_seed_token_and_marks_sparse_cache(self):
+        session, model = self._make_session(chunk_size=8)
+        prompt = mx.array(list(range(1, 9)), dtype=mx.int32)
+        sparse_cache = [FakeCache(offset=len(prompt), trimmable=True)]
+        result = SpecPrefillResult(
+            cache=sparse_cache,
+            seed_tokens=mx.array([8], dtype=mx.int32),
+            live_tokens=prompt.tolist(),
+        )
+        options = SpecPrefillOptions(enabled=True, threshold=1)
+
+        with patch(
+            "mlx_engine.cache_wrapper.try_sparse_prefill",
+            return_value=result,
+        ) as sparse_prefill:
+            result_tokens, reporter = self._run_update_cache(
+                session,
+                prompt,
+                draft_model=FakeModel(),
+                specprefill_options=options,
+            )
+
+        sparse_prefill.assert_called_once()
+        self.assertEqual(model.calls, [])
+        self.assertEqual(session.cache, sparse_cache)
+        self.assertTrue(session._sparse_cache_active)
+        self.assertEqual(reporter.events[-1]["type"], "finish")
+        self.assertEqual(result_tokens.tolist(), [8])
+
+    def test_specprefill_sparse_cache_is_not_stored_in_prefix_history(self):
+        session, _ = self._make_session(chunk_size=8)
+        prompt = mx.array(list(range(1, 9)), dtype=mx.int32)
+        sparse_cache = [FakeCache(offset=len(prompt), trimmable=True)]
+        options = SpecPrefillOptions(enabled=True, threshold=1)
+
+        with patch(
+            "mlx_engine.cache_wrapper.try_sparse_prefill",
+            return_value=SpecPrefillResult(
+                cache=sparse_cache,
+                seed_tokens=mx.array([8], dtype=mx.int32),
+                live_tokens=prompt.tolist(),
+            ),
+        ):
+            self._run_update_cache(
+                session,
+                prompt,
+                draft_model=FakeModel(),
+                specprefill_options=options,
+            )
+
+        session.record_generated_token(99)
+        _, reporter = self._run_update_cache(session, prompt)
+
+        self.assertFalse(session._sparse_cache_active)
+        self.assertEqual(reporter.events[0]["cached_tokens"], 0)
+
+    def test_specprefill_skips_when_system_tokens_cover_uncached_prompt(self):
+        session, model = self._make_session(chunk_size=8)
+        prompt = mx.array(list(range(1, 9)), dtype=mx.int32)
+        options = SpecPrefillOptions(
+            enabled=True,
+            threshold=1,
+            system_tokens=len(prompt),
+        )
+
+        with patch("mlx_engine.cache_wrapper.try_sparse_prefill") as sparse_prefill:
+            result_tokens, _ = self._run_update_cache(
+                session,
+                prompt,
+                draft_model=FakeModel(),
+                specprefill_options=options,
+            )
+
+        sparse_prefill.assert_not_called()
+        self.assertEqual(model.calls, [7])
+        self.assertEqual(result_tokens.tolist(), [8])
 
 
 if __name__ == "__main__":

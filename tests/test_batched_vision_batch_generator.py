@@ -1,4 +1,6 @@
 import contextlib
+import io
+import logging
 from types import SimpleNamespace
 
 import mlx.core as mx
@@ -12,7 +14,13 @@ from mlx_engine.model_kit.batched_vision.batch_generator import (
 from mlx_engine.model_kit.batched_vision.prompt_cache.chunks import (
     build_prefix_cache_chunks,
 )
-from mlx_engine.model_kit.batched_vision.prompt_cache.types import PromptImageSpan
+from mlx_engine.model_kit.batched_vision.prompt_cache.types import (
+    DEFAULT_PREFIX_CHUNK_SIZE,
+    PromptImageSpan,
+)
+
+
+C = DEFAULT_PREFIX_CHUNK_SIZE
 
 
 def _argmax_sampler(logprobs):
@@ -30,7 +38,10 @@ def _bump(logits, token: int):
 
 
 def _prefix_cache_save_states(count: int):
-    return [_PrefixCacheSaveState([], 0, [], None) for _ in range(count)]
+    return [
+        _PrefixCacheSaveState([], 0, DEFAULT_PREFIX_CHUNK_SIZE, [], None)
+        for _ in range(count)
+    ]
 
 
 class _HistoryProcessor:
@@ -250,6 +261,86 @@ def test_generation_batch_extends_mixed_rope_rows_without_broadcasting():
     assert model.calls[-1]["rope_deltas"] == [[9], [0]]
 
 
+def test_generation_batch_append_materializes_pending_state_before_cache_extend(
+    monkeypatch,
+):
+    calls = []
+
+    class RecordingCache(_FakeBatchCache):
+        def extend(self, other):
+            calls.append(("extend-cache", self.name, other.name))
+            super().extend(other)
+
+    def record_eval(batch):
+        calls.append(("eval", tuple(batch.uids)))
+
+    monkeypatch.setattr(GenerationBatch, "_eval_pending_state", record_eval)
+    batch = GenerationBatch(
+        model=_FakeModel(),
+        uids=[1],
+        inputs=mx.array([5], dtype=mx.int32),
+        prompt_cache=[RecordingCache("active")],
+        samplers=[_argmax_sampler],
+        stop_criteria=lambda _token: False,
+        max_tokens=[3],
+        all_tokens=[[5]],
+        logits_processors=[[]],
+        prefix_cache_save_states=_prefix_cache_save_states(1),
+    )
+    prefilled = GenerationBatch(
+        model=_FakeModel(),
+        uids=[2],
+        inputs=mx.array([6], dtype=mx.int32),
+        prompt_cache=[RecordingCache("prefilled")],
+        samplers=[_argmax_sampler],
+        stop_criteria=lambda _token: False,
+        max_tokens=[3],
+        all_tokens=[[6]],
+        logits_processors=[[]],
+        prefix_cache_save_states=_prefix_cache_save_states(1),
+    )
+
+    batch.append_prefilled_sequence(prefilled)
+
+    assert calls == [
+        ("eval", (1,)),
+        ("eval", (2,)),
+        ("extend-cache", "active", "prefilled"),
+    ]
+
+
+def test_generation_batch_filter_materializes_pending_state_before_cache_filter(
+    monkeypatch,
+):
+    calls = []
+
+    class RecordingCache(_FakeBatchCache):
+        def filter(self, keep):
+            calls.append(("filter-cache", keep.tolist()))
+            super().filter(keep)
+
+    def record_eval(batch):
+        calls.append(("eval", tuple(batch.uids)))
+
+    monkeypatch.setattr(GenerationBatch, "_eval_pending_state", record_eval)
+    batch = GenerationBatch(
+        model=_FakeModel(),
+        uids=[1, 2],
+        inputs=mx.array([5, 6], dtype=mx.int32),
+        prompt_cache=[RecordingCache()],
+        samplers=[_argmax_sampler, _argmax_sampler],
+        stop_criteria=lambda _token: False,
+        max_tokens=[3, 3],
+        all_tokens=[[5], [6]],
+        logits_processors=[[], []],
+        prefix_cache_save_states=_prefix_cache_save_states(2),
+    )
+
+    batch.filter([0])
+
+    assert calls == [("eval", (1, 2)), ("filter-cache", [0])]
+
+
 def test_capture_rope_deltas_keeps_qwen3_5_text_only_none():
     """Qwen3.5 text-only decode stays on the fast text RoPE path."""
     qwen3_5_model = SimpleNamespace(
@@ -326,9 +417,65 @@ def test_batch_generator_slices_position_ids_and_saves_prefill_boundaries(
         (start_chunk_idx, end_chunk_idx, snapshot_len)
         for _, _, start_chunk_idx, end_chunk_idx, snapshot_len in snapshots
     ] == [
-        (0, 1, 256),
-        (1, 2, 512),
+        (0, 1, C),
     ]
+
+
+def test_batch_generator_logs_deep_prefill_timing_when_enabled(monkeypatch):
+    """Diagnostic mode emits chunk and final prefill timings from the VLM batcher."""
+    monkeypatch.setattr(batcher, "wired_limit", lambda _model: contextlib.nullcontext())
+    monkeypatch.setattr(
+        batcher,
+        "make_prompt_cache",
+        lambda _model: [_FakeBatchCache()],
+    )
+    monkeypatch.setenv("MLX_ENGINE_BATCHED_TIMING", "1")
+    perf_counter_values = iter([1.0, 1.125, 2.0, 2.25])
+    monkeypatch.setattr(
+        batcher.time,
+        "perf_counter",
+        lambda: next(perf_counter_values),
+    )
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    batcher.logger.addHandler(handler)
+    original_level = batcher.logger.level
+    batcher.logger.setLevel(logging.WARNING)
+
+    generator = BatchGenerator(
+        model=_FakeModel(),
+        stop_criteria=lambda _token: False,
+        prefill_step_size=4,
+    )
+    try:
+        generator.insert(
+            list(range(6)),
+            inputs_embeds=mx.zeros((1, 6, 2), dtype=mx.float32),
+            sampler=_argmax_sampler,
+            logits_processors=[],
+            prompt_kwargs={},
+            prefix_cache_chunks=[],
+            all_tokens=[],
+            next_prefix_cache_chunk_idx=0,
+            image_spans=[],
+            request_id="req-prefill",
+        )
+
+        generator.next()
+        generator.next()
+    finally:
+        batcher.logger.setLevel(original_level)
+        batcher.logger.removeHandler(handler)
+        generator.close()
+
+    log_output = stream.getvalue()
+    assert '"event": "vlm_prefill_chunk"' in log_output
+    assert '"request_id": "req-prefill"' in log_output
+    assert '"chunk_tokens": 4' in log_output
+    assert '"duration_ms": 125.0' in log_output
+    assert '"event": "vlm_prefill_final"' in log_output
+    assert '"final_tokens": 2' in log_output
+    assert '"duration_ms": 250.0' in log_output
 
 
 def test_batch_generator_keeps_gemma4_visual_prefix_together(monkeypatch):
@@ -642,7 +789,7 @@ def test_batch_generator_aligns_restored_prefill_only_for_cache_saves(monkeypatc
 
 
 def test_batch_generator_state_cache_lands_on_reusable_tail_boundary(monkeypatch):
-    """Opaque state caches need an exact checkpoint at the final 256 boundary."""
+    """Opaque state caches need an exact checkpoint at the final chunk boundary."""
     monkeypatch.setattr(batcher, "wired_limit", lambda _model: contextlib.nullcontext())
     monkeypatch.setattr(
         batcher,
@@ -681,8 +828,54 @@ def test_batch_generator_state_cache_lands_on_reusable_tail_boundary(monkeypatch
     finally:
         generator.close()
 
-    assert [len(call["input_ids"][0]) for call in model.calls] == [1792, 3]
+    assert [len(call["input_ids"][0]) for call in model.calls] == [3 * C, 259]
     assert [
         (start_chunk_idx, end_chunk_idx, snapshot_len)
         for _, _, start_chunk_idx, end_chunk_idx, snapshot_len in snapshots
-    ] == [(0, 7, 1792)]
+    ][0] == (0, 3, 3 * C)
+
+
+def test_batch_generator_defers_clear_cache_until_delay(monkeypatch):
+    """Scheduled Metal cache cleanup should wait for the delay window."""
+    monkeypatch.setattr(batcher, "wired_limit", lambda _model: contextlib.nullcontext())
+    clear_calls = []
+    monkeypatch.setattr(batcher, "_sync_and_clear_cache", lambda: clear_calls.append(1))
+
+    generator = BatchGenerator(
+        model=_FakeModel(),
+        stop_criteria=lambda _token: False,
+    )
+    try:
+        generator._steps_counter = 10
+        generator._schedule_deferred_clear()
+
+        assert generator._deferred_clear_at == 10 + batcher.DEFERRED_CLEAR_DELAY_STEPS
+
+        generator._steps_counter = generator._deferred_clear_at - 1
+        generator._maybe_clear_cache()
+        assert clear_calls == []
+
+        generator._steps_counter += 1
+        generator._maybe_clear_cache()
+        assert clear_calls == [1]
+        assert generator._deferred_clear_at is None
+    finally:
+        generator.close()
+
+
+def test_batch_generator_close_drains_deferred_clear(monkeypatch):
+    """Closing the generator should not leave deferred Metal cleanup pending."""
+    monkeypatch.setattr(batcher, "wired_limit", lambda _model: contextlib.nullcontext())
+    clear_calls = []
+    monkeypatch.setattr(batcher, "_sync_and_clear_cache", lambda: clear_calls.append(1))
+
+    generator = BatchGenerator(
+        model=_FakeModel(),
+        stop_criteria=lambda _token: False,
+    )
+    generator._schedule_deferred_clear()
+
+    generator.close()
+
+    assert clear_calls == [1]
+    assert generator._deferred_clear_at is None

@@ -18,6 +18,15 @@ from tests.shared import model_getter
 
 
 def get_real_model_path(model_name: str) -> Path:
+    """Return a local real-model path or skip when unavailable in pytest."""
+    pointer_path = Path("~/.lmstudio-home-pointer").expanduser().resolve()
+    if not pointer_path.exists():
+        pytest.skip("LM Studio home pointer is not configured")
+    lmstudio_home = Path(pointer_path.read_text().strip())
+    model_path = lmstudio_home / "models" / model_name
+    if not model_path.exists():
+        pytest.skip(f"{model_name}: local model not found at {model_path}")
+
     model_path = model_getter(model_name)
     if not any(model_path.glob("*.safetensors")):
         pytest.skip(f"{model_name}: no local MLX safetensors found in {model_path}")

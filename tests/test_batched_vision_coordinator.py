@@ -2,6 +2,9 @@ import mlx.core as mx
 from mlx_engine.model_kit.batched_vision.prompt_cache.cache_store import (
     DiskPromptCacheRestorePlan,
 )
+from mlx_engine.model_kit.batched_vision.prompt_cache.chunks import (
+    build_prefix_cache_chunks,
+)
 from mlx_engine.model_kit.batched_vision.prompt_cache.coordinator import (
     VlmPromptCacheCoordinator,
 )
@@ -13,7 +16,12 @@ from mlx_lm.models.cache import KVCache, RotatingKVCache
 
 
 class _FakeCacheStore:
-    def __init__(self, *, disk_prefix_len: int | None = None):
+    def __init__(
+        self,
+        *,
+        disk_prefix_len: int | None = None,
+        allow_save: bool = True,
+    ):
         self.restore_plan = (
             None
             if disk_prefix_len is None
@@ -33,6 +41,8 @@ class _FakeCacheStore:
         )
         self.recorded_tokens = []
         self.loaded_plans = []
+        self.allow_save = allow_save
+        self.prepared_chunks = []
 
     def plan_longest_prefix_restore(self, prompt_input_ids, image_spans):
         return self.restore_plan
@@ -50,6 +60,13 @@ class _FakeCacheStore:
 
     def can_store_records(self) -> bool:
         return True
+
+    def should_save_prompt(self, prefix_chunks) -> bool:
+        return self.allow_save
+
+    def prepare_save(self, *, chunk, prefix_chunks, prompt_cache, save_state_checkpoint):
+        self.prepared_chunks.append(chunk)
+        return {"chunk": chunk}
 
 
 def _coordinator(cache_store):
@@ -70,6 +87,24 @@ def _rotating_kv_cache(prefix_len: int, *, max_size: int):
     keys = mx.arange(prefix_len, dtype=mx.float32).reshape(1, 1, prefix_len, 1)
     cache.update_and_fetch(keys, keys + 1000)
     return cache
+
+
+def test_coordinator_skips_save_when_store_admission_rejects_prompt():
+    """Prompt-cache admission should skip prepare/enqueue for small prompts."""
+    cache_store = _FakeCacheStore(allow_save=False)
+    coordinator, enqueued_saves = _coordinator(cache_store)
+    chunks = build_prefix_cache_chunks(list(range(300)), [])
+
+    coordinator.save_prompt_cache_snapshot(
+        prompt_cache=[_kv_cache(chunks[-1].end)],
+        prefix_chunks=chunks,
+        start_chunk_idx=0,
+        end_chunk_idx=len(chunks),
+        snapshot_len=chunks[-1].end,
+    )
+
+    assert cache_store.prepared_chunks == []
+    assert enqueued_saves == []
 
 
 def test_coordinator_restores_exact_hot_prefix():

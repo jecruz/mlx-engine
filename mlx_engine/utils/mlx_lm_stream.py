@@ -10,6 +10,7 @@ mlx_lm_generate = importlib.import_module("mlx_lm.generate")
 
 
 logger = logging.getLogger(__name__)
+_thread_state = threading.local()
 
 
 def _format_distributed_group(distributed_group: Any | None) -> str:
@@ -32,18 +33,43 @@ def prepare_mlx_lm_generation_stream(
     thread_ident = current_thread.ident
     default_device = mx.default_device()
     default_stream = mx.default_stream(default_device)
-    previous_stream = getattr(mlx_lm_generate, "generation_stream", None)
+    stream_source = "default" if use_default_stream else "thread-local"
+    cached_stream = getattr(_thread_state, "generation_stream", None)
+    cached_source = getattr(_thread_state, "stream_source", None)
+    cached_device = getattr(_thread_state, "device", None)
+
+    if (
+        cached_stream is not None
+        and cached_source == stream_source
+        and cached_device == default_device
+    ):
+        mlx_lm_generate.generation_stream = cached_stream
+        logger.debug(
+            "Reusing MLX-LM generation stream reason=%s request_id=%s rank=%s "
+            "thread=%s thread_ident=%s device=%s stream_source=%s stream=%r",
+            reason,
+            request_id,
+            _format_distributed_group(distributed_group),
+            current_thread.name,
+            thread_ident,
+            default_device,
+            stream_source,
+            cached_stream,
+        )
+        return cached_stream
+
     if use_default_stream:
         generation_stream = default_stream
-        stream_source = "default"
     else:
         generation_stream = mx.new_thread_local_stream(default_device)
-        stream_source = "thread-local"
+    _thread_state.generation_stream = generation_stream
+    _thread_state.stream_source = stream_source
+    _thread_state.device = default_device
     mlx_lm_generate.generation_stream = generation_stream
     logger.info(
         "Prepared MLX-LM generation stream reason=%s request_id=%s rank=%s "
         "thread=%s thread_ident=%s device=%s stream_source=%s default_stream=%r "
-        "previous_stream=%r stream=%r",
+        "stream=%r",
         reason,
         request_id,
         _format_distributed_group(distributed_group),
@@ -52,7 +78,6 @@ def prepare_mlx_lm_generation_stream(
         default_device,
         stream_source,
         default_stream,
-        previous_stream,
         generation_stream,
     )
     return generation_stream

@@ -895,11 +895,15 @@ class DistributedModelKit:
         generate_args: dict,
         max_image_size: tuple[int, int] | None,
         speculative_decoding_toggle: Optional[bool] = None,
+        draft_model_override: Optional[Any] = None,
+        specprefill_options: object | None = None,
     ) -> Tuple[mx.array, Optional[mx.array]]:
         if images_b64 is not None and len(images_b64) > 0:
             raise ValueError("DistributedModelKit does not support images yet")
         if speculative_decoding_toggle is True:
             raise ValueError("DistributedModelKit does not support draft models yet")
+        if draft_model_override is not None or specprefill_options is not None:
+            raise ValueError("DistributedModelKit does not support SpecPrefill yet")
         if len(prompt_tokens) == 0:
             logger.warning(
                 "Received empty prompt. Generation quality will likely be poor"

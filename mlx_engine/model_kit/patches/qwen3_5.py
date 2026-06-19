@@ -110,7 +110,7 @@ def _vlm_qwen3_5_gated_delta_net_fast_path(
             mixed_qkv = mx.where(mask[..., None], mixed_qkv, 0)
     conv_input = mx.concatenate([conv_state, mixed_qkv], axis=1)
     if cache is not None:
-        cache[0] = conv_input[:, -(linear.conv_kernel_size - 1) :]
+        cache[0] = mx.contiguous(conv_input[:, -(linear.conv_kernel_size - 1) :])
     conv_out = nn.silu(linear.conv1d(conv_input))
 
     q, k, v = [
@@ -326,7 +326,7 @@ class PatchedDecoderLayer(DecoderLayer):
                 mixed_qkv = mx.where(mask[..., None], mixed_qkv, 0)
         conv_input = mx.concatenate([conv_state, mixed_qkv], axis=1)
         if cache is not None:
-            cache[0] = conv_input[:, -(linear.conv_kernel_size - 1) :]
+            cache[0] = mx.contiguous(conv_input[:, -(linear.conv_kernel_size - 1) :])
         conv_out = nn.silu(linear.conv1d(conv_input))
 
         q, k, v = [

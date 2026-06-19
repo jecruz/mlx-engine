@@ -2,6 +2,8 @@
 `mlx_engine` is LM Studio's LLM inferencing engine for Apple MLX
 """
 
+from importlib import import_module
+
 __all__ = [
     "load_model",
     "load_draft_model",
@@ -20,18 +22,6 @@ from .utils.disable_hf_download import patch_huggingface_hub
 from .utils.register_models import register_models
 from .utils.logger import setup_logging
 
-
-from .generate import (
-    load_model,
-    load_draft_model,
-    is_draft_model_compatible,
-    unload_draft_model,
-    create_generator,
-    tokenize,
-    unload,
-    stop_generation,
-)
-
 patch_huggingface_hub()
 register_models()
 setup_logging()
@@ -49,3 +39,24 @@ def _set_outlines_cache_dir(cache_dir: Path | str):
 
 
 _set_outlines_cache_dir(Path("~/.cache/lm-studio/.internal/outlines"))
+
+_GENERATE_EXPORTS = {
+    "load_model",
+    "load_draft_model",
+    "is_draft_model_compatible",
+    "unload_draft_model",
+    "create_generator",
+    "tokenize",
+    "unload",
+    "stop_generation",
+}
+
+
+def __getattr__(name):
+    if name not in _GENERATE_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    generate_module = import_module(".generate", __name__)
+    value = getattr(generate_module, name)
+    globals()[name] = value
+    return value

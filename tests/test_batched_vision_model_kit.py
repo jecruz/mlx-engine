@@ -1,3 +1,5 @@
+import io
+import logging
 from queue import Queue
 from types import SimpleNamespace
 
@@ -5,11 +7,14 @@ import pytest
 
 from mlx_engine.model_kit.batched_vision.model_kit import (
     BatchedVisionModelKit,
+    _prefix_chunk_size_for_model,
     _requires_global_no_chunked_prefill,
     _restore_splits_gemma4_image_span,
 )
 import mlx_engine.model_kit.batched_vision.model_kit as model_kit_module
 from mlx_engine.model_kit.batched_vision.prompt_cache.types import (
+    DEFAULT_PREFIX_CHUNK_SIZE,
+    NON_ROTATING_PREFIX_CHUNK_SIZE,
     PromptImageSpan,
 )
 
@@ -54,6 +59,35 @@ def test_gemma4_restore_conflict_only_rejects_split_image_span():
     )
 
 
+def test_prefix_chunk_size_uses_larger_chunks_without_rotating_cache(monkeypatch):
+    """Non-rotating VLM caches can use larger persistent restore chunks."""
+    monkeypatch.setattr(
+        model_kit_module,
+        "make_prompt_cache",
+        lambda _model: [SimpleNamespace()],
+    )
+
+    assert _prefix_chunk_size_for_model(SimpleNamespace()) == (
+        NON_ROTATING_PREFIX_CHUNK_SIZE
+    )
+
+
+def test_prefix_chunk_size_caps_to_rotating_window(monkeypatch):
+    """Rotating VLM caches cap chunks to the safe rotating-window size."""
+
+    class RotatingKVCache:
+        max_size = DEFAULT_PREFIX_CHUNK_SIZE
+        keep = 0
+
+    monkeypatch.setattr(
+        model_kit_module,
+        "make_prompt_cache",
+        lambda _model: [RotatingKVCache()],
+    )
+
+    assert _prefix_chunk_size_for_model(SimpleNamespace()) == DEFAULT_PREFIX_CHUNK_SIZE
+
+
 def test_load_model_forces_no_trust_remote_code(monkeypatch, tmp_path):
     loaded_model = SimpleNamespace()
     call = {}
@@ -80,6 +114,12 @@ def test_load_model_forces_no_trust_remote_code(monkeypatch, tmp_path):
     kit._shutdown = SimpleNamespace(is_set=lambda: True)
     kit._model_path = tmp_path
     kit._trust_remote_code = True
+    kit._prompt_cache_store = SimpleNamespace(
+        set_prefix_chunk_size=lambda chunk_size: call.setdefault(
+            "prefix_chunk_size",
+            chunk_size,
+        )
+    )
 
     kit._load_model()
 
@@ -87,6 +127,127 @@ def test_load_model_forces_no_trust_remote_code(monkeypatch, tmp_path):
     assert call["model_path"] == tmp_path
     assert call["kwargs"] == {"lazy": False, "trust_remote_code": False}
     assert call["patched_model"] is loaded_model
+    assert call["prefix_chunk_size"] == DEFAULT_PREFIX_CHUNK_SIZE
+
+
+def test_prompt_cache_store_receives_persistent_cache_options(monkeypatch, tmp_path):
+    """BatchedVisionModelKit forwards explicit persistent-cache settings."""
+    calls = {}
+
+    class FakePromptCacheStore:
+        def __init__(self, **kwargs):
+            calls["cache_store_kwargs"] = kwargs
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(model_kit_module, "fix_qwen2_5_vl_image_processor", lambda path: None)
+    monkeypatch.setattr(model_kit_module, "fix_qwen2_vl_preprocessor", lambda path: None)
+    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_config", lambda *args, **kwargs: {"model_type": "qwen2_vl"})
+    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_image_processor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_processor", lambda *args, **kwargs: SimpleNamespace())
+    monkeypatch.setattr(model_kit_module, "VlmPromptCacheStore", FakePromptCacheStore)
+    monkeypatch.setattr(BatchedVisionModelKit, "_init_tokenizer_only", lambda self: None)
+    monkeypatch.setattr(BatchedVisionModelKit, "_ensure_channel_first_if_fast_processor", lambda self: None)
+
+    BatchedVisionModelKit(
+        tmp_path,
+        prefill_step_size=128,
+        prompt_cache_storage_root=tmp_path / "cache-root",
+        prompt_cache_namespace="bench-namespace",
+        prompt_cache_min_save_tokens=1024,
+    )
+
+    assert calls["cache_store_kwargs"] == {
+        "max_kv_size": None,
+        "storage_root": tmp_path / "cache-root",
+        "cache_namespace": "bench-namespace",
+        "min_save_tokens": 1024,
+    }
+
+
+def test_prompt_cache_store_defaults_namespace_to_model_path(monkeypatch, tmp_path):
+    """BatchedVisionModelKit isolates persistent cache by resolved model path."""
+    calls = {}
+
+    class FakePromptCacheStore:
+        def __init__(self, **kwargs):
+            calls["cache_store_kwargs"] = kwargs
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(model_kit_module, "fix_qwen2_5_vl_image_processor", lambda path: None)
+    monkeypatch.setattr(model_kit_module, "fix_qwen2_vl_preprocessor", lambda path: None)
+    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_config", lambda *args, **kwargs: {"model_type": "qwen2_vl"})
+    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_image_processor", lambda *args, **kwargs: None)
+    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_processor", lambda *args, **kwargs: SimpleNamespace())
+    monkeypatch.setattr(model_kit_module, "VlmPromptCacheStore", FakePromptCacheStore)
+    monkeypatch.setattr(BatchedVisionModelKit, "_init_tokenizer_only", lambda self: None)
+    monkeypatch.setattr(BatchedVisionModelKit, "_ensure_channel_first_if_fast_processor", lambda self: None)
+
+    BatchedVisionModelKit(
+        tmp_path,
+        prefill_step_size=128,
+        prompt_cache_storage_root=tmp_path / "cache-root",
+    )
+
+    assert calls["cache_store_kwargs"]["cache_namespace"] == str(tmp_path.resolve())
+
+
+def test_emit_response_logs_vlm_first_token_timing_once(monkeypatch):
+    """Ensure VLM first-token timing diagnostics are emitted once per request."""
+
+    class FakeDetokenizer:
+        last_segment = "x"
+
+        def add_token(self, token):
+            pass
+
+        def finalize(self):
+            pass
+
+    kit = object.__new__(BatchedVisionModelKit)
+    kit._shutdown = SimpleNamespace(is_set=lambda: True, set=lambda: None)
+    kit.tokenizer = SimpleNamespace(decode=lambda token_id: str(token_id))
+    active = model_kit_module.ActiveRequest(
+        rqueue=Queue(),
+        detokenizer=FakeDetokenizer(),
+        top_logprobs=0,
+        request_id="req-vlm",
+        image_spans=[],
+        cached_tokens=16,
+        prompt_tokens=25,
+        rest_tokens=9,
+        inserted_at=1.0,
+    )
+    response = SimpleNamespace(
+        token=7,
+        token_logprob=-0.1,
+        top_logprobs=None,
+        finish_reason=None,
+    )
+
+    monkeypatch.setenv("MLX_ENGINE_BATCHED_TIMING", "1")
+    monkeypatch.setattr(model_kit_module.time, "perf_counter", lambda: 1.25)
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    model_kit_module.logger.addHandler(handler)
+    original_level = model_kit_module.logger.level
+    model_kit_module.logger.setLevel(logging.WARNING)
+
+    try:
+        kit._emit_response(active, response)
+        kit._emit_response(active, response)
+    finally:
+        model_kit_module.logger.setLevel(original_level)
+        model_kit_module.logger.removeHandler(handler)
+
+    log_output = stream.getvalue()
+    assert log_output.count("MLX_ENGINE_BATCHED_TIMING") == 1
+    assert '"event": "vlm_first_token"' in log_output
+    assert '"request_id": "req-vlm"' in log_output
+    assert '"insert_to_first_token_ms": 250.0' in log_output
 
 
 def test_generate_fatal_error_preserves_state_for_exception_propagation(monkeypatch):
