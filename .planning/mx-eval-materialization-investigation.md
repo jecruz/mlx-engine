@@ -253,3 +253,69 @@ Subsequent benchmark attempts from this workspace on both `vlm_image_long_qualit
 and `vlm_image_quality.json` exited with `runner exited -9` before emitting prompt rows.
 That makes the current blocker an environment/runtime issue rather than a code-path
 regression signal from the retained eager-eval implementation.
+
+### Corrected py312 Reruns (2026-06-19 02:26 UTC)
+
+The `runner exited -9` failures were caused by `shared_bench.py` defaulting to
+`/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv/bin/python`.
+That interpreter is killed on MLX import. Reruns must pass:
+
+```bash
+--mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python
+```
+
+The benchmark harness now has `--mlx-engine-batched-timing`, which enables
+`MLX_ENGINE_BATCHED_TIMING` inside the runner process instead of using an inline
+shell environment prefix. This avoids the Metal initialization failure seen when
+prefixing commands with environment assignments in this Codex tool session.
+
+Deterministic no-timing rerun:
+- Benchmark: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022612Z-shared-bench.json`
+- Quality compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022612Z-lfm25-vl-py312-det-notiming-quality-compare.json`
+- Quality: pass
+- Warm TTFT: `0.029690s` versus retained path-load `0.041822s`
+- Avg TTFT change: `-2.983%`
+- Total latency change: `-2.079%`
+- Decode TPS change: `-9.936%`
+
+Timed deterministic rerun:
+- Benchmark: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022541Z-shared-bench.json`
+- Quality compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022541Z-lfm25-vl-py312-timing-det-quality-compare.json`
+- Quality: pass
+- Warm TTFT: `0.052841s`
+- Restore detail: `37.744 ms`
+- Restore final `eval_ms`: `20.129 ms`
+
+Repeat no-timing deterministic rerun:
+- Benchmark: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022736Z-shared-bench.json`
+- Quality compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022736Z-lfm25-vl-py312-det-notiming-r2-quality-compare.json`
+- Quality: pass
+- Warm TTFT: `0.044762s` versus retained path-load `0.041822s`
+- Avg TTFT change: `-2.250%`
+- Total latency change: `-1.306%`
+- Decode TPS change: `-13.796%`
+
+Conclusion: eager per-record materialization is rejected. It had one small
+no-timing win and one weaker repeat, both below the `3%` promotion threshold,
+while decode TPS regressed materially. Timing mode also perturbs the hot restore
+path, so it is useful only for attribution. The code change was reverted in
+commit `6a1fae0`; keep the retained path-load implementation as the current best
+result.
+
+### Post-Revert Validation Rerun (2026-06-19 02:32 UTC)
+
+After reverting eager per-record materialization, a fresh deterministic
+path-load rerun passed:
+
+- Benchmark: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T023205Z-shared-bench.json`
+- Quality compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T023205Z-lfm25-vl-post-revert-rerun-quality-compare.json`
+- Quality: pass
+- Warm TTFT: `0.023576s`
+- Avg TTFT change versus retained path-load: `-3.899%`
+- Total latency change versus retained path-load: `-2.782%`
+- Decode TPS change versus retained path-load: `-11.186%`
+
+This confirms the reverted branch is stable and still quality-safe. Because the
+decode rate remains lower and the restore-materialization candidate failed the
+two-attempt promotion threshold, further work should move to a different
+subsystem rather than continuing eager per-record materialization.

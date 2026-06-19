@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-19T02:22:24Z",
+  "timestamp": "2026-06-19T02:35:00Z",
   "context": "research",
   "status": "paused",
   "project": "MLX-engine prompt/inference performance",
@@ -38,14 +38,14 @@
     {
       "id": 1,
       "name": "Package retained changes into reviewable commit or PR slice",
-      "status": "not_started",
-      "notes": "Current worktree is clean; retained changes are already committed on mlx-vlm-prompt-cache-perf."
+      "status": "done",
+      "notes": "Retained code changes are committed on mlx-vlm-prompt-cache-perf. Benchmark harness edits live in /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness, which is not a git repo."
     },
     {
       "id": 2,
       "name": "Investigate restore-time mx.eval materialization",
-      "status": "not_started",
-      "notes": "Do not simply remove mx.eval; no-restore-eval failed warm restore with a cross-thread GPU stream runtime error."
+      "status": "done",
+      "notes": "Eager per-record materialization was rejected after two quality-passing runs stayed below the 3% promotion threshold and decode TPS regressed. Reverted in commit 6a1fae0."
     },
     {
       "id": 3,
@@ -144,6 +144,26 @@
     {
       "command": "python3 quality_compare.py --baseline reports/20260619T000646Z-shared-bench.json --candidate reports/20260619T022121Z-shared-bench.json --out reports/20260619T022121Z-lfm25-vl-py312-rerun-quality-compare.json",
       "result": "status=pass; ttft_change_pct=-1.911; decode_tps_change_pct=-19.811; total_change_pct=3.361"
+    },
+    {
+      "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --temperature 0 --top-p 1 --prompt-suite-json prompt_suites/vlm_image_long_quality.json",
+      "result": "passed; warm_ttft_s 0.029690; report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022612Z-shared-bench.json"
+    },
+    {
+      "command": "python3 quality_compare.py --baseline reports/20260619T000646Z-shared-bench.json --candidate reports/20260619T022612Z-shared-bench.json --out reports/20260619T022612Z-lfm25-vl-py312-det-notiming-quality-compare.json",
+      "result": "status=pass; ttft_change_pct=-2.983; decode_tps_change_pct=-9.936; total_change_pct=-2.079"
+    },
+    {
+      "command": "python3 quality_compare.py --baseline reports/20260619T000646Z-shared-bench.json --candidate reports/20260619T022736Z-shared-bench.json --out reports/20260619T022736Z-lfm25-vl-py312-det-notiming-r2-quality-compare.json",
+      "result": "status=pass; ttft_change_pct=-2.250; decode_tps_change_pct=-13.796; total_change_pct=-1.306; eager per-record materialization rejected and reverted"
+    },
+    {
+      "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --temperature 0 --top-p 1 --prompt-suite-json prompt_suites/vlm_image_long_quality.json",
+      "result": "post-revert rerun passed; warm_ttft_s=0.023576; avg_ttft_s=0.552494; avg_total_s=0.578921; decode_tps=293.681; report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T023205Z-shared-bench.json"
+    },
+    {
+      "command": "python3 quality_compare.py --baseline reports/20260619T000646Z-shared-bench.json --candidate reports/20260619T023205Z-shared-bench.json --out reports/20260619T023205Z-lfm25-vl-post-revert-rerun-quality-compare.json",
+      "result": "status=pass; ttft_change_pct=-3.899; decode_tps_change_pct=-11.186; total_change_pct=-2.782"
     }
   ],
   "required_reading": [
@@ -151,5 +171,5 @@
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619-pause-handoff.md",
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md"
   ],
-  "next_action": "Continue the mx.eval restore-materialization investigation using --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python, then compare against reports/20260619T000646Z-shared-bench.json."
+  "next_action": "Verify the reverted branch still matches retained path-load behavior, then move to a different subsystem focus such as persistent record layout, stream-safe ownership transfer, or broader workload validation."
 }
