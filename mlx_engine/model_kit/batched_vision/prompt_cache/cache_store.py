@@ -355,6 +355,24 @@ class VlmPromptCacheStore:
                     cache_rebuild_ms=loaded_record.cache_rebuild_ms,
                 )
 
+            # Eager-materialize loaded record arrays so GPU transfers overlap
+            # with subsequent disk reads instead of serializing behind the
+            # final assemble-step mx.eval.
+            eager_start = perf_counter() if timing_enabled else None
+            for cache in record_prompt_cache:
+                if cache is not None:
+                    mx.eval(cache.state)
+            eager_eval_ms = elapsed_ms(eager_start) if timing_enabled else 0.0
+            if timing_enabled:
+                log_batched_timing(
+                    logger,
+                    "vlm_cache_record_eager_eval",
+                    record_kind=record_metadata.record_kind,
+                    layers=len(record_metadata.layer_indices),
+                    bytes=record_size,
+                    duration_ms=eager_eval_ms,
+                )
+
             for layer_idx, cache in zip(
                 record_metadata.layer_indices, record_prompt_cache
             ):
