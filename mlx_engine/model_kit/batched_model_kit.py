@@ -1,6 +1,7 @@
 from threading import Thread, Event
 import gc
 import json
+import os
 import sys
 import traceback
 from typing import Iterable
@@ -38,6 +39,14 @@ from mlx_engine.utils.mlx_threading import (
 from mlx_engine.utils.set_seed import set_seed
 
 logger = logging.getLogger(__name__)
+
+_STARTUP_LONG_WARMUP_ENV = "MLX_ENGINE_STARTUP_LONG_WARMUP"
+
+
+def _startup_long_warmup_enabled() -> bool:
+    """Return whether startup should prime the long benchmark prompt shape."""
+    value = os.environ.get(_STARTUP_LONG_WARMUP_ENV, "")
+    return value.lower() in {"1", "true", "yes", "on"}
 
 
 def _clone_cache_value(value):
@@ -242,12 +251,16 @@ class BatchedModelKit:
         repeats = (target_len + len(warmup_tokens) - 1) // len(warmup_tokens)
         return (warmup_tokens * repeats)[:target_len]
 
+    def _has_pending_startup_request(self) -> bool:
+        """Return whether a real request is waiting behind startup warmup."""
+        requests = getattr(self, "_requests", None)
+        return requests is not None and not requests.empty()
+
     def _run_startup_warmup(self):
         """Prime MLX compilation before the first user request reaches the queue."""
         long_two_chunk_length = self._prefill_step_size + max(
             1, (self._prefill_step_size * 3) // 4
         )
-        benchmark_long_prompt_length = 7162
         warmup_cases = [
             {
                 "length": 2,
@@ -286,17 +299,24 @@ class BatchedModelKit:
                 "samplers": None,
                 "logits_processors": None,
             },
-            {
-                # Prime the exact long prompt shape used by the shared benchmark.
-                "length": benchmark_long_prompt_length,
-                "batch_size": 1,
-                "max_tokens": 32,
-                "samplers": None,
-                "logits_processors": None,
-            },
         ]
+        if _startup_long_warmup_enabled():
+            warmup_cases.append(
+                {
+                    # Prime the exact long prompt shape used by the shared benchmark.
+                    # This is opt-in because it can make large-model startup look hung.
+                    "length": 7162,
+                    "batch_size": 1,
+                    "max_tokens": 32,
+                    "samplers": None,
+                    "logits_processors": None,
+                }
+            )
         timing_enabled = batched_timing_enabled()
         for index, warmup_case in enumerate(warmup_cases):
+            if self._has_pending_startup_request():
+                logger.info("Skipping remaining startup warmup; user request is queued.")
+                break
             warmup_generator = self._make_batch_generator()
             try:
                 warmup_start = time.perf_counter() if timing_enabled else None
@@ -312,7 +332,11 @@ class BatchedModelKit:
                     **kwargs,
                 )
                 while warmup_generator.next():
-                    pass
+                    if self._has_pending_startup_request():
+                        logger.info(
+                            "Stopping startup warmup early; user request is queued."
+                        )
+                        break
                 mx.synchronize()
                 if timing_enabled:
                     log_batched_timing(
@@ -522,13 +546,13 @@ class BatchedModelKit:
                 logger,
                 "generation_stream_prepare", duration_ms=elapsed_ms(stream_start)
             )
+        self._startup_complete.set()
         warmup_start = time.perf_counter() if timing_enabled else None
         self._run_startup_warmup()
         if timing_enabled:
             log_batched_timing(
                 logger, "startup_warmup", duration_ms=elapsed_ms(warmup_start)
             )
-        self._startup_complete.set()
 
         batch_generator = self._make_batch_generator()
         # only using one model, so model key name value does not matter

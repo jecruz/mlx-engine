@@ -141,6 +141,20 @@ Sequential loads, vision paths, `qwen3_5_moe_text`, and other batched text famil
 standard `2048` default unless you override `prefill_step_size` at load time to experiment
 with a different tradeoff for a specific model or deployment.
 
+### Startup Warmup
+
+Batched text inference runs bounded startup warmup cases to prime common short and
+two-chunk prompt shapes. The exact long-prompt benchmark warmup is disabled by
+default because it can make large-model startup look hung while MLX compiles a
+large synthetic prompt.
+
+Set `MLX_ENGINE_STARTUP_LONG_WARMUP=1` only for controlled benchmark runs that
+need to precompile the 7k-token benchmark shape before the first request:
+
+```bash
+MLX_ENGINE_STARTUP_LONG_WARMUP=1 python batched_demo.py --model /path/to/model
+```
+
 ## Batched Timing Diagnostics
 
 Set `MLX_ENGINE_BATCHED_TIMING=1` to emit structured log events for the batched text

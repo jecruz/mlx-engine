@@ -145,6 +145,8 @@ Explain how photosynthesis works in plants.<|im_end|>
 
 
 def test_startup_warmup_uses_synthetic_prompt_and_drains_generator(monkeypatch):
+    """Default startup warmup primes bounded prompt shapes only."""
+
     class FakeBatchGenerator:
         def __init__(self):
             self.closed = False
@@ -188,10 +190,10 @@ def test_startup_warmup_uses_synthetic_prompt_and_drains_generator(monkeypatch):
     kit._run_startup_warmup()
 
     assert fake_generator.closed
-    assert fake_generator.next_calls == 7
-    assert synchronize_calls == [True, True, True, True, True, True]
-    assert len(fake_generator.insert_calls) == 6
-    assert batch_size_calls == [None, None, None, None, None, None]
+    assert fake_generator.next_calls == 6
+    assert synchronize_calls == [True, True, True, True, True]
+    assert len(fake_generator.insert_calls) == 5
+    assert batch_size_calls == [None, None, None, None, None]
 
     first_prompts, first_max_tokens, first_kwargs = fake_generator.insert_calls[0]
     assert first_max_tokens == [32]
@@ -223,11 +225,75 @@ def test_startup_warmup_uses_synthetic_prompt_and_drains_generator(monkeypatch):
     assert len(fifth_prompts[0]) == 896
     assert fifth_prompts[0] == [7] * 896
 
+
+def test_startup_warmup_long_benchmark_shape_is_opt_in(monkeypatch):
+    """The expensive long-prompt benchmark warmup only runs when requested."""
+
+    class FakeBatchGenerator:
+        def __init__(self):
+            self.insert_calls = []
+
+        def insert(self, prompts, max_tokens, **kwargs):
+            self.insert_calls.append((prompts, max_tokens, kwargs))
+
+        def next(self):
+            return []
+
+        def close(self):
+            pass
+
+    kit = object.__new__(BatchedModelKit)
+    kit._prefill_step_size = 512
+    kit._max_seq_nums = 1
+    kit._shutdown = SimpleNamespace(is_set=lambda: True, set=lambda: None)
+    kit.tokenize = lambda prompt: [7]
+    fake_generator = FakeBatchGenerator()
+    kit._make_batch_generator = lambda completion_batch_size=None: fake_generator
+
+    monkeypatch.setenv("MLX_ENGINE_STARTUP_LONG_WARMUP", "1")
+    monkeypatch.setattr(model_kit_module.mx, "synchronize", lambda: None)
+
+    kit._run_startup_warmup()
+
     sixth_prompts, sixth_max_tokens, sixth_kwargs = fake_generator.insert_calls[5]
     assert sixth_max_tokens == [32]
     assert len(sixth_prompts) == 1
     assert len(sixth_prompts[0]) == 7162
     assert sixth_prompts[0] == [7] * 7162
+
+
+def test_batched_model_signals_startup_before_optional_warmup(monkeypatch):
+    """A loaded model is startup-ready before opportunistic warmup completes."""
+
+    kit = object.__new__(BatchedModelKit)
+    kit.model = object()
+    kit._seed = 0
+    kit._shutdown = SimpleNamespace(is_set=lambda: True, set=lambda: None)
+    kit._startup_complete = threading.Event()
+    kit._batch_results = {}
+
+    monkeypatch.setattr(
+        model_kit_module,
+        "install_mlx_compile_cache_cleanup_for_thread",
+        lambda: None,
+    )
+    monkeypatch.setattr(model_kit_module, "set_seed", lambda seed: None)
+    monkeypatch.setattr(
+        model_kit_module,
+        "prepare_mlx_lm_generation_stream",
+        lambda reason: None,
+    )
+    monkeypatch.delenv("MLX_ENGINE_BATCHED_TIMING", raising=False)
+
+    warmup_state = []
+    kit._run_startup_warmup = lambda: warmup_state.append(
+        kit._startup_complete.is_set()
+    )
+    kit._make_batch_generator = lambda: object()
+
+    kit._generate()
+
+    assert warmup_state == [True]
 
 
 def test_startup_warmup_skips_timing_when_diagnostics_disabled(monkeypatch):

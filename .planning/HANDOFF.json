@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-20T05:09:19Z",
+  "timestamp": "2026-06-20T05:30:23Z",
   "context": "research",
   "status": "paused",
   "project": "MLX-engine prompt/inference performance",
@@ -38,6 +38,12 @@
       "name": "Persistent VLM record-layout candidate",
       "status": "done",
       "summary": "Full-prefix KV spans were rejected after persistent-cache regression; redundant current-only KV records are now skipped when a two-chunk KV span is saved, with repeated quality-passing latency improvement."
+    },
+    {
+      "id": 6,
+      "name": "Batched text startup warmup hang fix",
+      "status": "done",
+      "summary": "BatchedModelKit now signals startup readiness after model load and generation-stream preparation instead of waiting for all startup warmup work. The expensive 7,162-token benchmark-shape warmup is opt-in via MLX_ENGINE_STARTUP_LONG_WARMUP=1, and warmup stops early when a user request is queued."
     }
   ],
   "remaining_tasks": [
@@ -130,6 +136,10 @@
     {
       "decision": "Retain redundant current-only KV record skip",
       "rationale": "The restore planner already prefers the two-chunk KV span. Skipping the redundant current-only physical record preserved quality and repeated with TTFT -3.013% and total latency -2.566% versus retained baseline."
+    },
+    {
+      "decision": "Make exact long-prompt startup warmup opt-in",
+      "rationale": "Mandatory 7,162-token startup warmup made large-model BatchedModelKit startup look hung and blocked the prefill test for minutes. Bounded warmup remains default; the long benchmark shape can still be enabled explicitly with MLX_ENGINE_STARTUP_LONG_WARMUP=1."
     }
   ],
   "blockers": [
@@ -257,6 +267,22 @@
     {
       "command": "python3 quality_compare.py --candidate reports/20260620T050621Z-shared-bench.json --out reports/20260620T050621Z-qwen25-coder14b-deterministic-quality-inspect.json",
       "result": "status=pass; all five deterministic dense/code prompts passed"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_batched_generation.py::test_startup_warmup_uses_synthetic_prompt_and_drains_generator tests/test_batched_generation.py::test_startup_warmup_long_benchmark_shape_is_opt_in tests/test_batched_generation.py::test_batched_model_signals_startup_before_optional_warmup -q",
+      "result": "3 passed, 2 warnings"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_prefill_step_size.py::test_batched_prefill_step_size -vv",
+      "result": "1 passed, 2 warnings in 18.94s; previously hung in BatchedModelKit.start()"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_prefill_step_size.py -q",
+      "result": "23 passed, 2 warnings in 53.31s"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_load_model_default_seq_nums.py tests/test_batched_generation.py tests/test_prefill_step_size.py tests/test_model_kit_startup.py -q",
+      "result": "41 passed, 2 warnings in 62.30s"
     }
   ],
   "required_reading": [
@@ -264,5 +290,5 @@
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619-pause-handoff.md",
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md"
   ],
-  "next_action": "Package branch for review or continue the restore eval/materialization investigation. Do not retry full-prefix KV span packing without a different write-amplification plan; current remaining warm-restore cost is eval_ms."
+  "next_action": "Commit the BatchedModelKit startup warmup fix, update Redmine #1190, then package branch for review or continue the restore eval/materialization investigation. Do not retry full-prefix KV span packing without a different write-amplification plan; current remaining warm-restore cost is eval_ms."
 }
