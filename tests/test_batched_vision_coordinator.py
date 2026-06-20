@@ -65,9 +65,21 @@ class _FakeCacheStore:
     def should_save_prompt(self, prefix_chunks) -> bool:
         return self.allow_save
 
-    def prepare_save(self, *, chunk, prefix_chunks, prompt_cache, save_state_checkpoint):
+    def prepare_save(
+        self,
+        *,
+        chunk,
+        prefix_chunks,
+        prompt_cache,
+        save_state_checkpoint,
+        is_final_prompt_boundary=False,
+    ):
         self.prepared_chunks.append(chunk)
-        return {"chunk": chunk}
+        return {
+            "chunk": chunk,
+            "save_state_checkpoint": save_state_checkpoint,
+            "is_final_prompt_boundary": is_final_prompt_boundary,
+        }
 
 
 def _coordinator(cache_store):
@@ -106,6 +118,30 @@ def test_coordinator_skips_save_when_store_admission_rejects_prompt():
 
     assert cache_store.prepared_chunks == []
     assert enqueued_saves == []
+
+
+def test_coordinator_marks_only_final_chunk_as_final_prompt_boundary():
+    """Final prompt snapshots only mark the terminal crossed chunk."""
+    cache_store = _FakeCacheStore()
+    coordinator, enqueued_saves = _coordinator(cache_store)
+    chunks = build_prefix_cache_chunks(list(range(1600)), [])
+
+    coordinator.save_prompt_cache_snapshot(
+        prompt_cache=[_kv_cache(chunks[-1].end)],
+        prefix_chunks=chunks,
+        start_chunk_idx=0,
+        end_chunk_idx=len(chunks),
+        snapshot_len=chunks[-1].end,
+        is_final_prompt_boundary=True,
+    )
+
+    expected_final_flags = [False] * (len(chunks) - 1) + [True]
+    assert [
+        save["is_final_prompt_boundary"] for save in enqueued_saves
+    ] == expected_final_flags
+    assert [
+        save["save_state_checkpoint"] for save in enqueued_saves
+    ] == expected_final_flags
 
 
 def test_coordinator_restores_exact_hot_prefix():

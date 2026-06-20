@@ -111,6 +111,7 @@ class PendingPromptCacheSave:
     prefix_chunks: list[PromptPrefixChunk]
     cache_layout: PromptCacheLayout
     records: list[PreparedPromptRecord]
+    is_final_prompt_boundary: bool = False
 
 
 @dataclass

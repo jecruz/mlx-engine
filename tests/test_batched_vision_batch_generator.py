@@ -383,8 +383,25 @@ def test_batch_generator_slices_position_ids_and_saves_prefill_boundaries(
 
     prefix_chunks = build_prefix_cache_chunks(prompt, [])
 
-    def save_snapshot(cache, chunks, start_chunk_idx, end_chunk_idx, snapshot_len):
-        snapshots.append((cache, chunks, start_chunk_idx, end_chunk_idx, snapshot_len))
+    def save_snapshot(
+        cache,
+        chunks,
+        start_chunk_idx,
+        end_chunk_idx,
+        snapshot_len,
+        *,
+        is_final_prompt_boundary,
+    ):
+        snapshots.append(
+            (
+                cache,
+                chunks,
+                start_chunk_idx,
+                end_chunk_idx,
+                snapshot_len,
+                is_final_prompt_boundary,
+            )
+        )
 
     try:
         generator.insert(
@@ -414,10 +431,17 @@ def test_batch_generator_slices_position_ids_and_saves_prefill_boundaries(
     assert model.calls[1]["position_ids"][0][0][-1] == 511
     assert model.calls[2]["position_ids"][0][0] == [512]
     assert [
-        (start_chunk_idx, end_chunk_idx, snapshot_len)
-        for _, _, start_chunk_idx, end_chunk_idx, snapshot_len in snapshots
+        (start_chunk_idx, end_chunk_idx, snapshot_len, is_final_prompt_boundary)
+        for (
+            _cache,
+            _chunks,
+            start_chunk_idx,
+            end_chunk_idx,
+            snapshot_len,
+            is_final_prompt_boundary,
+        ) in snapshots
     ] == [
-        (0, 1, C),
+        (0, 1, C, False),
     ]
 
 
@@ -785,7 +809,7 @@ def test_batch_generator_aligns_restored_prefill_only_for_cache_saves(monkeypatc
         return [len(call["input_ids"][0]) for call in model.calls]
 
     assert call_lengths(None, steps=2) == [4, 3]
-    assert call_lengths(lambda *_args: None, steps=3) == [2, 4, 1]
+    assert call_lengths(lambda *_args, **_kwargs: None, steps=3) == [2, 4, 1]
 
 
 def test_batch_generator_state_cache_lands_on_reusable_tail_boundary(monkeypatch):
@@ -806,8 +830,25 @@ def test_batch_generator_state_cache_lands_on_reusable_tail_boundary(monkeypatch
     prompt = list(range(1795))
     prefix_chunks = build_prefix_cache_chunks(prompt, [])
 
-    def save_snapshot(cache, chunks, start_chunk_idx, end_chunk_idx, snapshot_len):
-        snapshots.append((cache, chunks, start_chunk_idx, end_chunk_idx, snapshot_len))
+    def save_snapshot(
+        cache,
+        chunks,
+        start_chunk_idx,
+        end_chunk_idx,
+        snapshot_len,
+        *,
+        is_final_prompt_boundary,
+    ):
+        snapshots.append(
+            (
+                cache,
+                chunks,
+                start_chunk_idx,
+                end_chunk_idx,
+                snapshot_len,
+                is_final_prompt_boundary,
+            )
+        )
 
     try:
         generator.insert(
@@ -830,9 +871,16 @@ def test_batch_generator_state_cache_lands_on_reusable_tail_boundary(monkeypatch
 
     assert [len(call["input_ids"][0]) for call in model.calls] == [3 * C, 259]
     assert [
-        (start_chunk_idx, end_chunk_idx, snapshot_len)
-        for _, _, start_chunk_idx, end_chunk_idx, snapshot_len in snapshots
-    ][0] == (0, 3, 3 * C)
+        (start_chunk_idx, end_chunk_idx, snapshot_len, is_final_prompt_boundary)
+        for (
+            _cache,
+            _chunks,
+            start_chunk_idx,
+            end_chunk_idx,
+            snapshot_len,
+            is_final_prompt_boundary,
+        ) in snapshots
+    ][0] == (0, 3, 3 * C, False)
 
 
 def test_batch_generator_defers_clear_cache_until_delay(monkeypatch):

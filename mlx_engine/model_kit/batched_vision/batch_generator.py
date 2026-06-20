@@ -8,7 +8,7 @@ import contextlib
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Protocol
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -49,9 +49,22 @@ logger = logging.getLogger(__name__)
 
 DEFERRED_CLEAR_DELAY_STEPS = 8
 
-PromptCacheSaveCallback = Callable[
-    [list[Any], list[PromptPrefixChunk], int, int, int], None
-]
+class PromptCacheSaveCallback(Protocol):
+    """Receives prompt-cache snapshots that cross reusable prefix chunks."""
+
+    def __call__(
+        self,
+        prompt_cache: list[Any],
+        prefix_chunks: list[PromptPrefixChunk],
+        start_chunk_idx: int,
+        end_chunk_idx: int,
+        snapshot_len: int,
+        *,
+        is_final_prompt_boundary: bool,
+    ) -> None:
+        """Handle a snapshot emitted by prompt prefill or decode."""
+
+
 LogitsProcessor = Callable[[mx.array, mx.array], mx.array]
 
 
@@ -704,6 +717,7 @@ class GenerationBatch:
                 next_chunk_idx,
                 end_chunk_idx,
                 current_len,
+                is_final_prompt_boundary=False,
             )
         except Exception:
             logger.debug("Skipping decode prompt-cache snapshot.", exc_info=True)
@@ -957,7 +971,12 @@ class _PromptPrefill:
     def _drop_processed_prompt_kwargs(self, n: int) -> None:
         self._prompt_kwargs = drop_prompt_kwargs_prefix(self._prompt_kwargs, n)
 
-    def _emit_cache_save_snapshots(self) -> None:
+    def _emit_cache_save_snapshots(
+        self,
+        *,
+        is_final_prompt_boundary: bool = False,
+    ) -> None:
+        """Emit prompt-cache snapshots crossed by the current prefill state."""
         try:
             save_state = self._prefix_cache_save_state
             if save_state.callback is None:
@@ -985,6 +1004,7 @@ class _PromptPrefill:
                 start_chunk_idx,
                 end_chunk_idx,
                 processed,
+                is_final_prompt_boundary=is_final_prompt_boundary,
             )
         except Exception:
             logger.debug("Skipping prefill prompt-cache snapshot.", exc_info=True)
@@ -1005,7 +1025,7 @@ class _PromptPrefill:
         finally:
             _clear_qwen3_5_text_rope_state(self.model, prompt_kwargs)
         self._processed_prefix_len = len(self._all_tokens) + len(self._prompt_token_ids)
-        self._emit_cache_save_snapshots()
+        self._emit_cache_save_snapshots(is_final_prompt_boundary=True)
         prompt_responses = self.progress_responses()
         logits = output.logits if hasattr(output, "logits") else output
         logits = logits[:, -1, :]

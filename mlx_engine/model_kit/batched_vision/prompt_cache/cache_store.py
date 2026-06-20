@@ -439,6 +439,7 @@ class VlmPromptCacheStore:
         prefix_chunks: list[PromptPrefixChunk],
         prompt_cache: list[Any],
         save_state_checkpoint: bool = True,
+        is_final_prompt_boundary: bool = False,
     ) -> PendingPromptCacheSave:
         """Prepare a cache save for the cache I/O thread."""
         record_caches, record_kinds = prepare_prompt_cache_records_for_chunk(
@@ -511,6 +512,7 @@ class VlmPromptCacheStore:
             prefix_chunks=prefix_chunks,
             cache_layout=layout,
             records=records,
+            is_final_prompt_boundary=is_final_prompt_boundary,
         )
 
     def _kv_span_start(
