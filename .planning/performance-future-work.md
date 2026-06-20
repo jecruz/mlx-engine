@@ -8,6 +8,7 @@ Related issue: Redmine `#1190`
 
 - Keep the restore-time `mx.eval(...)` safety barrier. Removing it caused a warm-restore stream failure.
 - Keep the path-based safetensor load optimization. It retained quality and produced the strongest repeatable VLM cache-load win.
+- Keep one-step KV span coalescing. The full-prefix KV span candidate was rejected on 2026-06-20 because it regressed persistent-cache warm restore performance.
 - Do not treat forced unload during active generation as a performance regression. That behavior is the expected guard path.
 - Treat the empty `stopGenerating()` replay warning as a separate runtime/integration issue, not as a performance win or loss.
 - Treat the restore-materialization track as paused. Two eager candidates stayed below the promotion threshold or regressed decode throughput.
@@ -15,7 +16,9 @@ Related issue: Redmine `#1190`
 ## Remaining experiments worth trying
 
 1. Persistent VLM record layout
-   - Pre-concatenate compatible KV-delta records during save.
+   - Do not retry the already-rejected full-prefix KV span strategy without a different write-amplification plan.
+   - Prefer alternatives that reduce restore materialization without doubling large persistent KV writes.
+   - If pre-concatenating compatible KV-delta records during save, make it selective and prove it improves the persistent-cache benchmark.
    - Keep the existing record format readable so old caches still load.
    - Goal: reduce restore assembly/materialization cost without removing stream safety.
 
@@ -58,11 +61,20 @@ Related issue: Redmine `#1190`
 
 ## Recommended resume order
 
-1. Design the persistent VLM record-layout candidate.
-2. Prototype save-time pre-concatenation for compatible KV-delta records.
-3. Bench it against the retained path-load baseline.
-4. Run the deterministic quality compare.
-5. Promote only if quality passes and the end-to-end gain is real.
+1. Design a lower-write-amplification persistent VLM record-layout candidate.
+2. Bench it against the retained path-load baseline in persistent-cache mode.
+3. Run the deterministic quality compare.
+4. Promote only if quality passes and the end-to-end gain is real.
+
+## Rejected experiments
+
+- 2026-06-20 full-prefix KV span records:
+  - Change: generalized one-step KV coalescing into full-prefix packed KV spans.
+  - Functional tests passed, but persistent-cache benchmark failed the performance gate.
+  - Fair comparison command used persistent VLM cache root and `--include-output-text`.
+  - Candidate report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045531Z-shared-bench.json`
+  - Quality/performance compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045531Z-vlm-full-prefix-persistent-quality-compare.json`
+  - Result: `status=fail`, TTFT `+7.786%`, decode TPS `-33.500%`, total latency `+8.972%` versus the retained baseline.
 
 ## Validation to rerun after the next change
 
