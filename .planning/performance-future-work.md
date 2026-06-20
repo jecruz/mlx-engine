@@ -9,6 +9,7 @@ Related issue: Redmine `#1190`
 - Keep the restore-time `mx.eval(...)` safety barrier. Removing it caused a warm-restore stream failure.
 - Keep the path-based safetensor load optimization. It retained quality and produced the strongest repeatable VLM cache-load win.
 - Keep one-step KV span coalescing. The full-prefix KV span candidate was rejected on 2026-06-20 because it regressed persistent-cache warm restore performance.
+- Keep the redundant current-only KV record skip for chunks that already save a two-chunk KV span. It reduced persistent-cache benchmark TTFT and total latency while preserving quality.
 - Do not treat forced unload during active generation as a performance regression. That behavior is the expected guard path.
 - Treat the empty `stopGenerating()` replay warning as a separate runtime/integration issue, not as a performance win or loss.
 - Treat the restore-materialization track as paused. Two eager candidates stayed below the promotion threshold or regressed decode throughput.
@@ -75,6 +76,15 @@ Related issue: Redmine `#1190`
   - Candidate report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045531Z-shared-bench.json`
   - Quality/performance compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045531Z-vlm-full-prefix-persistent-quality-compare.json`
   - Result: `status=fail`, TTFT `+7.786%`, decode TPS `-33.500%`, total latency `+8.972%` versus the retained baseline.
+
+## Retained experiments
+
+- 2026-06-20 skip redundant current-only KV records:
+  - Change: when a chunk saves a two-chunk KV span, do not also persist the redundant current-only KV record for that chunk.
+  - Rationale: the restore planner already prefers the span record, so the current-only physical record adds write/storage cost without helping the selected restore chain.
+  - Candidate report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045942Z-shared-bench.json`
+  - Quality/performance compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045942Z-vlm-skip-redundant-kv-quality-compare.json`
+  - Result: `status=pass`, TTFT `-3.736%`, decode TPS `-5.700%`, total latency `-3.297%` versus the retained baseline.
 
 ## Validation to rerun after the next change
 

@@ -457,50 +457,55 @@ class VlmPromptCacheStore:
             layer_indices = layout.layer_indices_by_kind.get(record_kind, [])
             if not layer_indices:
                 continue
-
-            chunk_record_caches = [
-                record_caches[idx]
-                for idx in layer_indices
-            ]
-            records.append(
-                self._prepare_record_save(
-                    chunk_key=chunk.key,
-                    record_kind=record_kind,
-                    layer_indices=layer_indices,
-                    record_cache=chunk_record_caches,
-                    chunk_start=(
-                        chunk.start
-                        if record_kind == RECORD_KIND_KV_DELTA
-                        else None
-                    ),
-                    chunk_end=(
-                        chunk.end if record_kind == RECORD_KIND_KV_DELTA else None
-                    ),
-                )
-            )
-            if record_kind == RECORD_KIND_KV_DELTA:
-                kv_span_start = self._kv_span_start(
+            kv_span_start = (
+                self._kv_span_start(
                     chunk=chunk,
                     prefix_chunks=prefix_chunks,
                 )
-                if kv_span_start is not None:
-                    records.append(
-                        self._prepare_record_save(
-                            chunk_key=chunk.key,
-                            record_kind=record_kind,
-                            layer_indices=layer_indices,
-                            record_cache=[
-                                _slice_kv_cache(
-                                    cache=prompt_cache[layer_idx],
-                                    chunk_start=kv_span_start,
-                                    chunk_end=chunk.end,
-                                )
-                                for layer_idx in layer_indices
-                            ],
-                            chunk_start=kv_span_start,
-                            chunk_end=chunk.end,
-                        )
+                if record_kind == RECORD_KIND_KV_DELTA
+                else None
+            )
+
+            if kv_span_start is None:
+                chunk_record_caches = [
+                    record_caches[idx]
+                    for idx in layer_indices
+                ]
+                records.append(
+                    self._prepare_record_save(
+                        chunk_key=chunk.key,
+                        record_kind=record_kind,
+                        layer_indices=layer_indices,
+                        record_cache=chunk_record_caches,
+                        chunk_start=(
+                            chunk.start
+                            if record_kind == RECORD_KIND_KV_DELTA
+                            else None
+                        ),
+                        chunk_end=(
+                            chunk.end if record_kind == RECORD_KIND_KV_DELTA else None
+                        ),
                     )
+                )
+
+            if kv_span_start is not None:
+                records.append(
+                    self._prepare_record_save(
+                        chunk_key=chunk.key,
+                        record_kind=record_kind,
+                        layer_indices=layer_indices,
+                        record_cache=[
+                            _slice_kv_cache(
+                                cache=prompt_cache[layer_idx],
+                                chunk_start=kv_span_start,
+                                chunk_end=chunk.end,
+                            )
+                            for layer_idx in layer_indices
+                        ],
+                        chunk_start=kv_span_start,
+                        chunk_end=chunk.end,
+                    )
+                )
 
         return PendingPromptCacheSave(
             prefix_chunks=prefix_chunks,

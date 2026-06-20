@@ -12,6 +12,7 @@ from mlx_engine.model_kit.batched_vision.prompt_cache.types import (
     DEFAULT_PREFIX_CHUNK_SIZE,
     PreparedPromptMetadata,
     PromptImageSpan,
+    RECORD_KIND_KV_DELTA,
     RECORD_KIND_ROTATING_DELTA,
     RECORD_KIND_STATE_CHECKPOINT,
     make_record_key,
@@ -154,6 +155,39 @@ def test_cache_store_restores_reusable_prefix_tail(cache_store):
     assert loaded.cached_prefix_len == 599
     assert kv_keys.shape[2] == 599
     assert boundary_state.item() == 599
+
+
+def test_cache_store_skips_redundant_current_kv_when_span_exists(cache_store):
+    """Two-chunk KV spans should replace redundant current-only KV records."""
+    prompt_input_ids = list(range((3 * C) + 100))
+    chunks = build_prefix_cache_chunks(prompt_input_ids, [])
+
+    for chunk in chunks[:3]:
+        _save_chunk(cache_store, chunk, chunks, _prompt_cache(chunk.end))
+
+    current_only_key = (
+        f"{make_record_key(chunks[2].key, RECORD_KIND_KV_DELTA)}"
+        f":span:{chunks[2].start}:{chunks[2].end}"
+    )
+    span_key = (
+        f"{make_record_key(chunks[2].key, RECORD_KIND_KV_DELTA)}"
+        f":span:{chunks[1].start}:{chunks[2].end}"
+    )
+    stats = cache_store.snapshot_stats()
+    assert current_only_key not in stats.record_sizes_by_key
+    assert span_key in stats.record_sizes_by_key
+
+    restore_plan = cache_store.plan_longest_prefix_restore(prompt_input_ids, [])
+    assert restore_plan is not None
+    assert span_key in restore_plan.record_keys_by_chunk_key[chunks[2].key]
+    loaded = cache_store.load_restore_plan(restore_plan)
+
+    kv_keys, _ = loaded.prompt_cache[0].state
+    boundary_state = loaded.prompt_cache[1][0]
+    mx.eval(kv_keys, boundary_state)
+    assert loaded.cached_prefix_len == chunks[2].end
+    assert kv_keys.shape[2] == chunks[2].end
+    assert boundary_state.item() == chunks[2].end
 
 
 def test_cache_store_records_save_and_restore_latency_metrics(cache_store):
