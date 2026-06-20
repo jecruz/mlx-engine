@@ -319,3 +319,51 @@ This confirms the reverted branch is stable and still quality-safe. Because the
 decode rate remains lower and the restore-materialization candidate failed the
 two-attempt promotion threshold, further work should move to a different
 subsystem rather than continuing eager per-record materialization.
+
+## Candidate A Rerun: Skip mx.contiguous (2026-06-20)
+
+### Test
+
+Ran the existing restore-op microbenchmark after fixing its stale MLX
+`array.flags` diagnostic:
+
+```bash
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  .ecc/benchmarks/profile_eval_breakdown.py
+```
+
+The benchmark models a realistic restore shape:
+
+- 28 layers
+- 3 chunks
+- 2048 tokens per chunk
+- 4 KV heads
+- 128 head dim
+- 336 MB total KV data in float16
+
+### Result
+
+```text
+concat (lazy graph build, no eval)      median 0.03 ms
+concat + eval (no contiguous)           median 1.50 ms
+contiguous only (pre-concat input)      median 0.05 ms
+concat + contiguous + eval (current)    median 1.48 ms
+```
+
+Safety check:
+
+```text
+matmul on non-contiguous keys: OK
+matmul on contiguous keys: OK
+Max difference: 0.000000
+```
+
+### Decision
+
+Reject Candidate A for production. The contiguous copy is not the restore
+bottleneck in this profile; its median cost is about `0.05 ms`, and the current
+`concat + contiguous + eval` path is effectively tied with `concat + eval`.
+
+Do not remove `mx.contiguous` from restore assembly for this purpose. The next
+meaningful path remains lower-write-amplification record layout, not
+contiguous-copy removal.

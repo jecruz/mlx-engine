@@ -13,6 +13,7 @@ Related issue: Redmine `#1190`
 - Do not treat forced unload during active generation as a performance regression. That behavior is the expected guard path.
 - Treat the empty `stopGenerating()` replay warning as a separate runtime/integration issue, not as a performance win or loss.
 - Treat the restore-materialization track as paused. Two eager candidates stayed below the promotion threshold or regressed decode throughput.
+- Treat contiguous-copy removal as rejected for restore eval work. The 2026-06-20 microbenchmark showed `mx.contiguous` median cost around `0.05 ms` and no meaningful difference between `concat + eval` and the current `concat + contiguous + eval` path.
 
 ## Remaining experiments worth trying
 
@@ -26,6 +27,7 @@ Related issue: Redmine `#1190`
 2. Record packing and cache-layout redesign
    - Compare current one-record-at-a-time restore assembly with a layout that stores more of the final restored tensor structure up front.
    - Measure whether this reduces Python-side overhead, file opens, and post-load materialization.
+   - Do not spend time removing `mx.contiguous` from restore assembly for this goal; the measured cost is below the promotion threshold.
 
 3. Prompt-processing and prefill tuning
    - Sweep `prefill_step_size` for the model families that matter here:
@@ -76,6 +78,12 @@ Related issue: Redmine `#1190`
   - Candidate report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045531Z-shared-bench.json`
   - Quality/performance compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045531Z-vlm-full-prefix-persistent-quality-compare.json`
   - Result: `status=fail`, TTFT `+7.786%`, decode TPS `-33.500%`, total latency `+8.972%` versus the retained baseline.
+
+- 2026-06-20 remove/skip `mx.contiguous` in restore assembly:
+  - Change considered: assemble KV/rotating restore caches from concatenated arrays without the extra contiguous copy.
+  - Evidence: `.ecc/benchmarks/profile_eval_breakdown.py` with 28 layers, 3 chunks, 2048-token chunks, and 336 MB total KV data.
+  - Result: rejected before production code change. `concat + eval` median `1.50 ms`; current `concat + contiguous + eval` median `1.48 ms`; `contiguous only` median `0.05 ms`.
+  - Safety check: simple matmul matched exactly, but performance evidence showed no meaningful win.
 
 ## Retained experiments
 
