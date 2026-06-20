@@ -85,6 +85,12 @@ Related issue: Redmine `#1190`
   - Candidate report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045942Z-shared-bench.json`
   - Quality/performance compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045942Z-vlm-skip-redundant-kv-quality-compare.json`
   - Result: `status=pass`, TTFT `-3.736%`, decode TPS `-5.700%`, total latency `-3.297%` versus the retained baseline.
+  - Repeat report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T050205Z-shared-bench.json`
+  - Repeat compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T050205Z-vlm-skip-redundant-kv-r2-quality-compare.json`
+  - Repeat result: `status=pass`, TTFT `-3.013%`, decode TPS `-4.083%`, total latency `-2.566%` versus the retained baseline.
+  - Timing profile report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T050231Z-shared-bench.json`
+  - Timing profile compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T050231Z-vlm-skip-redundant-kv-profile-quality-compare.json`
+  - Timing profile result: `status=pass`, restore `records=5`, `load_chunks_ms=1.299`, `assemble_ms=0.035`, `eval_ms=4.258`, warm TTFT `0.017111s`.
 
 ## Validation to rerun after the next change
 
