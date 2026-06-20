@@ -74,17 +74,63 @@ def terminal_packed_replace_final_layout(
     }
 
 
+def snapshot_packed_replace_final_layout(
+    chunk_count: int,
+    *,
+    chunks_per_snapshot: int,
+) -> dict[str, float | int | str]:
+    """Return costs for packing the final chunk of each prefill snapshot.
+
+    This models the risky implementation path where "terminal" is interpreted
+    as the final chunk in each save snapshot. In the VLM prefill path, that can
+    happen repeatedly before the true final prompt boundary.
+    """
+    validate_chunk_count(chunk_count)
+    if chunks_per_snapshot < 1:
+        raise ValueError("chunks_per_snapshot must be positive")
+    current_units = int(current_one_step_layout(chunk_count)["write_kv_chunk_units"])
+    write_units = 0
+    for chunk_index in range(chunk_count):
+        is_snapshot_end = (
+            (chunk_index + 1) % chunks_per_snapshot == 0
+            or chunk_index == chunk_count - 1
+        )
+        if is_snapshot_end:
+            write_units += chunk_index + 1
+        elif chunk_index == 0:
+            write_units += 1
+        else:
+            write_units += 2
+    return {
+        "layout": "snapshot_packed_replace_final",
+        "chunk_count": chunk_count,
+        "chunks_per_snapshot": chunks_per_snapshot,
+        "write_kv_chunk_units": write_units,
+        "restore_kv_chunk_units": chunk_count,
+        "restore_kv_records": 1,
+        "write_amp_vs_current": round(write_units / current_units, 3),
+    }
+
+
 def validate_chunk_count(chunk_count: int) -> None:
     """Reject invalid chunk counts for cost-model inputs."""
     if chunk_count < 1:
         raise ValueError("chunk_count must be positive")
 
 
-def compare_layouts(chunk_count: int) -> list[dict[str, float | int | str]]:
+def compare_layouts(
+    chunk_count: int,
+    *,
+    chunks_per_snapshot: int = 2,
+) -> list[dict[str, float | int | str]]:
     """Return all modeled record-layout costs for a restore boundary."""
     return [
         current_one_step_layout(chunk_count),
         terminal_packed_replace_final_layout(chunk_count),
+        snapshot_packed_replace_final_layout(
+            chunk_count,
+            chunks_per_snapshot=chunks_per_snapshot,
+        ),
         terminal_packed_additive_layout(chunk_count),
         rejected_full_prefix_layout(chunk_count),
     ]
@@ -96,6 +142,7 @@ def parse_args() -> argparse.Namespace:
         description="Model VLM prompt-cache KV record-layout write/restore costs."
     )
     parser.add_argument("--chunks", type=int, default=8)
+    parser.add_argument("--chunks-per-snapshot", type=int, default=2)
     parser.add_argument("--json", action="store_true", help="emit JSON only")
     return parser.parse_args()
 
@@ -103,7 +150,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Run the model and print a concise comparison."""
     args = parse_args()
-    result = compare_layouts(args.chunks)
+    result = compare_layouts(
+        args.chunks,
+        chunks_per_snapshot=args.chunks_per_snapshot,
+    )
     if args.json:
         print(json.dumps(result, sort_keys=True))
         return

@@ -10,6 +10,9 @@ def test_vlm_record_layout_model_compares_eight_chunk_restore_boundary():
     assert rows["terminal_packed_replace_final"]["write_kv_chunk_units"] == 21
     assert rows["terminal_packed_replace_final"]["restore_kv_records"] == 1
     assert rows["terminal_packed_replace_final"]["write_amp_vs_current"] == 1.4
+    assert rows["snapshot_packed_replace_final"]["write_kv_chunk_units"] == 27
+    assert rows["snapshot_packed_replace_final"]["restore_kv_records"] == 1
+    assert rows["snapshot_packed_replace_final"]["write_amp_vs_current"] == 1.8
     assert rows["terminal_packed_additive"]["write_kv_chunk_units"] == 23
     assert rows["terminal_packed_additive"]["write_amp_vs_current"] == 1.533
     assert rows["rejected_full_prefix_every_boundary"]["write_kv_chunk_units"] == 36

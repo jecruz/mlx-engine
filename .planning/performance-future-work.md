@@ -139,12 +139,14 @@ Related issue: Redmine `#1190`
 
 - 2026-06-20 record-layout cost model:
   - Tool: `benchmarks/vlm_record_layout_model.py`.
-  - Command: `.venv-py312/bin/python benchmarks/vlm_record_layout_model.py --chunks 8 --json`.
+  - Command: `.venv-py312/bin/python benchmarks/vlm_record_layout_model.py --chunks 8 --chunks-per-snapshot 2 --json`.
   - Current one-step layout: writes `15` KV chunk-units and restores `4` KV records for an 8-chunk boundary.
   - Terminal packed replace-final candidate: writes `21` KV chunk-units, restores `1` KV record, write amplification `1.4x` versus current.
+  - Snapshot-boundary packed replace-final candidate: writes `27` KV chunk-units, restores `1` KV record, write amplification `1.8x` versus current.
   - Terminal packed additive candidate: writes `23` KV chunk-units, restores `1` KV record, write amplification `1.533x` versus current.
   - Rejected full-prefix-every-boundary layout: writes `36` KV chunk-units, restores `1` KV record, write amplification `2.4x` versus current.
   - Interpretation: terminal-only packing is materially less wasteful than the rejected full-prefix strategy, but it still does not reduce required restore KV bytes. It is only worth implementing if reducing restore record count can measurably beat the extra write cost and preserve quality.
+  - Implementation constraint: do not use `save_state_checkpoint=True` alone as the terminal-packing trigger. It marks the last chunk of each save snapshot, not only the true final prompt boundary; with the latest 8-chunk run and 2 chunks per snapshot, that naive trigger models as `1.8x` write amplification.
 
 ## Validation to rerun after the next change
 

@@ -186,7 +186,7 @@ To compare candidate VLM KV record layouts before changing persistent-cache
 semantics, run the token-normalized record-layout model:
 
 ```bash
-python benchmarks/vlm_record_layout_model.py --chunks 8
+python benchmarks/vlm_record_layout_model.py --chunks 8 --chunks-per-snapshot 2
 ```
 
 ## VLM Prompt Cache Persistence
