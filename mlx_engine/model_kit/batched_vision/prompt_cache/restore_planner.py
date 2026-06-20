@@ -63,7 +63,15 @@ class PromptCacheRestorePlanner:
             if not self._layout.layer_indices_by_kind.get(RECORD_KIND_KV_DELTA):
                 continue
 
-            kv_record_key = self._select_kv_record_key(chunk)
+            min_kv_span_start = (
+                chunks[idx - 1].start
+                if idx > 0 and chunks[idx - 1].end == chunk.start
+                else chunk.start
+            )
+            kv_record_key = self._select_kv_record_key(
+                chunk,
+                min_span_start=min_kv_span_start,
+            )
             if not kv_record_key:
                 return None
 
@@ -136,9 +144,17 @@ class PromptCacheRestorePlanner:
         )
 
     def _select_kv_record_key(
-        self, chunk: PromptPrefixChunk
+        self,
+        chunk: PromptPrefixChunk,
+        *,
+        min_span_start: int,
     ) -> str | None:
-        """Return the preferred KV record key for a chunk, with span metadata support."""
+        """Return the preferred bounded KV record key for a chunk.
+
+        Production saves only one-step KV spans that cover the current chunk
+        plus its immediate predecessor. Ignore wider experimental spans so old
+        persistent indexes cannot select the rejected full-prefix format.
+        """
         plain_record_key = make_record_key(chunk.key, RECORD_KIND_KV_DELTA)
         span_candidate_keys = []
         for (
@@ -156,6 +172,8 @@ class PromptCacheRestorePlanner:
                 continue
             span_start, span_end = chunk_span
             if span_start is None or span_end is None:
+                continue
+            if span_start < min_span_start:
                 continue
             if span_start <= chunk.start <= span_end and span_end >= chunk.end:
                 span_candidate_keys.append((span_start, span_end, record_key))

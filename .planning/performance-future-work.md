@@ -10,6 +10,7 @@ Related issue: Redmine `#1190`
 - Keep the path-based safetensor load optimization. It retained quality and produced the strongest repeatable VLM cache-load win.
 - Keep one-step KV span coalescing. The full-prefix KV span candidate was rejected on 2026-06-20 because it regressed persistent-cache warm restore performance.
 - Keep the redundant current-only KV record skip for chunks that already save a two-chunk KV span. It reduced persistent-cache benchmark TTFT and total latency while preserving quality.
+- Keep KV span selection bounded to the current chunk plus its immediate predecessor. Full-prefix span records remain a rejected format and should not win restore planning if stale experimental records exist in a persistent index.
 - Do not treat forced unload during active generation as a performance regression. That behavior is the expected guard path.
 - Treat the empty `stopGenerating()` replay warning as a separate runtime/integration issue, not as a performance win or loss.
 - Treat the restore-materialization track as paused. Two eager candidates stayed below the promotion threshold or regressed decode throughput.
@@ -19,6 +20,7 @@ Related issue: Redmine `#1190`
 
 1. Persistent VLM record layout
    - Do not retry the already-rejected full-prefix KV span strategy without a different write-amplification plan.
+   - Preserve the planner guard that ignores over-wide KV spans unless a new candidate proves a wider span with benchmark and quality evidence.
    - Prefer alternatives that reduce restore materialization without doubling large persistent KV writes.
    - If pre-concatenating compatible KV-delta records during save, make it selective and prove it improves the persistent-cache benchmark.
    - Keep the existing record format readable so old caches still load.
@@ -78,6 +80,7 @@ Related issue: Redmine `#1190`
   - Candidate report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045531Z-shared-bench.json`
   - Quality/performance compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045531Z-vlm-full-prefix-persistent-quality-compare.json`
   - Result: `status=fail`, TTFT `+7.786%`, decode TPS `-33.500%`, total latency `+8.972%` versus the retained baseline.
+  - Follow-up guardrail: restore planning now ignores over-wide KV spans when a valid bounded local span exists, so stale experimental full-prefix records cannot outrank the retained one-step span format.
 
 - 2026-06-20 remove/skip `mx.contiguous` in restore assembly:
   - Change considered: assemble KV/rotating restore caches from concatenated arrays without the extra contiguous copy.
