@@ -691,12 +691,12 @@ def main() -> None:
                 )
             else:
                 shutdown_workers(rank)
-            unload(model_kit)
+            unload(model_kit, force=True)
     else:
         try:
             run_worker_loop(rank, model_kit)
         finally:
-            unload(model_kit)
+            unload(model_kit, force=True)
 
 
 if __name__ == "__main__":

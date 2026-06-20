@@ -33,6 +33,10 @@ from mlx_engine.utils.generation_result import (
     GenerationResult,
     construct_user_cancelled_result,
 )
+from mlx_engine.utils.request_state import (
+    model_kit_has_active_requests,
+    request_id_is_empty,
+)
 from mlx_engine.utils.set_seed import set_seed
 from mlx_engine.utils.speculative_decoding import (
     determine_draft_model_for_generation,
@@ -1221,8 +1225,8 @@ def stop_generation(
     """
     Register stop request based off of request_id
     """
-    if request_id is None or request_id == "":
-        logger.error("request_id cannot be empty in stop request")
+    if request_id_is_empty(request_id):
+        logger.debug("Ignoring empty stop request")
         return
 
     BatchedVisionModelKit = _load_batched_vision_model_kit()
@@ -1239,7 +1243,12 @@ def stop_generation(
 
 def unload(
     model_kit: LoadedModelKit,
+    *,
+    force: bool = False,
 ):
+    """Shutdown a loaded model, blocking accidental unloads while requests run."""
+    if not force and model_kit_has_active_requests(model_kit):
+        raise RuntimeError("Cannot unload a model while requests are still active")
     model_kit.shutdown()
 
 

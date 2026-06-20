@@ -153,7 +153,7 @@ def main() -> None:
         run_worker_loop(rank, model_kit)
     finally:
         logger.info("Worker rank %s unloading model kit", rank)
-        unload(model_kit)
+        unload(model_kit, force=True)
 
 
 if __name__ == "__main__":

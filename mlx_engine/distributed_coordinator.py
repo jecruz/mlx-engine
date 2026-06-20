@@ -457,7 +457,7 @@ def main() -> None:
         run_command_loop(rank, model_kit)
     finally:
         logger.info("Coordinator rank %s unloading model kit", rank)
-        unload(model_kit)
+        unload(model_kit, force=True)
 
 
 if __name__ == "__main__":

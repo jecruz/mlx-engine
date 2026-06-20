@@ -28,6 +28,19 @@ OFFICIAL_ID="mlx-llm-mac-arm64-apple-metal-advsimd"
 BACKEND_ID="${OFFICIAL_ID}-${ENGINE_NAME}"
 BACKEND_DIR="${BACKEND_ID}-${ENGINE_VERSION}"
 
+normalize_version() {
+  local raw_version="$1"
+  if [[ "$raw_version" =~ ^([0-9]{4})([0-9]{2})([0-9]{2})$ ]]; then
+    echo "${BASH_REMATCH[1]}.$((10#${BASH_REMATCH[2]})).$((10#${BASH_REMATCH[3]}))"
+    return
+  fi
+  echo "$raw_version"
+}
+
+ENGINE_VERSION="$(normalize_version "$ENGINE_VERSION")"
+BACKEND_ID="${OFFICIAL_ID}-${ENGINE_NAME}"
+BACKEND_DIR="${BACKEND_ID}-${ENGINE_VERSION}"
+
 # --- Validate ---
 if [ ! -d "$LMSTUDIO_BACKENDS/${OFFICIAL_ID}-1.9.0" ]; then
   echo "ERROR: Official MLX backend not found. Install the MLX engine in LM Studio first."

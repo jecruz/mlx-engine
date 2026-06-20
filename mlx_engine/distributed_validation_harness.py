@@ -357,7 +357,7 @@ def run_rank(args: argparse.Namespace) -> int:
             else:
                 shutdown_workers(rank)
         if model_kit is not None:
-            unload(model_kit)
+            unload(model_kit, force=True)
 
 
 def parse_args() -> argparse.Namespace:
