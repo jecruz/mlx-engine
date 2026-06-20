@@ -1,4 +1,5 @@
 import mlx.core as mx
+import mlx_engine.model_kit.batched_vision.prompt_cache.coordinator as coordinator_module
 from mlx_engine.model_kit.batched_vision.prompt_cache.cache_store import (
     DiskPromptCacheRestorePlan,
 )
@@ -249,3 +250,59 @@ def test_coordinator_prefers_longer_disk_restore():
     assert restored.rope_deltas is None
     assert cache_store.loaded_plans == [cache_store.restore_plan]
     assert cache_store.recorded_tokens == [(512, 187)]
+
+
+def test_coordinator_disk_planning_timing_is_opt_in(monkeypatch):
+    """Disk restore planning should not log timing unless timing is enabled."""
+    cache_store = _FakeCacheStore(disk_prefix_len=512)
+    coordinator, _ = _coordinator(cache_store)
+    timing_events = []
+    monkeypatch.setattr(coordinator_module, "batched_timing_enabled", lambda: False)
+    monkeypatch.setattr(
+        coordinator_module,
+        "log_batched_timing",
+        lambda *args, **kwargs: timing_events.append((args, kwargs)),
+    )
+
+    restored = coordinator.restore(
+        prompt_input_ids=list(range(700)),
+        image_spans=[],
+    )
+
+    assert restored is not None
+    assert timing_events == []
+
+
+def test_coordinator_logs_disk_planning_timing_when_enabled(monkeypatch):
+    """Timing diagnostics should separate disk restore planning from loading."""
+    cache_store = _FakeCacheStore(disk_prefix_len=512)
+    cache_store.restore_plan.chunks = [object(), object()]
+    coordinator, _ = _coordinator(cache_store)
+    timing_events = []
+    monkeypatch.setattr(coordinator_module, "batched_timing_enabled", lambda: True)
+    monkeypatch.setattr(coordinator_module, "elapsed_ms", lambda start: 1.25)
+    monkeypatch.setattr(
+        coordinator_module,
+        "log_batched_timing",
+        lambda logger, event, **fields: timing_events.append((event, fields)),
+    )
+
+    restored = coordinator.restore(
+        prompt_input_ids=list(range(700)),
+        image_spans=[PromptImageSpan(start=10, end=20, image_hash="image")],
+    )
+
+    assert restored is not None
+    assert timing_events == [
+        (
+            "vlm_cache_restore_plan",
+            {
+                "prompt_tokens": 700,
+                "images": 1,
+                "cached_tokens": 512,
+                "chunks": 2,
+                "outcome": "hit",
+                "duration_ms": 1.25,
+            },
+        )
+    ]

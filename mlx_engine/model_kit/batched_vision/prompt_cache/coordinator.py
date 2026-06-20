@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
 from threading import Lock
+from time import perf_counter
 from typing import Any, Callable
 
 from mlx_engine.model_kit.batched_vision.prompt_cache.image_spans import (
@@ -17,6 +18,11 @@ from mlx_engine.model_kit.batched_vision.prompt_cache.cache_store import (
 )
 from mlx_engine.model_kit.batched_vision.prompt_cache.records import (
     PromptCacheRecordCoverageError,
+)
+from mlx_engine.utils.batched_timing import (
+    batched_timing_enabled,
+    elapsed_ms,
+    log_batched_timing,
 )
 from mlx_lm.models.cache import can_trim_prompt_cache, trim_prompt_cache
 
@@ -182,18 +188,37 @@ class VlmPromptCacheCoordinator:
         prompt_input_ids: list[int],
         image_spans: list[PromptImageSpan],
     ) -> DiskPromptCacheRestorePlan | None:
+        timing_enabled = batched_timing_enabled()
+        plan_start = perf_counter() if timing_enabled else None
+        plan = None
+        outcome = "miss"
         try:
-            return self._cache_store.plan_longest_prefix_restore(
+            plan = self._cache_store.plan_longest_prefix_restore(
                 prompt_input_ids,
                 image_spans,
             )
+            outcome = "hit" if plan is not None else "miss"
+            return plan
         except Exception:
+            outcome = "error"
             # Cache-store planning is an optimization; generation can recompute.
             logger.debug(
                 "Prompt cache store planning failed; treating it as a cache miss.",
                 exc_info=True,
             )
             return None
+        finally:
+            if timing_enabled:
+                log_batched_timing(
+                    logger,
+                    "vlm_cache_restore_plan",
+                    prompt_tokens=len(prompt_input_ids),
+                    images=len(image_spans),
+                    cached_tokens=0 if plan is None else plan.cached_prefix_len,
+                    chunks=0 if plan is None else len(plan.chunks),
+                    outcome=outcome,
+                    duration_ms=elapsed_ms(plan_start),
+                )
 
     def _take_hot_entry(self) -> _HotPromptCacheEntry | None:
         with self._hot_entry_lock:

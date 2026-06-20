@@ -45,6 +45,7 @@ Related issue: Redmine `#1190`
 4. Batched timing isolation
    - Use `MLX_ENGINE_BATCHED_TIMING=1` to separate:
      - model load
+     - disk restore planning via `vlm_cache_restore_plan`
      - prompt-cache preparation
      - `BatchGenerator.insert`
      - first-token latency
@@ -115,6 +116,12 @@ Related issue: Redmine `#1190`
   - Rationale: persistent caches can accumulate unrelated records; restore planning should scale with records for the requested chunk, not total index size times restore-chain length.
   - Behavior: selected restore chains are unchanged; the over-wide span guard and plain-record fallback remain in place.
   - Verification: `tests/test_batched_vision_restore_planner.py` includes a spy asserting unrelated KV records are not checked during span selection.
+
+- 2026-06-20 disk restore-planning timing:
+  - Change: emit `vlm_cache_restore_plan` when `MLX_ENGINE_BATCHED_TIMING=1`.
+  - Fields: `prompt_tokens`, `images`, `cached_tokens`, `chunks`, `outcome`, and `duration_ms`.
+  - Rationale: separate planner overhead from restore load/materialization timing before making further cache-layout changes.
+  - Behavior: timing is opt-in and does not alter hot/disk restore selection.
 
 ## Validation to rerun after the next change
 
