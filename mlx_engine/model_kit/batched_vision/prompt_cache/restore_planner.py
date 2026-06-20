@@ -34,6 +34,13 @@ class PromptCacheRestorePlanner:
         self._layout = layout
         self._record_metadata_by_key = record_metadata_by_key
         self._record_exists = record_exists
+        self._kv_record_keys_by_chunk_key: dict[str, list[str]] = {}
+        for record_key, metadata in record_metadata_by_key.items():
+            if metadata.record_kind == RECORD_KIND_KV_DELTA:
+                self._kv_record_keys_by_chunk_key.setdefault(
+                    metadata.chunk_key,
+                    [],
+                ).append(record_key)
 
     def restore_record_keys_for_chunk_chain(
         self, chunks: list[PromptPrefixChunk]
@@ -157,15 +164,9 @@ class PromptCacheRestorePlanner:
         """
         plain_record_key = make_record_key(chunk.key, RECORD_KIND_KV_DELTA)
         span_candidate_keys = []
-        for (
-            record_key,
-            metadata,
-        ) in self._record_metadata_by_key.items():
-            if (
-                metadata.chunk_key != chunk.key
-                or metadata.record_kind != RECORD_KIND_KV_DELTA
-                or not self._has_record(record_key)
-            ):
+        for record_key in self._kv_record_keys_by_chunk_key.get(chunk.key, []):
+            metadata = self._record_metadata_by_key[record_key]
+            if not self._has_record(record_key):
                 continue
             chunk_span = self._metadata_span(metadata)
             if chunk_span == (None, None):

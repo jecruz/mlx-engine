@@ -11,6 +11,7 @@ Related issue: Redmine `#1190`
 - Keep one-step KV span coalescing. The full-prefix KV span candidate was rejected on 2026-06-20 because it regressed persistent-cache warm restore performance.
 - Keep the redundant current-only KV record skip for chunks that already save a two-chunk KV span. It reduced persistent-cache benchmark TTFT and total latency while preserving quality.
 - Keep KV span selection bounded to the current chunk plus its immediate predecessor. Full-prefix span records remain a rejected format and should not win restore planning if stale experimental records exist in a persistent index.
+- Keep indexed KV-record lookup inside restore planning. It avoids scanning the full persistent record index once per chunk when selecting span records.
 - Do not treat forced unload during active generation as a performance regression. That behavior is the expected guard path.
 - Treat the empty `stopGenerating()` replay warning as a separate runtime/integration issue, not as a performance win or loss.
 - Treat the restore-materialization track as paused. Two eager candidates stayed below the promotion threshold or regressed decode throughput.
@@ -108,6 +109,12 @@ Related issue: Redmine `#1190`
   - Dense/code text-quality report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T050621Z-shared-bench.json`
   - Dense/code quality inspect: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T050621Z-qwen25-coder14b-deterministic-quality-inspect.json`
   - Dense/code result: `status=pass` for all five deterministic prompts on Qwen2.5-Coder-14B-Instruct-MLX-4bit.
+
+- 2026-06-20 indexed KV restore-planner lookup:
+  - Change: build a per-chunk KV record index once per `PromptCacheRestorePlanner` instead of scanning every persistent record for every chunk during span selection.
+  - Rationale: persistent caches can accumulate unrelated records; restore planning should scale with records for the requested chunk, not total index size times restore-chain length.
+  - Behavior: selected restore chains are unchanged; the over-wide span guard and plain-record fallback remain in place.
+  - Verification: `tests/test_batched_vision_restore_planner.py` includes a spy asserting unrelated KV records are not checked during span selection.
 
 ## Validation to rerun after the next change
 

@@ -256,3 +256,75 @@ def test_restore_planner_ignores_overwide_kv_span_when_local_span_exists():
             _record_key(chunks[2], RECORD_KIND_STATE_CHECKPOINT),
         ],
     }
+
+
+def test_restore_planner_span_lookup_skips_unrelated_kv_records():
+    """KV span selection should only inspect records for the target chunk."""
+    chunks = [_chunk(0, 256), _chunk(256, 512)]
+    local_span = _record_key_span(chunks[1], RECORD_KIND_KV_DELTA, 0, 512)
+    unrelated_chunk = _chunk(1024, 1280)
+    unrelated_span = _record_key_span(
+        unrelated_chunk,
+        RECORD_KIND_KV_DELTA,
+        768,
+        1280,
+    )
+    existing_records = {
+        local_span,
+        unrelated_span,
+        _record_key(chunks[0], RECORD_KIND_ROTATING_DELTA),
+        _record_key(chunks[1], RECORD_KIND_ROTATING_DELTA),
+        _record_key(chunks[1], RECORD_KIND_STATE_CHECKPOINT),
+    }
+    metadata_by_key = {
+        local_span: PromptCacheRecordMetadata(
+            chunk_key=chunks[1].key,
+            record_kind=RECORD_KIND_KV_DELTA,
+            layer_indices=[],
+            chunk_span=[0, 512],
+        ),
+        unrelated_span: PromptCacheRecordMetadata(
+            chunk_key=unrelated_chunk.key,
+            record_kind=RECORD_KIND_KV_DELTA,
+            layer_indices=[],
+            chunk_span=[768, 1280],
+        ),
+        _record_key(chunks[0], RECORD_KIND_ROTATING_DELTA): PromptCacheRecordMetadata(
+            chunk_key=chunks[0].key,
+            record_kind=RECORD_KIND_ROTATING_DELTA,
+            layer_indices=[],
+        ),
+        _record_key(chunks[1], RECORD_KIND_ROTATING_DELTA): PromptCacheRecordMetadata(
+            chunk_key=chunks[1].key,
+            record_kind=RECORD_KIND_ROTATING_DELTA,
+            layer_indices=[],
+        ),
+        _record_key(chunks[1], RECORD_KIND_STATE_CHECKPOINT): PromptCacheRecordMetadata(
+            chunk_key=chunks[1].key,
+            record_kind=RECORD_KIND_STATE_CHECKPOINT,
+            layer_indices=[],
+        ),
+    }
+    existence_checks = []
+
+    def record_exists(record_key: str) -> bool:
+        existence_checks.append(record_key)
+        return record_key in existing_records
+
+    planner = PromptCacheRestorePlanner(
+        layout=_layout(),
+        record_metadata_by_key=metadata_by_key,
+        record_exists=record_exists,
+    )
+
+    record_keys_by_chunk = planner.restore_record_keys_for_chunk_chain(chunks)
+
+    assert record_keys_by_chunk == {
+        chunks[0].key: [_record_key(chunks[0], RECORD_KIND_ROTATING_DELTA)],
+        chunks[1].key: [
+            local_span,
+            _record_key(chunks[1], RECORD_KIND_ROTATING_DELTA),
+            _record_key(chunks[1], RECORD_KIND_STATE_CHECKPOINT),
+        ],
+    }
+    assert unrelated_span not in existence_checks
