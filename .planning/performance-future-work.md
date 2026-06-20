@@ -68,10 +68,16 @@ Related issue: Redmine `#1190`
 
 ## Recommended resume order
 
-1. Design a lower-write-amplification persistent VLM record-layout candidate.
-2. Bench it against the retained path-load baseline in persistent-cache mode.
-3. Run the deterministic quality compare.
-4. Promote only if quality passes and the end-to-end gain is real.
+1. Treat restore planning as measured and no longer the dominant warm-restore
+   bottleneck for the retained LFM2.5-VL path.
+2. Focus the next restore optimization on reducing `eval_ms` / materialized KV
+   bytes without removing the restore-time `mx.eval(...)` safety barrier.
+3. Design a lower-write-amplification persistent VLM record-layout candidate
+   only if it can reduce materialized bytes without reintroducing full-prefix
+   write amplification.
+4. Bench it against the retained path-load baseline in persistent-cache mode.
+5. Run the deterministic quality compare.
+6. Promote only if quality passes and the end-to-end gain is real.
 
 ## Rejected experiments
 
@@ -124,6 +130,12 @@ Related issue: Redmine `#1190`
   - Fields: `prompt_tokens`, `images`, `cached_tokens`, `chunks`, `outcome`, and `duration_ms`.
   - Rationale: separate planner overhead from restore load/materialization timing before making further cache-layout changes.
   - Behavior: timing is opt-in and does not alter hot/disk restore selection.
+  - Timed VLM report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T060840Z-shared-bench.json`
+  - Quality/performance compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T060840Z-vlm-plan-timing-quality-compare.json`
+  - Result: `status=pass`, TTFT `-0.661%`, decode TPS `-10.599%`, total latency `+0.016%` versus retained baseline.
+  - Warm timing split: `vlm_cache_restore_plan.duration_ms=0.531`, `vlm_cache_restore_detail.load_chunks_ms=1.401`, `assemble_ms=0.035`, `eval_ms=4.484`, `duration_ms=6.026`.
+  - Interpretation: planner time is visible but smaller than record load and much smaller than restore `mx.eval`; next work should target materialized KV bytes or restore eval cost, not planner lookup.
+  - Limitation: both baseline and candidate rows triggered low completion-token warnings, but both retained the expected `toucan` keyword and the compare status passed.
 
 ## Validation to rerun after the next change
 
