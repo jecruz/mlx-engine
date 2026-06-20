@@ -182,6 +182,13 @@ python benchmarks/vlm_restore_planner_bench.py --index-chunks 4096 --restore-chu
 
 Use `--json` when collecting machine-readable benchmark output.
 
+To compare candidate VLM KV record layouts before changing persistent-cache
+semantics, run the token-normalized record-layout model:
+
+```bash
+python benchmarks/vlm_record_layout_model.py --chunks 8
+```
+
 ## VLM Prompt Cache Persistence
 
 Vision-model prompt-cache records are temporary by default and are cleaned up

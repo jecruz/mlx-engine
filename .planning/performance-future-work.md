@@ -137,6 +137,15 @@ Related issue: Redmine `#1190`
   - Interpretation: planner time is visible but smaller than record load and much smaller than restore `mx.eval`; next work should target materialized KV bytes or restore eval cost, not planner lookup.
   - Limitation: both baseline and candidate rows triggered low completion-token warnings, but both retained the expected `toucan` keyword and the compare status passed.
 
+- 2026-06-20 record-layout cost model:
+  - Tool: `benchmarks/vlm_record_layout_model.py`.
+  - Command: `.venv-py312/bin/python benchmarks/vlm_record_layout_model.py --chunks 8 --json`.
+  - Current one-step layout: writes `15` KV chunk-units and restores `4` KV records for an 8-chunk boundary.
+  - Terminal packed replace-final candidate: writes `21` KV chunk-units, restores `1` KV record, write amplification `1.4x` versus current.
+  - Terminal packed additive candidate: writes `23` KV chunk-units, restores `1` KV record, write amplification `1.533x` versus current.
+  - Rejected full-prefix-every-boundary layout: writes `36` KV chunk-units, restores `1` KV record, write amplification `2.4x` versus current.
+  - Interpretation: terminal-only packing is materially less wasteful than the rejected full-prefix strategy, but it still does not reduce required restore KV bytes. It is only worth implementing if reducing restore record count can measurably beat the extra write cost and preserve quality.
+
 ## Validation to rerun after the next change
 
 - `python3 shared_bench.py` with `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python`
