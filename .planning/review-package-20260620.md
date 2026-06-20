@@ -6,7 +6,7 @@
 - Base: `origin/main`
 - Head: `f34772e [#1190] Fix batched startup warmup blocking`
 - Redmine: `#1190`
-- Status: promotion-test pass, ready to push for review.
+- Status: promotion-test pass, pushed for storage/review handoff without an open PR.
 
 This branch packages the retained MLX-engine prompt/inference performance work:
 
@@ -105,7 +105,7 @@ tests/test_prefill_step_size.py::test_batched_prefill_step_size
 
 ## Next Review Actions
 
-1. Push `mlx-vlm-prompt-cache-perf` to `origin`.
-2. Open a PR against `main` or split the branch if reviewer feedback requires a smaller slice.
+1. Keep `mlx-vlm-prompt-cache-perf` pushed to `origin` without an open PR at this stage.
+2. Split the branch later if review requires a smaller slice.
 3. Re-run VLM and deterministic text quality gates only if the branch changes after this package.
 4. Continue restore `eval_ms` investigation in a follow-up branch without removing the restore-time `mx.eval(...)` safety barrier.

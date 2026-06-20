@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-20T05:34:50Z",
+  "timestamp": "2026-06-20T05:41:00Z",
   "context": "research",
   "status": "paused",
   "project": "MLX-engine prompt/inference performance",
@@ -49,7 +49,7 @@
   "remaining_tasks": [
     {
       "id": 1,
-      "name": "Package retained changes into reviewable commit or PR slice",
+      "name": "Package retained changes into reviewable branch slice",
       "status": "done",
       "notes": "Retained code changes are committed on mlx-vlm-prompt-cache-perf. Benchmark harness edits live in /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness, which is not a git repo."
     },
@@ -79,9 +79,9 @@
     },
     {
       "id": 6,
-      "name": "Push branch for review",
-      "status": "next",
-      "notes": "Review package written to /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/review-package-20260620.md. Promotion pytest group passed after the startup warmup fix."
+      "name": "Push branch for storage",
+      "status": "done",
+      "notes": "Branch mlx-vlm-prompt-cache-perf is pushed to origin. Review package written to /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/review-package-20260620.md. Promotion pytest group passed after the startup warmup fix. No PR should remain open at this stage."
     }
   ],
   "key_metrics": {
@@ -301,5 +301,5 @@
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619-pause-handoff.md",
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md"
   ],
-  "next_action": "Push mlx-vlm-prompt-cache-perf to origin, then open or prepare the PR review against main. Do not retry full-prefix KV span packing without a different write-amplification plan; current remaining warm-restore cost is eval_ms."
+  "next_action": "Keep branch mlx-vlm-prompt-cache-perf pushed on origin without an open PR, then continue restore eval/materialization investigation in a follow-up branch when ready. Do not retry full-prefix KV span packing without a different write-amplification plan; current remaining warm-restore cost is eval_ms."
 }
