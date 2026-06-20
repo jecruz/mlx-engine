@@ -116,6 +116,8 @@ Related issue: Redmine `#1190`
   - Rationale: persistent caches can accumulate unrelated records; restore planning should scale with records for the requested chunk, not total index size times restore-chain length.
   - Behavior: selected restore chains are unchanged; the over-wide span guard and plain-record fallback remain in place.
   - Verification: `tests/test_batched_vision_restore_planner.py` includes a spy asserting unrelated KV records are not checked during span selection.
+  - Benchmark tool: `benchmarks/vlm_restore_planner_bench.py`.
+  - Synthetic result: `--index-chunks 4096 --restore-chunks 128 --iterations 100 --json` showed indexed median `0.447250 ms`, legacy scan median `3.836771 ms`, speedup `8.579x`.
 
 - 2026-06-20 disk restore-planning timing:
   - Change: emit `vlm_cache_restore_plan` when `MLX_ENGINE_BATCHED_TIMING=1`.

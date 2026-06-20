@@ -173,6 +173,15 @@ MLX_ENGINE_BATCHED_TIMING=1 python batched_demo.py --model /path/to/model
 The switch is disabled by default so normal benchmark runs are not affected by diagnostic
 logging overhead.
 
+To isolate VLM persistent-cache restore-planner overhead without loading a model
+or touching Metal, run the synthetic planner benchmark:
+
+```bash
+python benchmarks/vlm_restore_planner_bench.py --index-chunks 4096 --restore-chunks 128 --iterations 100
+```
+
+Use `--json` when collecting machine-readable benchmark output.
+
 ## VLM Prompt Cache Persistence
 
 Vision-model prompt-cache records are temporary by default and are cleaned up
