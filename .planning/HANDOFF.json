@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "timestamp": "2026-06-19T03:00:00Z",
+  "timestamp": "2026-06-20T05:09:19Z",
   "context": "research",
   "status": "paused",
   "project": "MLX-engine prompt/inference performance",
@@ -32,6 +32,12 @@
       "name": "Restore-path profiling",
       "status": "done",
       "summary": "KV-delta load was reduced from 21.052 ms to 1.546-1.861 ms; remaining restore cost is dominated by mx.eval materialization."
+    },
+    {
+      "id": 5,
+      "name": "Persistent VLM record-layout candidate",
+      "status": "done",
+      "summary": "Full-prefix KV spans were rejected after persistent-cache regression; redundant current-only KV records are now skipped when a two-chunk KV span is saved, with repeated quality-passing latency improvement."
     }
   ],
   "remaining_tasks": [
@@ -56,8 +62,14 @@
     {
       "id": 4,
       "name": "Persistent VLM record-layout candidate",
-      "status": "not_started",
-      "notes": "Next implementation target: pre-concatenate compatible KV-delta records during save while keeping existing record format readable."
+      "status": "done",
+      "notes": "Implemented retained lower-write-amplification slice in commit 859f7c4: chunks that save a two-chunk KV span no longer also persist the redundant current-only KV record. Full-prefix KV span packing was rejected and documented in commit 8ad603a."
+    },
+    {
+      "id": 5,
+      "name": "Continue restore eval/materialization investigation",
+      "status": "next",
+      "notes": "Next implementation target: reduce retained warm-restore eval_ms without removing the restore-time mx.eval safety barrier. Current timing profile shows records=5, load_chunks_ms=1.299, assemble_ms=0.035, eval_ms=4.258, warm_ttft_s=0.017111."
     }
   ],
   "key_metrics": {
@@ -75,6 +87,15 @@
       "restore_detail_ms_after_range": "19.912-20.104",
       "warm_ttft_s_before": 0.059,
       "warm_ttft_s_after_range": "0.040-0.042"
+    },
+    "skip_redundant_kv_records_vs_retained_baseline": {
+      "first_compare": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T045942Z-vlm-skip-redundant-kv-quality-compare.json",
+      "repeat_compare": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T050205Z-vlm-skip-redundant-kv-r2-quality-compare.json",
+      "profile_compare": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260620T050231Z-vlm-skip-redundant-kv-profile-quality-compare.json",
+      "ttft_change_repeat": "-3.013%",
+      "total_latency_change_repeat": "-2.566%",
+      "decode_tps_change_repeat": "-4.083%",
+      "quality": "pass"
     }
   },
   "decisions": [
@@ -101,6 +122,14 @@
     {
       "decision": "Target persistent VLM record layout next",
       "rationale": "Dense/code validation passed, MoE validation is quality-blocked by model behavior, and unsafe mx.eval removal already produced cross-thread stream failures. The next likely performance win is reducing restore assembly/materialization cost without removing the safety barrier."
+    },
+    {
+      "decision": "Reject full-prefix KV span records",
+      "rationale": "Functional tests passed, but the fair persistent-cache benchmark failed: TTFT +7.786%, decode TPS -33.500%, total latency +8.972% versus retained baseline."
+    },
+    {
+      "decision": "Retain redundant current-only KV record skip",
+      "rationale": "The restore planner already prefers the two-chunk KV span. Skipping the redundant current-only physical record preserved quality and repeated with TTFT -3.013% and total latency -2.566% versus retained baseline."
     }
   ],
   "blockers": [
@@ -212,6 +241,22 @@
     {
       "command": "python3 shared_bench.py --engine mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/models/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit --runs 1 --max-tokens 160 --prompt-suite-json prompt_suites/task_diverse_deterministic_quality.json --mlx-engine-force-sequential --temperature 0 --top-p 1 --include-output-text",
       "result": "runtime passed; report /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T025355Z-shared-bench.json; quality inspect passed all five prompts"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_batched_vision_cache_store.py tests/test_batched_vision_restore_planner.py tests/test_batched_vision_coordinator.py tests/test_batched_vision_cache_io_thread.py tests/test_batched_vision_chunks.py tests/test_batched_vision_disk_budget.py tests/test_batched_vision_blob_store.py tests/test_request_state.py",
+      "result": "48 passed, 2 warnings"
+    },
+    {
+      "command": "python3 quality_compare.py --baseline reports/20260619T000646Z-shared-bench.json --candidate reports/20260620T050205Z-shared-bench.json --out reports/20260620T050205Z-vlm-skip-redundant-kv-r2-quality-compare.json",
+      "result": "status=pass; TTFT -3.013%; decode TPS -4.083%; total latency -2.566%"
+    },
+    {
+      "command": "python3 quality_compare.py --baseline reports/20260619T022103Z-shared-bench.json --candidate reports/20260620T050556Z-shared-bench.json --out reports/20260620T050556Z-vlm-image-quality-broadened-same-config-r2-compare.json",
+      "result": "status=pass; image_pair TTFT -29.227%, total latency -24.485%; image_toucan TTFT -63.157%, total latency -54.968%"
+    },
+    {
+      "command": "python3 quality_compare.py --candidate reports/20260620T050621Z-shared-bench.json --out reports/20260620T050621Z-qwen25-coder14b-deterministic-quality-inspect.json",
+      "result": "status=pass; all five deterministic dense/code prompts passed"
     }
   ],
   "required_reading": [
@@ -219,5 +264,5 @@
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619-pause-handoff.md",
     "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md"
   ],
-  "next_action": "Design a persistent VLM record-layout candidate that pre-concatenates compatible KV-delta records during save while keeping existing record format readable."
+  "next_action": "Package branch for review or continue the restore eval/materialization investigation. Do not retry full-prefix KV span packing without a different write-amplification plan; current remaining warm-restore cost is eval_ms."
 }
