@@ -78,6 +78,7 @@ class PromptCacheRestorePlanner:
             kv_record_key = self._select_kv_record_key(
                 chunk,
                 min_span_start=min_kv_span_start,
+                allow_terminal_packed=chunk.key == target_chunk.key,
             )
             if not kv_record_key:
                 return None
@@ -155,12 +156,13 @@ class PromptCacheRestorePlanner:
         chunk: PromptPrefixChunk,
         *,
         min_span_start: int,
+        allow_terminal_packed: bool,
     ) -> str | None:
         """Return the preferred bounded KV record key for a chunk.
 
         Production saves only one-step KV spans that cover the current chunk
-        plus its immediate predecessor. Ignore wider experimental spans so old
-        persistent indexes cannot select the rejected full-prefix format.
+        plus its immediate predecessor. The one exception is an explicitly
+        marked terminal-packed record for the true restore boundary.
         """
         plain_record_key = make_record_key(chunk.key, RECORD_KIND_KV_DELTA)
         span_candidate_keys = []
@@ -174,7 +176,9 @@ class PromptCacheRestorePlanner:
             span_start, span_end = chunk_span
             if span_start is None or span_end is None:
                 continue
-            if span_start < min_span_start:
+            if span_start < min_span_start and not (
+                allow_terminal_packed and metadata.is_terminal_packed
+            ):
                 continue
             if span_start <= chunk.start <= span_end and span_end >= chunk.end:
                 span_candidate_keys.append((span_start, span_end, record_key))

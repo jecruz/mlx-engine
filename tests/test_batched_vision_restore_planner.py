@@ -258,6 +258,68 @@ def test_restore_planner_ignores_overwide_kv_span_when_local_span_exists():
     }
 
 
+def test_restore_planner_prefers_explicit_terminal_packed_kv_on_target_chunk():
+    """The final restore chunk may intentionally use one full-prefix KV record."""
+    chunks = [_chunk(0, 256), _chunk(256, 512), _chunk(512, 768)]
+    terminal_packed_span = _record_key(chunks[2], RECORD_KIND_KV_DELTA)
+    prior_span = _record_key_span(chunks[1], RECORD_KIND_KV_DELTA, 0, 512)
+    existing_records = {
+        terminal_packed_span,
+        prior_span,
+        _record_key(chunks[1], RECORD_KIND_ROTATING_DELTA),
+        _record_key(chunks[2], RECORD_KIND_ROTATING_DELTA),
+        _record_key(chunks[2], RECORD_KIND_STATE_CHECKPOINT),
+    }
+    metadata_by_key = {
+        terminal_packed_span: PromptCacheRecordMetadata(
+            chunk_key=chunks[2].key,
+            record_kind=RECORD_KIND_KV_DELTA,
+            layer_indices=[],
+            chunk_span=[0, 768],
+            is_terminal_packed=True,
+        ),
+        prior_span: PromptCacheRecordMetadata(
+            chunk_key=chunks[1].key,
+            record_kind=RECORD_KIND_KV_DELTA,
+            layer_indices=[],
+            chunk_span=[0, 512],
+        ),
+        _record_key(chunks[1], RECORD_KIND_ROTATING_DELTA): PromptCacheRecordMetadata(
+            chunk_key=chunks[1].key,
+            record_kind=RECORD_KIND_ROTATING_DELTA,
+            layer_indices=[],
+        ),
+        _record_key(chunks[2], RECORD_KIND_ROTATING_DELTA): PromptCacheRecordMetadata(
+            chunk_key=chunks[2].key,
+            record_kind=RECORD_KIND_ROTATING_DELTA,
+            layer_indices=[],
+        ),
+        _record_key(chunks[2], RECORD_KIND_STATE_CHECKPOINT): PromptCacheRecordMetadata(
+            chunk_key=chunks[2].key,
+            record_kind=RECORD_KIND_STATE_CHECKPOINT,
+            layer_indices=[],
+        ),
+    }
+
+    planner = PromptCacheRestorePlanner(
+        layout=_layout(),
+        record_metadata_by_key=metadata_by_key,
+        record_exists=existing_records.__contains__,
+    )
+
+    record_keys_by_chunk = planner.restore_record_keys_for_chunk_chain(chunks)
+
+    assert record_keys_by_chunk == {
+        chunks[0].key: [],
+        chunks[1].key: [_record_key(chunks[1], RECORD_KIND_ROTATING_DELTA)],
+        chunks[2].key: [
+            terminal_packed_span,
+            _record_key(chunks[2], RECORD_KIND_ROTATING_DELTA),
+            _record_key(chunks[2], RECORD_KIND_STATE_CHECKPOINT),
+        ],
+    }
+
+
 def test_restore_planner_span_lookup_skips_unrelated_kv_records():
     """KV span selection should only inspect records for the target chunk."""
     chunks = [_chunk(0, 256), _chunk(256, 512)]

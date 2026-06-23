@@ -520,6 +520,7 @@ class BatchedVisionModelKit:
             request=request,
             prepared_prompt=prepared_prompt,
             restored=restored,
+            prepared_at=time.perf_counter() if timing_enabled else None,
         )
 
     def _can_use_metadata_prepared_prompt(
@@ -626,6 +627,11 @@ class BatchedVisionModelKit:
         )
         timing_enabled = batched_timing_enabled()
         insert_start = time.perf_counter() if timing_enabled else None
+        ready_to_insert_ms = (
+            elapsed_ms(prepared_insert.prepared_at)
+            if timing_enabled
+            else 0.0
+        )
         uid = batch_generator.insert(
             prompt_input_ids,
             inputs_embeds=inputs_embeds,
@@ -653,6 +659,7 @@ class BatchedVisionModelKit:
                 cached_tokens=cached_tokens,
                 rest_tokens=len(prompt_input_ids),
                 images=len(request.images_b64 or []),
+                ready_to_insert_ms=ready_to_insert_ms,
                 insert_ms=elapsed_ms(insert_start),
             )
 
@@ -665,6 +672,7 @@ class BatchedVisionModelKit:
             cached_tokens=cached_tokens,
             prompt_tokens=prompt_token_count,
             rest_tokens=len(prompt_input_ids),
+            prepared_at=prepared_insert.prepared_at,
             inserted_at=time.perf_counter() if timing_enabled else None,
         )
 
@@ -680,6 +688,7 @@ class BatchedVisionModelKit:
                 prompt_tokens=result.prompt_tokens,
                 cached_tokens=result.cached_tokens,
                 rest_tokens=result.rest_tokens,
+                prepare_to_first_token_ms=elapsed_ms(result.prepared_at),
                 insert_to_first_token_ms=elapsed_ms(result.inserted_at),
             )
         detokenizer = result.detokenizer

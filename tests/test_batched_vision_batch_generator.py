@@ -454,7 +454,7 @@ def test_batch_generator_logs_deep_prefill_timing_when_enabled(monkeypatch):
         lambda _model: [_FakeBatchCache()],
     )
     monkeypatch.setenv("MLX_ENGINE_BATCHED_TIMING", "1")
-    perf_counter_values = iter([1.0, 1.125, 2.0, 2.25])
+    perf_counter_values = iter([1.0, 1.125, 2.0, 2.25, 3.0, 3.375])
     monkeypatch.setattr(
         batcher.time,
         "perf_counter",
@@ -487,6 +487,7 @@ def test_batch_generator_logs_deep_prefill_timing_when_enabled(monkeypatch):
 
         generator.next()
         generator.next()
+        generator.next()
     finally:
         batcher.logger.setLevel(original_level)
         batcher.logger.removeHandler(handler)
@@ -500,6 +501,10 @@ def test_batch_generator_logs_deep_prefill_timing_when_enabled(monkeypatch):
     assert '"event": "vlm_prefill_final"' in log_output
     assert '"final_tokens": 2' in log_output
     assert '"duration_ms": 250.0' in log_output
+    assert '"event": "vlm_decode_step"' in log_output
+    assert '"first_step": true' in log_output
+    assert '"request_ids": ["req-prefill"]' in log_output
+    assert '"duration_ms": 375.0' in log_output
 
 
 def test_batch_generator_keeps_gemma4_visual_prefix_together(monkeypatch):

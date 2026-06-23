@@ -74,6 +74,7 @@ def _save_chunk(
     prompt_cache,
     *,
     save_state_checkpoint=True,
+    is_final_prompt_boundary=False,
 ):
     chunk_idx = chunks.index(chunk)
     # Production does prepare on generation thread, then commit on cache I/O.
@@ -83,6 +84,7 @@ def _save_chunk(
             prefix_chunks=chunks[: chunk_idx + 1],
             prompt_cache=prompt_cache,
             save_state_checkpoint=save_state_checkpoint,
+            is_final_prompt_boundary=is_final_prompt_boundary,
         )
     )
 
@@ -188,6 +190,76 @@ def test_cache_store_skips_redundant_current_kv_when_span_exists(cache_store):
     assert loaded.cached_prefix_len == chunks[2].end
     assert kv_keys.shape[2] == chunks[2].end
     assert boundary_state.item() == chunks[2].end
+
+
+def test_cache_store_terminal_packed_final_kv_is_default(cache_store):
+    """Final-boundary full-prefix KV packing should be enabled by default."""
+    prompt_input_ids = list(range((3 * C) + 100))
+    chunks = build_prefix_cache_chunks(prompt_input_ids, [])
+
+    for chunk in chunks[:2]:
+        _save_chunk(cache_store, chunk, chunks, _prompt_cache(chunk.end))
+    _save_chunk(
+        cache_store,
+        chunks[2],
+        chunks,
+        _prompt_cache(chunks[2].end),
+        is_final_prompt_boundary=True,
+    )
+
+    record_key = make_record_key(chunks[2].key, RECORD_KIND_KV_DELTA)
+    metadata = cache_store._record_metadata_by_key[record_key]
+    assert metadata.chunk_span == [chunks[0].start, chunks[2].end]
+    assert metadata.is_terminal_packed is True
+
+    restore_plan = cache_store.plan_longest_prefix_restore(prompt_input_ids, [])
+    assert restore_plan is not None
+    assert restore_plan.record_keys_by_chunk_key == {
+        chunks[0].key: [],
+        chunks[1].key: [],
+        chunks[2].key: [
+            record_key,
+            _record_key(chunks[2], RECORD_KIND_STATE_CHECKPOINT),
+        ],
+    }
+    loaded = cache_store.load_restore_plan(restore_plan)
+    kv_keys, _ = loaded.prompt_cache[0].state
+    boundary_state = loaded.prompt_cache[1][0]
+    mx.eval(kv_keys, boundary_state)
+    assert loaded.cached_prefix_len == chunks[2].end
+    assert kv_keys.shape[2] == chunks[2].end
+    assert boundary_state.item() == chunks[2].end
+
+
+def test_cache_store_terminal_packed_final_kv_can_be_disabled(
+    cache_store, monkeypatch
+):
+    """Operators can disable terminal-packed final KV with an explicit env flag."""
+    monkeypatch.setenv("MLX_ENGINE_VLM_TERMINAL_PACKED_FINAL_KV", "0")
+    prompt_input_ids = list(range((3 * C) + 100))
+    chunks = build_prefix_cache_chunks(prompt_input_ids, [])
+
+    for chunk in chunks[:2]:
+        _save_chunk(cache_store, chunk, chunks, _prompt_cache(chunk.end))
+    _save_chunk(
+        cache_store,
+        chunks[2],
+        chunks,
+        _prompt_cache(chunks[2].end),
+        is_final_prompt_boundary=True,
+    )
+
+    record_key = (
+        f"{make_record_key(chunks[2].key, RECORD_KIND_KV_DELTA)}"
+        f":span:{chunks[1].start}:{chunks[2].end}"
+    )
+    metadata = cache_store._record_metadata_by_key[record_key]
+    assert metadata.chunk_span == [chunks[1].start, chunks[2].end]
+    assert metadata.is_terminal_packed is False
+
+
+def _record_key(chunk, record_kind):
+    return make_record_key(chunk.key, record_kind)
 
 
 def test_cache_store_records_save_and_restore_latency_metrics(cache_store):

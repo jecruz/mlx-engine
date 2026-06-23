@@ -216,6 +216,60 @@ safetensor/index overhead; set it to `0` for experiments that need to persist
 every cacheable prompt. Persistent mode is opt-in so normal LM Studio and
 benchmark runs keep the existing temporary cache behavior.
 
+## Project Objective And Promotion Policy
+
+The current objective for `mlx-engine` is to deliver a Mac-first MLX inference
+engine that is measurably faster on prompt processing and generation without
+degrading response quality or runtime stability. Speed wins do not count unless
+the same candidate also passes the deterministic quality harness and remains
+stable under repeated warm-run measurements.
+
+### Promotion Acceptance Criteria
+
+An optimization is eligible for promotion to the default path only when all of
+the following are true:
+
+1. The candidate passes the response-quality regression harness with no new
+   prompt failures.
+2. Warm median TTFT does not regress beyond the configured
+   `--max-warm-ttft-p50-regression-pct` threshold in
+   `mlx-bench-harness/quality_compare.py`.
+3. Warm median total latency does not regress beyond the configured
+   `--max-warm-total-p50-regression-pct` threshold in
+   `mlx-bench-harness/quality_compare.py`.
+4. Any throughput or latency gain survives repeated-run variance review instead
+   of depending on a single outlier.
+5. The change does not introduce unload/reload instability, cache corruption,
+   or model compatibility regressions in LM Studio or direct Python use.
+
+### Optimization States
+
+Use these states consistently when landing or discussing performance work:
+
+- `default`: enabled by default and safe for normal users.
+- `candidate`: implemented and benchmarkable, but still under active quality or
+  variance review.
+- `experiment`: off by default, intended for isolated benchmarking only, and
+  not promotable until the acceptance criteria above are met.
+
+### Terminal-Packed Final KV
+
+The retained VLM prompt-cache layout saves one-step KV spans by default. For
+true final prompt-boundary saves, the promoted default now replaces the
+terminal chunk's one-step KV span with one full-prefix KV record when the
+prefix chunks are contiguous.
+
+```bash
+MLX_ENGINE_VLM_TERMINAL_PACKED_FINAL_KV=0 python demo.py --model /path/to/vlm-model
+```
+
+State: `default`.
+
+The switch now acts as an explicit rollback toggle. It only affects true final
+prompt-boundary VLM cache saves. Based on repeated-sample benchmark evidence on
+retained long-VLM profiles plus LM Studio validation of the current worktree,
+this path is now the promoted default for final-boundary saves.
+
 ## Attribution
 
 Ernie 4.5 modeling code is sourced from [Baidu](https://huggingface.co/baidu/ERNIE-4.5-0.3B-PT/tree/da6f3b1158d5d0d2bbf552bfc3364c9ec64e8aa5)

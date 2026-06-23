@@ -94,6 +94,7 @@ class _GenerationRow:
     top_logprobs: int
     tokens: list[int]
     prefix_cache_save_state: _PrefixCacheSaveState
+    request_id: str | None = None
     num_tokens: int = 0
 
 
@@ -373,6 +374,7 @@ class GenerationBatch:
         max_tokens: list[int],
         logits_processors: list[list[LogitsProcessor]],
         prefix_cache_save_states: list[_PrefixCacheSaveState],
+        request_ids: list[str | None] | None = None,
         top_logprobs_k: int = 0,
         top_logprobs: list[int] | None = None,
         all_tokens: Optional[list[list[int]]] = None,
@@ -391,6 +393,11 @@ class GenerationBatch:
             if all_tokens is not None
             else [[] for _ in uids]
         )
+        request_ids_by_row = (
+            list(request_ids)
+            if request_ids is not None
+            else [None] * len(uids)
+        )
         self._rows = [
             _GenerationRow(
                 uid=uid,
@@ -400,6 +407,7 @@ class GenerationBatch:
                 top_logprobs=row_top_logprobs,
                 tokens=tokens,
                 prefix_cache_save_state=save_state,
+                request_id=request_id,
             )
             for (
                 uid,
@@ -409,6 +417,7 @@ class GenerationBatch:
                 row_top_logprobs,
                 tokens,
                 save_state,
+                request_id,
             ) in zip(
                 uids,
                 samplers,
@@ -417,6 +426,7 @@ class GenerationBatch:
                 top_logprobs_by_row,
                 tokens_by_row,
                 prefix_cache_save_states,
+                request_ids_by_row,
             )
         ]
         self.top_logprobs_k = max(
@@ -442,6 +452,9 @@ class GenerationBatch:
 
     def _step(self):
         # Decode-ahead: emit the token sampled last step while scheduling the next.
+        timing_enabled = batched_timing_enabled()
+        step_start = time.perf_counter() if timing_enabled else None
+        first_step = any(row.num_tokens == 0 for row in self._rows)
         self._current_tokens = self._next_tokens
         self._current_token_logprobs = self._next_token_logprobs
         prev_top_idx = self._next_top_idx
@@ -501,6 +514,15 @@ class GenerationBatch:
         for seq_tokens, token, old_len in zip(row_tokens, tokens, row_token_lens):
             if len(seq_tokens) == old_len:
                 seq_tokens.append(token)
+        if timing_enabled and first_step:
+            log_batched_timing(
+                logger,
+                "vlm_decode_step",
+                request_ids=[row.request_id for row in self._rows],
+                rows=len(self._rows),
+                first_step=True,
+                duration_ms=elapsed_ms(step_start),
+            )
         return tokens, token_logprob_list, top_idx_list, top_logprob_list
 
     def extract_cache(self, idx: int) -> list[Any] | None:
@@ -1069,6 +1091,7 @@ class _PromptPrefill:
             rope_deltas=self._rope_deltas,
             logits_processors=[self.logits_processors],
             prefix_cache_save_states=[self._prefix_cache_save_state],
+            request_ids=[self.request_id],
         )
         gen_batch._next_token_logprobs = first_logprobs
         gen_batch._next_top_idx = top_idx

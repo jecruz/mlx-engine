@@ -3,6 +3,7 @@ from dataclasses import asdict, dataclass
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 from time import monotonic, perf_counter
 from typing import Any
@@ -70,6 +71,8 @@ _PERSISTENT_CACHE_INDEX_FILENAME = "prompt-cache-index.json"
 _DEFAULT_PERSISTENT_MIN_SAVE_TOKENS = 512
 _MAX_PREPARED_PROMPT_METADATA_ENTRIES = 128
 _RECORD_SPAN_KEY = "chunk_span"
+_TERMINAL_PACKED_KEY = "is_terminal_packed"
+_TERMINAL_PACKED_FINAL_KV_ENV = "MLX_ENGINE_VLM_TERMINAL_PACKED_FINAL_KV"
 
 
 @dataclass
@@ -119,6 +122,14 @@ def _prefix_len_splits_image_span(
     # a later full visual-prefill snapshot, but it is not a valid terminal restore
     # point because the cached image-token states depended on later image tokens.
     return any(span.start < prefix_len < span.end for span in image_spans)
+
+
+def _terminal_packed_final_kv_enabled() -> bool:
+    """Return whether final-boundary terminal-packed KV saves are enabled."""
+    value = os.environ.get(_TERMINAL_PACKED_FINAL_KV_ENV, "")
+    if not value:
+        return True
+    return value.lower() not in {"0", "false", "no", "off"}
 
 
 class VlmPromptCacheStore:
@@ -462,6 +473,7 @@ class VlmPromptCacheStore:
                 self._kv_span_start(
                     chunk=chunk,
                     prefix_chunks=prefix_chunks,
+                    is_final_prompt_boundary=is_final_prompt_boundary,
                 )
                 if record_kind == RECORD_KIND_KV_DELTA
                 else None
@@ -505,6 +517,12 @@ class VlmPromptCacheStore:
                         ],
                         chunk_start=kv_span_start,
                         chunk_end=chunk.end,
+                        is_terminal_packed=(
+                            record_kind == RECORD_KIND_KV_DELTA
+                            and is_final_prompt_boundary
+                            and _terminal_packed_final_kv_enabled()
+                            and kv_span_start < chunk.start
+                        ),
                     )
                 )
 
@@ -520,10 +538,18 @@ class VlmPromptCacheStore:
         *,
         chunk: PromptPrefixChunk,
         prefix_chunks: list[PromptPrefixChunk],
+        is_final_prompt_boundary: bool = False,
     ) -> int | None:
-        """Return the start token for one-step KV coalescing with the prior chunk."""
+        """Return the KV span start for the retained or terminal-packed layout."""
         if len(prefix_chunks) <= 1:
             return None
+        if is_final_prompt_boundary and _terminal_packed_final_kv_enabled():
+            first_chunk = prefix_chunks[0]
+            if all(
+                prev.end == next_chunk.start
+                for prev, next_chunk in zip(prefix_chunks, prefix_chunks[1:])
+            ):
+                return first_chunk.start
         chunk_index = prefix_chunks.index(chunk)
         if chunk_index == 0:
             return None
@@ -710,6 +736,9 @@ class VlmPromptCacheStore:
                     chunk_span=(
                         metadata.get(_RECORD_SPAN_KEY)
                     ),
+                    is_terminal_packed=bool(
+                        metadata.get(_TERMINAL_PACKED_KEY, False)
+                    ),
                 )
                 self._key_sizes[record_key] = self._blob_store.size(record_key)
             except Exception:
@@ -792,6 +821,7 @@ class VlmPromptCacheStore:
         record_cache: list[Any],
         chunk_start: int | None = None,
         chunk_end: int | None = None,
+        is_terminal_packed: bool = False,
     ) -> PreparedPromptRecord:
         record_key = _make_record_key(
             chunk_key,
@@ -821,11 +851,16 @@ class VlmPromptCacheStore:
         return PreparedPromptRecord(
             key=record_key,
             metadata=PromptCacheRecordMetadata(
-            chunk_key=chunk_key,
-            record_kind=record_kind,
-            layer_indices=layer_indices,
-            chunk_span=[chunk_start, chunk_end] if chunk_start is not None and chunk_end is not None else None,
-        ),
+                chunk_key=chunk_key,
+                record_kind=record_kind,
+                layer_indices=layer_indices,
+                chunk_span=(
+                    [chunk_start, chunk_end]
+                    if chunk_start is not None and chunk_end is not None
+                    else None
+                ),
+                is_terminal_packed=is_terminal_packed,
+            ),
             snapshot_arrays=snapshot_arrays,
             safetensor_metadata=safetensor_metadata,
         )

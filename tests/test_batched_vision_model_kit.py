@@ -219,6 +219,7 @@ def test_emit_response_logs_vlm_first_token_timing_once(monkeypatch):
         cached_tokens=16,
         prompt_tokens=25,
         rest_tokens=9,
+        prepared_at=0.5,
         inserted_at=1.0,
     )
     response = SimpleNamespace(
@@ -247,6 +248,7 @@ def test_emit_response_logs_vlm_first_token_timing_once(monkeypatch):
     assert log_output.count("MLX_ENGINE_BATCHED_TIMING") == 1
     assert '"event": "vlm_first_token"' in log_output
     assert '"request_id": "req-vlm"' in log_output
+    assert '"prepare_to_first_token_ms": 750.0' in log_output
     assert '"insert_to_first_token_ms": 250.0' in log_output
 
 

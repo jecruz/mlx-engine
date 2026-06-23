@@ -77,12 +77,17 @@ class PromptCacheRecordMetadata:
     - [chunk_start, chunk_end] when a record covers exactly one chunk.
     - [span_start, span_end] when the record was pre-concatenated across
       multiple contiguous chunks during save.
+
+    `is_terminal_packed` marks the one allowed overwide KV record shape: a
+    true final-prompt-boundary save that intentionally packs the full prefix
+    into the terminal chunk's KV record.
     """
 
     chunk_key: str
     record_kind: RecordKind
     layer_indices: list[int]
     chunk_span: list[int] | None = None
+    is_terminal_packed: bool = False
 
 
 @dataclass
