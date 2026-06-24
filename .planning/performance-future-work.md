@@ -231,6 +231,31 @@ The state-only restore-eval opt-in does not meet the promotion bar on the retain
 
 This M1 opt-in did not produce a real, repeatable eval-path win. M4 should still be evaluated against the broader M1 evidence (including the restore-freshness-flush opt-in), but the state-only-eval path alone does not justify proceeding with a new restore-eval reduction candidate.
 
+## M1 restore freshness flush decision (2026-06-24)
+
+Feature `m1-restore-freshness-flush` verified the default-on `MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH` behavior against the explicit-off path using the overlapping same-prefix VLM probe `probes/mlx_engine_vlm_restore_freshness_probe.py`. The probe submits a second same-prefix VLM request while the first is still in prompt processing, which is the exact workload shape the shared sequential harness cannot produce.
+
+- **Flush-on report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T214000Z-freshness-flush-on.json`
+- **Flush-off report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T214500Z-freshness-flush-off.json`
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`
+- **Probe settings:** `delay_seconds=0.05`, `runs=5`, `fresh_namespace_per_run=true`, `max_tokens=32`, `min_save_tokens=0`
+- **Quality/stability checks:** all 5 runs in each configuration have `error: null` for both requests; the second-request output text is identical across all runs (`second_output_unique_count=1`); no `RuntimeError: There is no Stream(...)` in runner stderr.
+
+### Measured deltas (flush-on vs flush-off, second same-prefix request)
+
+| Metric | Flush-off (baseline) | Flush-on (default) | Delta |
+|---|---|---|---|
+| second-request cached_tokens | 0 | 2048 | 0 → 2048 |
+| second-request TTFT | 2.062774 s | 1.771845 s | -14.10% |
+| second-request total latency | 2.205330 s | 1.913092 s | -13.25% |
+| `flushed_matching_saves` activation | 0 / 5 runs | 5 / 5 runs | active on every run |
+
+The WIP README claimed second-request cached tokens `0 → 2048` and TTFT `-12.19%`. The harness probe confirms the cached-token reuse (0 → 2048) and measures a repeatable TTFT reduction of `-14.10%`, which is directionally consistent with the README claim and within run-to-run variance. The freshness flush is active on every overlapping run (`flushed_matching_saves=1`) when enabled, and inactive when disabled.
+
+### Decision: KEEP as promoted default
+
+`MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH` remains the default-on behavior. The flush demonstrably allows a second overlapping same-prefix VLM request to reuse the first request's in-progress cached tokens, cutting second-request TTFT by ~14% and total latency by ~13% while preserving output stability and zero row errors. The explicit opt-out (`MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH=0`) is retained for rollback, but the default path is promoted.
+
 ## Reference artifacts
 
 - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/.continue-here.md`
