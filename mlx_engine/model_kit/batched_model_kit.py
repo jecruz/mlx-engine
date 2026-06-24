@@ -20,7 +20,10 @@ import time
 from mlx_lm.server import LRUPromptCache
 from mlx_lm.models.cache import KVCache, QuantizedKVCache
 from mlx_engine.utils.token import Token
-from mlx_engine.utils.mlx_lm_stream import prepare_mlx_lm_generation_stream
+from mlx_engine.utils.mlx_lm_stream import (
+    describe_stream_configuration,
+    prepare_mlx_lm_generation_stream,
+)
 from mlx_engine.utils.batched_timing import (
     batched_timing_enabled,
     elapsed_ms,
@@ -152,6 +155,59 @@ def _prepare_prompt_cache_for_generation(
 
     # If we cannot trim an exact-hit cache, replay the full prompt instead.
     return None, [], prompt_tokens
+
+
+def _num_tokens_in_prompt_cache(prompt_cache) -> int | None:
+    """Return the cached token count for a prompt cache when offsets are exposed."""
+    if not prompt_cache:
+        return None
+
+    head_offset = getattr(prompt_cache[0], "offset", None)
+    if head_offset is not None:
+        return head_offset
+
+    for entry in prompt_cache[1:]:
+        entry_offset = getattr(entry, "offset", None)
+        if entry_offset is not None:
+            return entry_offset
+    return None
+
+
+def _trim_prompt_cache_to_prompt_length(prompt_cache, prompt_length: int):
+    """Return a prompt-only cache snapshot for cross-request reuse.
+
+    Batched generation responses can carry a cache that has already advanced
+    into generated tokens. Reusing that cache under the original prompt key
+    poisons exact-hit restores for repeated requests. Trim any extra generated
+    tail before reinserting the cache. If the cache cannot be trimmed safely,
+    return ``None`` so the caller skips reinsertion instead of storing a
+    corrupted entry.
+    """
+
+    cache_length = _num_tokens_in_prompt_cache(prompt_cache)
+    if cache_length is None or cache_length <= prompt_length:
+        return prompt_cache
+
+    if not can_trim_prompt_cache(prompt_cache):
+        logger.warning(
+            "Skipping cross-prompt cache insert because cache length %d exceeds "
+            "prompt length %d and the cache is not trimmable.",
+            cache_length,
+            prompt_length,
+        )
+        return None
+
+    num_to_trim = cache_length - prompt_length
+    trimmed = trim_prompt_cache(prompt_cache, num_to_trim)
+    if trimmed != num_to_trim:
+        logger.warning(
+            "Skipping cross-prompt cache insert because trimming removed %d of %d "
+            "generated tokens.",
+            trimmed,
+            num_to_trim,
+        )
+        return None
+    return prompt_cache
 
 
 class BatchedModelKit:
@@ -541,6 +597,10 @@ class BatchedModelKit:
                 )
         stream_start = time.perf_counter() if timing_enabled else None
         prepare_mlx_lm_generation_stream(reason="batched-scheduler")
+        logger.info(
+            "Batched scheduler stream configuration: %s",
+            describe_stream_configuration(False),
+        )
         if timing_enabled:
             log_batched_timing(
                 logger,
@@ -626,7 +686,8 @@ class BatchedModelKit:
 
                 # Track this request
                 self._batch_results[uid] = {
-                    "cache_key": request.prompt_tokens[:],
+                    "cross_prompt_cache_key": request.prompt_tokens[:],
+                    "live_cache_key": request.prompt_tokens[:],
                     "rqueue": request.rqueue,
                     "detokenizer": self.tokenizer.detokenizer,
                     "top_logprobs": request.top_logprobs,
@@ -669,7 +730,7 @@ class BatchedModelKit:
                             logger,
                             "first_token",
                             request_id=result["request_id"],
-                            prompt_tokens=len(result["cache_key"]),
+                            prompt_tokens=len(result["cross_prompt_cache_key"]),
                             cached_tokens=result["cached_tokens"],
                             rest_tokens=result["rest_tokens"],
                             insert_to_first_token_ms=elapsed_ms(
@@ -677,7 +738,7 @@ class BatchedModelKit:
                             ),
                         )
                     detokenizer = result["detokenizer"]
-                    result["cache_key"].append(r.token)
+                    result["live_cache_key"].append(r.token)
                     if r.finish_reason != "stop":
                         detokenizer.add_token(r.token)
                     if r.finish_reason is not None:
@@ -719,9 +780,16 @@ class BatchedModelKit:
                     # Clean up if necessary
                     if r.finish_reason is not None:
                         result["rqueue"].put(None)
-                        self._prompt_cache.insert_cache(
-                            current_model_key, result["cache_key"], r.prompt_cache
+                        prompt_cache_for_reuse = _trim_prompt_cache_to_prompt_length(
+                            r.prompt_cache,
+                            len(result["cross_prompt_cache_key"]),
                         )
+                        if prompt_cache_for_reuse is not None:
+                            self._prompt_cache.insert_cache(
+                                current_model_key,
+                                result["cross_prompt_cache_key"],
+                                prompt_cache_for_reuse,
+                            )
                         del self._batch_results[r.uid]
 
         for entry in self._batch_results.values():

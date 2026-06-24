@@ -1,9 +1,11 @@
+from contextlib import nullcontext
 import pytest
 import io
 import logging
 import threading
 import time
 from pathlib import Path
+from queue import Queue
 from types import SimpleNamespace
 
 from mlx_engine.model_kit.batched_model_kit import BatchedModelKit
@@ -327,6 +329,133 @@ def test_startup_warmup_skips_timing_when_diagnostics_disabled(monkeypatch):
     kit._run_startup_warmup()
 
 
+def test_batched_model_uses_prompt_only_key_for_cross_request_cache(monkeypatch):
+    """Batched prompt cache entries must exclude generated tokens."""
+
+    class FakeDetokenizer:
+        def __init__(self):
+            self.last_segment = ""
+
+        def add_token(self, token):
+            self.last_segment += f"<{token}>"
+
+        def finalize(self):
+            pass
+
+    class FakeLogprobValue:
+        def __init__(self, value):
+            self._value = value
+
+        def item(self):
+            return self._value
+
+    class FakeLogprobs:
+        def __getitem__(self, token):
+            return FakeLogprobValue(-0.5)
+
+    class FakeGenerationResponse:
+        def __init__(self, uid, token, finish_reason, prompt_cache):
+            self.uid = uid
+            self.token = token
+            self.finish_reason = finish_reason
+            self.prompt_cache = prompt_cache
+            self.logprobs = FakeLogprobs()
+
+    class FakeBatchGenerator:
+        def __init__(self, shutdown):
+            self.stream = object()
+            self._shutdown = shutdown
+            self._served = False
+
+        def next(self):
+            if self._served:
+                return [], []
+            self._served = True
+            self._shutdown.set()
+            response = FakeGenerationResponse(
+                uid=11,
+                token=999,
+                finish_reason="stop",
+                prompt_cache=["cached-entry"],
+            )
+            return [], [response]
+
+    class FakePromptCache:
+        def __init__(self):
+            self.fetch_calls = []
+            self.insert_calls = []
+
+        def fetch_nearest_cache(self, model_key, tokens):
+            self.fetch_calls.append((model_key, list(tokens)))
+            return None, list(tokens)
+
+        def insert_cache(self, model_key, tokens, prompt_cache):
+            self.insert_calls.append((model_key, list(tokens), prompt_cache))
+
+    class ShutdownFlag:
+        def __init__(self):
+            self._is_set = False
+
+        def is_set(self):
+            return self._is_set
+
+        def set(self):
+            self._is_set = True
+
+    shutdown = ShutdownFlag()
+    prompt_cache = FakePromptCache()
+    fake_generator = FakeBatchGenerator(shutdown)
+
+    kit = object.__new__(BatchedModelKit)
+    kit.model = object()
+    kit._seed = 0
+    kit._shutdown = shutdown
+    kit._startup_complete = SimpleNamespace(set=lambda: None)
+    request_queue = Queue()
+    kit._batch_results = {
+        11: {
+            "cross_prompt_cache_key": [101, 102, 103],
+            "live_cache_key": [101, 102, 103],
+            "rqueue": request_queue,
+            "detokenizer": FakeDetokenizer(),
+            "top_logprobs": 0,
+            "request_id": "req-1",
+            "inserted_at": None,
+            "cached_tokens": 0,
+            "rest_tokens": 3,
+            "first_token_logged": False,
+        }
+    }
+    kit._prompt_cache = prompt_cache
+    kit._requests = Queue()
+    kit._run_startup_warmup = lambda: None
+    kit._make_batch_generator = lambda completion_batch_size=None: fake_generator
+    kit.tokenizer = SimpleNamespace(detokenizer=FakeDetokenizer())
+
+    monkeypatch.setattr(
+        model_kit_module,
+        "install_mlx_compile_cache_cleanup_for_thread",
+        lambda: None,
+    )
+    monkeypatch.setattr(model_kit_module, "set_seed", lambda seed: None)
+    monkeypatch.setattr(
+        model_kit_module,
+        "prepare_mlx_lm_generation_stream",
+        lambda reason: None,
+    )
+    monkeypatch.setattr(model_kit_module, "batched_timing_enabled", lambda: False)
+    monkeypatch.setattr(model_kit_module.mx, "stream", lambda stream: nullcontext())
+
+    kit._generate()
+
+    assert prompt_cache.fetch_calls == []
+    assert prompt_cache.insert_calls == [
+        ("lmstudio", [101, 102, 103], ["cached-entry"])
+    ]
+    assert request_queue.get_nowait().token == 999
+    assert request_queue.get_nowait() is None
+
+
 def test_fast_prompt_cache_returns_isolated_clone():
     import mlx.core as mx
     from mlx_lm.models.cache import KVCache
@@ -351,6 +480,242 @@ def test_fast_prompt_cache_returns_isolated_clone():
     restored[0].offset = 1
 
     assert kv.offset == 3
+
+
+def test_batched_generation_trims_generated_tail_before_cross_prompt_cache_insert(
+    monkeypatch,
+):
+    class FakeDetokenizer:
+        last_segment = ""
+
+        def add_token(self, token):
+            self.last_segment += str(token)
+
+        def finalize(self):
+            return None
+
+    class FakeLogprobs:
+        def __getitem__(self, token):
+            return SimpleNamespace(item=lambda: -0.5)
+
+    class FakeCacheEntry:
+        def __init__(self, offset):
+            self.offset = offset
+
+    class FakeGenerationResponse:
+        def __init__(self, uid, token, finish_reason, prompt_cache):
+            self.uid = uid
+            self.token = token
+            self.finish_reason = finish_reason
+            self.prompt_cache = prompt_cache
+            self.logprobs = FakeLogprobs()
+
+    class FakeBatchGenerator:
+        def __init__(self, shutdown):
+            self.stream = object()
+            self._shutdown = shutdown
+            self._served = False
+
+        def next(self):
+            if self._served:
+                return [], []
+            self._served = True
+            self._shutdown.set()
+            response = FakeGenerationResponse(
+                uid=11,
+                token=999,
+                finish_reason="stop",
+                prompt_cache=[FakeCacheEntry(offset=5)],
+            )
+            return [], [response]
+
+    class FakePromptCache:
+        def __init__(self):
+            self.insert_calls = []
+
+        def insert_cache(self, model_key, tokens, prompt_cache):
+            self.insert_calls.append((model_key, list(tokens), prompt_cache))
+
+    class ShutdownFlag:
+        def __init__(self):
+            self._is_set = False
+
+        def is_set(self):
+            return self._is_set
+
+        def set(self):
+            self._is_set = True
+
+    def fake_trim_prompt_cache(prompt_cache, num_to_trim):
+        prompt_cache[0].offset -= num_to_trim
+        return num_to_trim
+
+    shutdown = ShutdownFlag()
+    prompt_cache = FakePromptCache()
+    fake_generator = FakeBatchGenerator(shutdown)
+
+    kit = object.__new__(BatchedModelKit)
+    kit.model = object()
+    kit._seed = 0
+    kit._shutdown = shutdown
+    kit._startup_complete = SimpleNamespace(set=lambda: None)
+    request_queue = Queue()
+    kit._batch_results = {
+        11: {
+            "cross_prompt_cache_key": [101, 102, 103],
+            "live_cache_key": [101, 102, 103],
+            "rqueue": request_queue,
+            "detokenizer": FakeDetokenizer(),
+            "top_logprobs": 0,
+            "request_id": "req-1",
+            "inserted_at": None,
+            "cached_tokens": 0,
+            "rest_tokens": 3,
+            "first_token_logged": False,
+        }
+    }
+    kit._prompt_cache = prompt_cache
+    kit._requests = Queue()
+    kit._run_startup_warmup = lambda: None
+    kit._make_batch_generator = lambda completion_batch_size=None: fake_generator
+    kit.tokenizer = SimpleNamespace(detokenizer=FakeDetokenizer())
+
+    monkeypatch.setattr(
+        model_kit_module,
+        "install_mlx_compile_cache_cleanup_for_thread",
+        lambda: None,
+    )
+    monkeypatch.setattr(model_kit_module, "set_seed", lambda seed: None)
+    monkeypatch.setattr(
+        model_kit_module,
+        "prepare_mlx_lm_generation_stream",
+        lambda reason: None,
+    )
+    monkeypatch.setattr(model_kit_module, "batched_timing_enabled", lambda: False)
+    monkeypatch.setattr(model_kit_module.mx, "stream", lambda stream: nullcontext())
+    monkeypatch.setattr(model_kit_module, "can_trim_prompt_cache", lambda cache: True)
+    monkeypatch.setattr(model_kit_module, "trim_prompt_cache", fake_trim_prompt_cache)
+
+    kit._generate()
+
+    assert len(prompt_cache.insert_calls) == 1
+    _, tokens, inserted_prompt_cache = prompt_cache.insert_calls[0]
+    assert tokens == [101, 102, 103]
+    assert inserted_prompt_cache[0].offset == 3
+
+
+def test_batched_generation_skips_cross_prompt_cache_insert_when_tail_is_untrimmable(
+    monkeypatch,
+):
+    class FakeDetokenizer:
+        last_segment = ""
+
+        def add_token(self, token):
+            self.last_segment += str(token)
+
+        def finalize(self):
+            return None
+
+    class FakeLogprobs:
+        def __getitem__(self, token):
+            return SimpleNamespace(item=lambda: -0.5)
+
+    class FakeCacheEntry:
+        def __init__(self, offset):
+            self.offset = offset
+
+    class FakeGenerationResponse:
+        def __init__(self, uid, token, finish_reason, prompt_cache):
+            self.uid = uid
+            self.token = token
+            self.finish_reason = finish_reason
+            self.prompt_cache = prompt_cache
+            self.logprobs = FakeLogprobs()
+
+    class FakeBatchGenerator:
+        def __init__(self, shutdown):
+            self.stream = object()
+            self._shutdown = shutdown
+            self._served = False
+
+        def next(self):
+            if self._served:
+                return [], []
+            self._served = True
+            self._shutdown.set()
+            response = FakeGenerationResponse(
+                uid=11,
+                token=999,
+                finish_reason="stop",
+                prompt_cache=[FakeCacheEntry(offset=5)],
+            )
+            return [], [response]
+
+    class FakePromptCache:
+        def __init__(self):
+            self.insert_calls = []
+
+        def insert_cache(self, model_key, tokens, prompt_cache):
+            self.insert_calls.append((model_key, list(tokens), prompt_cache))
+
+    class ShutdownFlag:
+        def __init__(self):
+            self._is_set = False
+
+        def is_set(self):
+            return self._is_set
+
+        def set(self):
+            self._is_set = True
+
+    shutdown = ShutdownFlag()
+    prompt_cache = FakePromptCache()
+    fake_generator = FakeBatchGenerator(shutdown)
+
+    kit = object.__new__(BatchedModelKit)
+    kit.model = object()
+    kit._seed = 0
+    kit._shutdown = shutdown
+    kit._startup_complete = SimpleNamespace(set=lambda: None)
+    request_queue = Queue()
+    kit._batch_results = {
+        11: {
+            "cross_prompt_cache_key": [101, 102, 103],
+            "live_cache_key": [101, 102, 103],
+            "rqueue": request_queue,
+            "detokenizer": FakeDetokenizer(),
+            "top_logprobs": 0,
+            "request_id": "req-1",
+            "inserted_at": None,
+            "cached_tokens": 0,
+            "rest_tokens": 3,
+            "first_token_logged": False,
+        }
+    }
+    kit._prompt_cache = prompt_cache
+    kit._requests = Queue()
+    kit._run_startup_warmup = lambda: None
+    kit._make_batch_generator = lambda completion_batch_size=None: fake_generator
+    kit.tokenizer = SimpleNamespace(detokenizer=FakeDetokenizer())
+
+    monkeypatch.setattr(
+        model_kit_module,
+        "install_mlx_compile_cache_cleanup_for_thread",
+        lambda: None,
+    )
+    monkeypatch.setattr(model_kit_module, "set_seed", lambda seed: None)
+    monkeypatch.setattr(
+        model_kit_module,
+        "prepare_mlx_lm_generation_stream",
+        lambda reason: None,
+    )
+    monkeypatch.setattr(model_kit_module, "batched_timing_enabled", lambda: False)
+    monkeypatch.setattr(model_kit_module.mx, "stream", lambda stream: nullcontext())
+    monkeypatch.setattr(model_kit_module, "can_trim_prompt_cache", lambda cache: False)
+
+    kit._generate()
+
+    assert prompt_cache.insert_calls == []
 
 
 def test_batched_timing_log_is_disabled_by_default(monkeypatch, caplog):
