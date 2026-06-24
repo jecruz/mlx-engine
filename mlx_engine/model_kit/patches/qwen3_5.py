@@ -42,6 +42,7 @@ from mlx_vlm.models.qwen3_5.language import (
     LanguageModel as VlmQwen3_5LanguageModel,
     Qwen3_5Attention as VlmQwen3_5Attention,
     Qwen3_5GatedDeltaNet as VlmQwen3_5GatedDeltaNet,
+    Qwen3_5Model as VlmQwen3_5Model,
     Qwen3_5RotaryEmbedding,
 )
 
@@ -52,7 +53,9 @@ OriginalQwen3_5TextModel = Qwen3_5TextModel
 OriginalVlmQwen3_5AttentionInit = VlmQwen3_5Attention.__init__
 OriginalVlmQwen3_5AttentionCall = VlmQwen3_5Attention.__call__
 OriginalVlmQwen3_5GatedDeltaNetCall = VlmQwen3_5GatedDeltaNet.__call__
+OriginalVlmQwen3_5ModelCall = VlmQwen3_5Model.__call__
 OriginalVlmQwen3_5LanguageModelCall = VlmQwen3_5LanguageModel.__call__
+OriginalVlmQwen3_5GetRopeIndex = VlmQwen3_5LanguageModel.get_rope_index
 OriginalVlmQwen3_5IsSingleRowBatchCache = (
     vlm_qwen3_5_language._is_single_row_batch_cache
 )
@@ -63,6 +66,73 @@ OriginalVlmQwen3_5RaggedDecodeAttention = (
 
 def _patched_vlm_qwen3_5_ragged_decode_attention(*args, **kwargs):
     return None
+
+
+def _patched_vlm_qwen3_5_get_rope_index(
+    self,
+    input_ids: mx.array,
+    image_grid_thw: Optional[mx.array] = None,
+    video_grid_thw: Optional[mx.array] = None,
+    attention_mask: Optional[mx.array] = None,
+):
+    """Handle fully padded vision rows before deferring to upstream rope logic."""
+    if (
+        input_ids is None
+        or attention_mask is None
+        or attention_mask.ndim != 2
+        or not isinstance(attention_mask, mx.array)
+        or (image_grid_thw is None and video_grid_thw is None)
+    ):
+        return OriginalVlmQwen3_5GetRopeIndex(
+            self,
+            input_ids,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=video_grid_thw,
+            attention_mask=attention_mask,
+        )
+
+    keep_rows = [index for index, row in enumerate(attention_mask.tolist()) if any(row)]
+    if len(keep_rows) == input_ids.shape[0]:
+        return OriginalVlmQwen3_5GetRopeIndex(
+            self,
+            input_ids,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=video_grid_thw,
+            attention_mask=attention_mask,
+        )
+
+    if not keep_rows:
+        position_ids = mx.ones(
+            (3, input_ids.shape[0], input_ids.shape[1]),
+            dtype=input_ids.dtype,
+        )
+        rope_deltas = mx.zeros((input_ids.shape[0], 1), dtype=input_ids.dtype)
+        return position_ids, rope_deltas
+
+    active_input_ids = input_ids[keep_rows, :]
+    active_attention_mask = attention_mask[keep_rows, :]
+    active_position_ids, active_rope_deltas = OriginalVlmQwen3_5GetRopeIndex(
+        self,
+        active_input_ids,
+        image_grid_thw=image_grid_thw,
+        video_grid_thw=video_grid_thw,
+        attention_mask=active_attention_mask,
+    )
+
+    inactive_position = mx.ones((3, 1, input_ids.shape[1]), dtype=active_position_ids.dtype)
+    position_rows = []
+    delta_rows = []
+    active_row = 0
+    for row_index in range(input_ids.shape[0]):
+        if row_index in keep_rows:
+            position_rows.append(active_position_ids[:, active_row : active_row + 1, :])
+            delta_rows.append(active_rope_deltas[active_row : active_row + 1])
+            active_row += 1
+        else:
+            position_rows.append(inactive_position)
+            delta_rows.append(mx.zeros((1, 1), dtype=active_rope_deltas.dtype))
+
+    return mx.concatenate(position_rows, axis=1), mx.concatenate(delta_rows, axis=0)
 
 
 def _vlm_qwen3_5_gated_delta_net_fast_path(
@@ -174,6 +244,164 @@ def _patched_vlm_qwen3_5_is_single_row_batch_cache(cache_entry) -> bool:
         cached = (left_padding, bool(int(left_padding.item()) > 0))
         cache_entry._mlx_engine_qwen3_5_single_row_batch_cache = cached
     return cached[1]
+
+
+def _restore_batch_padding_metadata(cache_entry, offsets, steps: int):
+    """Restore merged batch-cache offsets and left-padding after row fallback."""
+    if offsets is None:
+        return cache_entry
+    if not (
+        hasattr(cache_entry, "offset")
+        and hasattr(cache_entry, "left_padding")
+        and hasattr(cache_entry, "_idx")
+    ):
+        return cache_entry
+    cache_entry.offset = offsets + steps
+    cache_entry.left_padding = cache_entry._idx - cache_entry.offset
+    return cache_entry
+
+
+def _patched_vlm_qwen3_5_model_call(
+    self,
+    inputs: mx.array,
+    inputs_embeds: Optional[mx.array] = None,
+    mask: Optional[mx.array] = None,
+    cache=None,
+    position_ids: Optional[mx.array] = None,
+    capture_layer_ids: Optional[list[int]] = None,
+    hidden_sink: Optional[list] = None,
+    gdn_sink: Optional[list] = None,
+):
+    """Guard mixed-padding row fallback from fully padded rows.
+
+    Upstream mlx-vlm's row-wise fallback can recurse into empty per-row inputs
+    when a batch contains fully padded query rows. Skip those rows and restore
+    merged batch-cache offset/left-padding metadata after the per-row merge.
+    """
+    batch_size = int(
+        inputs_embeds.shape[0] if inputs_embeds is not None else inputs.shape[0]
+    )
+    seq_length = int(
+        inputs_embeds.shape[1] if inputs_embeds is not None else inputs.shape[1]
+    )
+    if (
+        cache is None
+        or batch_size <= 1
+        or seq_length <= 1
+        or hidden_sink is not None
+        or gdn_sink is not None
+    ):
+        return OriginalVlmQwen3_5ModelCall(
+            self,
+            inputs,
+            inputs_embeds=inputs_embeds,
+            mask=mask,
+            cache=cache,
+            position_ids=position_ids,
+            capture_layer_ids=capture_layer_ids,
+            hidden_sink=hidden_sink,
+            gdn_sink=gdn_sink,
+        )
+
+    fa_cache = cache[self.fa_idx]
+    if (
+        fa_cache is not None
+        and hasattr(fa_cache, "extract")
+        and hasattr(fa_cache.__class__, "merge")
+        and isinstance(getattr(fa_cache, "offset", None), mx.array)
+        and fa_cache.offset.ndim > 0
+    ):
+        if inputs_embeds is None:
+            h = self.embed_tokens(inputs)
+        else:
+            h = inputs_embeds
+        query_left_padding = mx.minimum(mx.maximum(-fa_cache.offset, 0), h.shape[1])
+        cache_left_padding = getattr(fa_cache, "left_padding", None)
+        has_left_padding = (
+            isinstance(cache_left_padding, mx.array)
+            and cache_left_padding.ndim > 0
+            and int(cache_left_padding.max().item()) > 0
+        )
+        if has_left_padding or int(query_left_padding.max().item()) > 0:
+            row_outputs = []
+            row_caches = [[] for _ in cache]
+            batch_offsets = []
+            for cache_entry in cache:
+                offsets = getattr(cache_entry, "offset", None)
+                if (
+                    isinstance(offsets, mx.array)
+                    and offsets.ndim > 0
+                    and offsets.size >= h.shape[0]
+                ):
+                    batch_offsets.append(offsets[: h.shape[0]])
+                else:
+                    batch_offsets.append(None)
+
+            for row, pad in enumerate(query_left_padding.tolist()):
+                pad = min(max(int(pad), 0), h.shape[1])
+                current_cache = []
+                for cache_entry in cache:
+                    if cache_entry is None:
+                        current_cache.append(None)
+                    else:
+                        current_cache.append(
+                            vlm_qwen3_5_language._extract_row_cache(
+                                cache_entry, row
+                            )
+                        )
+
+                if pad == h.shape[1]:
+                    row_outputs.append(mx.zeros_like(h[row : row + 1]))
+                    for i, cache_entry in enumerate(current_cache):
+                        row_caches[i].append(cache_entry)
+                    continue
+
+                row_inputs = inputs[row : row + 1, pad:]
+                row_embeds = h[row : row + 1, pad:]
+                row_position_ids = None
+                if position_ids is not None:
+                    if position_ids.ndim == 2:
+                        row_position_ids = position_ids[row : row + 1, pad:]
+                    else:
+                        row_position_ids = position_ids[:, row : row + 1, pad:]
+
+                row_out = OriginalVlmQwen3_5ModelCall(
+                    self,
+                    row_inputs,
+                    inputs_embeds=row_embeds,
+                    cache=current_cache,
+                    position_ids=row_position_ids,
+                )
+                if pad > 0:
+                    row_out = vlm_qwen3_5_language._pad_row_time(
+                        row_out, pad, h.shape[1]
+                    )
+                row_outputs.append(row_out)
+                for i, cache_entry in enumerate(current_cache):
+                    row_caches[i].append(cache_entry)
+
+            for i, entries in enumerate(row_caches):
+                if cache[i] is None:
+                    continue
+                if hasattr(cache[i].__class__, "merge"):
+                    cache[i] = _restore_batch_padding_metadata(
+                        cache[i].__class__.merge(entries),
+                        batch_offsets[i],
+                        h.shape[1],
+                    )
+            return mx.concatenate(row_outputs, axis=0)
+
+    return OriginalVlmQwen3_5ModelCall(
+        self,
+        inputs,
+        inputs_embeds=inputs_embeds,
+        mask=mask,
+        cache=cache,
+        position_ids=position_ids,
+        capture_layer_ids=capture_layer_ids,
+        hidden_sink=hidden_sink,
+        gdn_sink=gdn_sink,
+    )
 
 
 class PatchedDecoderLayer(DecoderLayer):
@@ -729,6 +957,8 @@ def apply_patches():
     VlmQwen3_5Attention.__init__ = _patched_vlm_qwen3_5_attention_init
     VlmQwen3_5Attention.__call__ = _patched_vlm_qwen3_5_attention_call
     VlmQwen3_5GatedDeltaNet.__call__ = _patched_vlm_qwen3_5_gated_delta_net_call
+    VlmQwen3_5Model.__call__ = _patched_vlm_qwen3_5_model_call
+    VlmQwen3_5LanguageModel.get_rope_index = _patched_vlm_qwen3_5_get_rope_index
     VlmQwen3_5LanguageModel.__call__ = _patched_vlm_qwen3_5_language_model_call
     vlm_qwen3_5_language._is_single_row_batch_cache = (
         _patched_vlm_qwen3_5_is_single_row_batch_cache
