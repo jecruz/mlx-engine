@@ -1,5 +1,24 @@
 from types import SimpleNamespace
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _reset_mlx_lm_generate_generation_stream(monkeypatch):
+    """Keep mlx_lm.generate.generation_stream isolated to each test.
+
+    prepare_mlx_lm_generation_stream assigns to that global so tests in other
+    files do not pick up a mock object via mlx_lm.generate(...).
+    """
+    from mlx_engine.utils import mlx_lm_stream
+
+    monkeypatch.setattr(
+        mlx_lm_stream.mlx_lm_generate,
+        "generation_stream",
+        None,
+        raising=False,
+    )
+
 
 def test_prepare_stream_defaults_to_thread_local(monkeypatch):
     """Default text generation should keep using per-thread MLX streams."""
