@@ -73,6 +73,7 @@ _MAX_PREPARED_PROMPT_METADATA_ENTRIES = 128
 _RECORD_SPAN_KEY = "chunk_span"
 _TERMINAL_PACKED_KEY = "is_terminal_packed"
 _TERMINAL_PACKED_FINAL_KV_ENV = "MLX_ENGINE_VLM_TERMINAL_PACKED_FINAL_KV"
+_RESTORE_EVAL_STATE_ONLY_ENV = "MLX_ENGINE_RESTORE_EVAL_STATE_ONLY"
 
 
 @dataclass
@@ -311,12 +312,18 @@ class VlmPromptCacheStore:
         # Disk restores run on the prompt-cache I/O thread; decode consumes the
         # cache on the generation thread. Force assembled arrays now so no lazy
         # graph keeps a thread-local MLX stream from the restore worker.
+        # The default behavior evaluates full cache objects for backward
+        # compatibility. Set MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1 to evaluate
+        # just cache state payloads, which can reduce materialization work.
         eval_start = perf_counter() if timing_enabled else None
+        restore_cache_for_eval = (
+            [cache.state for cache in prompt_cache if cache is not None]
+            if os.environ.get(_RESTORE_EVAL_STATE_ONLY_ENV, "").lower()
+            in {"1", "true", "yes", "on"}
+            else prompt_cache
+        )
         mx.eval(
-            [
-                value
-                for _, value in tree_flatten([cache.state for cache in prompt_cache])
-            ]
+            [value for _, value in tree_flatten(restore_cache_for_eval)]
         )
         eval_ms = elapsed_ms(eval_start) if timing_enabled else 0.0
 
