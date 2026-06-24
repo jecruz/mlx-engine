@@ -27,8 +27,21 @@ The stale `20260619T000646Z-shared-bench.json` baseline had `image_long_toucan` 
 - **Row-error check:** both rows have `error: null` and the runner processes exited 0.
 - **Completion-token check:** both rows exceed the prompt-specific `min_completion_tokens=4` (cold: 5 tokens, warm: 10 tokens), so `quality_compare.py` no longer inherits the stale `completion tokens below threshold` failure.
 - **Stream-failure check:** no `RuntimeError: There is no Stream(...)` in runner stderr across the process-restart run.
-- **Quality note:** the warm run (run 2) produced `A bald eagle is depicted in the image.` and is missing the expected `toucan` keyword. The single-report `quality_compare.py` inspect therefore reports `status=fail` for `image_long_toucan` on the keyword check, even though the completion-token check is now clean. This warm-run topic regression is a pre-existing/WIP quality issue, not a row-level benchmark error, and should be tracked separately; it does not invalidate the baseline's role as the M1 retained reference for completion-token and row-error gating.
+- **Quality note (fixed 2026-06-24):** the warm run originally produced `A bald eagle is depicted in the image.` and was missing the expected `toucan` keyword. The root cause was the opaque `ArraysCache` state checkpoint being saved one token ahead of the reusable KV prefix when the final prompt chunk was shorter than the prefix chunk size. The fix is gated by `MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN` (default enabled). After the fix, the warm run retains the same `A toucan.` output as the cold run. See the new section below for the fixed report and compare.
 - **Harness fix required:** `runners/mlx_engine_runner.py` was updated to copy the tokenizer's `chat_template` to the mlx-engine VLM processor when the processor exposes `apply_chat_template` but has no loaded `chat_template`. Without this, the LFM2.5-VL benchmark runner fails immediately with `ValueError: Cannot use apply_chat_template because this processor does not have a chat template`.
+
+## M1 warm-restore image-fidelity fix (2026-06-24)
+
+Feature `m1-warm-restore-image-fidelity` fixes the warm-restore divergence on the LFM2.5-VL `image_long_toucan` lane. The cold run produced `A toucan.` while the warm run (post-restart persistent cache) diverged to `A bald eagle is depicted in the image.` because the opaque `ArraysCache` state checkpoint was saved at the full-prompt length, one token ahead of the reusable KV prefix.
+
+- **Root cause:** batched VLM restore/record path. When the final reusable prompt chunk was shorter than the prefix chunk size, the opaque state checkpoint was only saved at the full-prompt final snapshot, not at the exact chunk boundary. Restoring the terminal-packed KV prefix plus that full-length state checkpoint gave the conv/SSM layers one token of already-processed state, corrupting the image context for the generated response.
+- **Fix:** add a final prefill step that lands exactly on the short final chunk boundary, gated by `MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN` (default enabled, opt-out with `0`/`false`/`no`/`off`). The final snapshot still writes the terminal-packed KV record; the state checkpoint is saved at the chunk boundary during prefill and reused at restore time.
+- **Changed files:** `mlx_engine/model_kit/batched_vision/batch_generator.py`, `tests/test_batched_vision_batch_generator.py`, `tests/test_prefill_step_size.py` (corrected model paths to match the mission's no-`models/` segment convention).
+- **Verification report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T205407.258764Z-shared-bench.json`
+- **Quality compare vs retained baseline:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T205407.258764Z-quality-compare.json` — `status=pass`, `image_long_toucan` keyword check passes.
+- **Row results:** both cold and warm rows show `error: null`, `output_preview: "A toucan."`, and `completion_tokens=5`. Warm restore loaded 2 records (KV delta + state checkpoint) across 8 chunks with `cached_tokens=7373`.
+- **Safety checks:** the restore-time `mx.eval(...)` barrier remains present; the persistent cache record format is unchanged, so old caches still load; the fix is opt-out via env var.
+- **Promotion status:** this is a correctness fix, not a new performance candidate. It unblocks trustworthy M1 promotion decisions by ensuring the warm path is not faster-but-wrong.
 
 ## Current conclusions
 

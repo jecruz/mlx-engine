@@ -818,7 +818,91 @@ def test_batch_generator_aligns_restored_prefill_only_for_cache_saves(monkeypatc
 
 
 def test_batch_generator_state_cache_lands_on_reusable_tail_boundary(monkeypatch):
-    """Opaque state caches need an exact checkpoint at the final chunk boundary."""
+    """Opaque state caches need an exact checkpoint at the final chunk boundary.
+
+    The final reusable chunk may be shorter than the prefix chunk size. The
+    prefill must land on its exact end so the opaque state checkpoint is saved
+    at the same boundary as the KV delta. Otherwise the final snapshot saves
+    the state one token ahead of the restored prefix, corrupting warm restore
+    for stateful models such as LFM2.5-VL.
+    """
+    monkeypatch.setattr(batcher, "wired_limit", lambda _model: contextlib.nullcontext())
+    monkeypatch.setattr(
+        batcher,
+        "make_prompt_cache",
+        lambda _model: [ArraysCache()],
+    )
+    model = _FakeModel()
+    generator = BatchGenerator(
+        model=model,
+        stop_criteria=lambda _token: False,
+        prefill_step_size=2048,
+    )
+    snapshots = []
+    prompt = list(range(1795))
+    prefix_chunks = build_prefix_cache_chunks(prompt, [])
+
+    def save_snapshot(
+        cache,
+        chunks,
+        start_chunk_idx,
+        end_chunk_idx,
+        snapshot_len,
+        *,
+        is_final_prompt_boundary,
+    ):
+        snapshots.append(
+            (
+                cache,
+                chunks,
+                start_chunk_idx,
+                end_chunk_idx,
+                snapshot_len,
+                is_final_prompt_boundary,
+            )
+        )
+
+    try:
+        generator.insert(
+            prompt,
+            inputs_embeds=mx.zeros((1, len(prompt), 2), dtype=mx.float32),
+            sampler=_argmax_sampler,
+            logits_processors=[],
+            prompt_kwargs={},
+            prefix_cache_chunks=prefix_chunks,
+            all_tokens=[],
+            next_prefix_cache_chunk_idx=0,
+            image_spans=[],
+            prompt_cache_save_callback=save_snapshot,
+        )
+
+        generator.next()
+        generator.next()
+        generator.next()
+    finally:
+        generator.close()
+
+    assert [len(call["input_ids"][0]) for call in model.calls] == [3 * C, 258, 1]
+    assert [
+        (start_chunk_idx, end_chunk_idx, snapshot_len, is_final_prompt_boundary)
+        for (
+            _cache,
+            _chunks,
+            start_chunk_idx,
+            end_chunk_idx,
+            snapshot_len,
+            is_final_prompt_boundary,
+        ) in snapshots
+    ] == [
+        (0, 3, 3 * C, False),
+        (3, 4, 1794, False),
+        (3, 4, 1795, True),
+    ]
+
+
+def test_batch_generator_state_cache_opt_out_keeps_old_alignment(monkeypatch):
+    """Setting the alignment env var to 0 restores the old prefill behavior."""
+    monkeypatch.setenv("MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN", "0")
     monkeypatch.setattr(batcher, "wired_limit", lambda _model: contextlib.nullcontext())
     monkeypatch.setattr(
         batcher,
@@ -885,7 +969,10 @@ def test_batch_generator_state_cache_lands_on_reusable_tail_boundary(monkeypatch
             snapshot_len,
             is_final_prompt_boundary,
         ) in snapshots
-    ][0] == (0, 3, 3 * C, False)
+    ] == [
+        (0, 3, 3 * C, False),
+        (3, 4, 1795, True),
+    ]
 
 
 def test_batch_generator_defers_clear_cache_until_delay(monkeypatch):

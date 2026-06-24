@@ -6,6 +6,7 @@ The batcher only owns language-model prefill/decode plus RoPE delta handoff.
 
 import contextlib
 import logging
+import os
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Protocol
@@ -46,6 +47,19 @@ from mlx_engine.processors.repetition_penalty_processor import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Opt-in/opt-out for the final short-chunk state-checkpoint alignment fix.
+# Default enabled (safe) because misaligned opaque state checkpoints corrupt
+# warm restore for stateful models such as LFM2.5-VL.
+_VLM_FINAL_CHUNK_STATE_ALIGN_ENV = "MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN"
+
+
+def _vlm_final_chunk_state_align_enabled() -> bool:
+    value = os.environ.get(_VLM_FINAL_CHUNK_STATE_ALIGN_ENV, "")
+    if not value:
+        return True
+    return value.lower() not in {"0", "false", "no", "off"}
+
 
 DEFERRED_CLEAR_DELAY_STEPS = 8
 
@@ -965,6 +979,22 @@ class _PromptPrefill:
             ) * self._prefix_cache_save_state.prefix_chunk_size
             if target_prefix_len > self._processed_prefix_len:
                 return target_prefix_len - self._processed_prefix_len
+            if _vlm_final_chunk_state_align_enabled():
+                # The final reusable chunk may be shorter than the prefix chunk
+                # size. Step to its exact end so the opaque state checkpoint is
+                # saved at the same boundary as the KV delta, rather than only
+                # at the full-prompt final snapshot (which would place the state
+                # one token ahead of the restored prefix and corrupt warm
+                # restore for stateful models such as LFM2.5-VL).
+                for chunk in self._prefix_cache_save_state.chunks:
+                    if (
+                        chunk.end > self._processed_prefix_len
+                        and chunk.end <= max_reusable_prefix_len
+                    ):
+                        step = chunk.end - self._processed_prefix_len
+                        if step < remaining_tokens:
+                            return step
+                        break
 
         return 0
 
@@ -1015,7 +1045,19 @@ class _PromptPrefill:
             if start_chunk_idx >= end_chunk_idx:
                 return
 
-            save_state.next_chunk_idx = end_chunk_idx
+            # For opaque state caches (e.g. LFM2.5-VL conv/SSM state) the final
+            # chunk is crossed in prefill to save the state checkpoint at the
+            # exact chunk boundary. Keep the last chunk reachable so the final
+            # snapshot can still write the terminal-packed KV record. KV-only
+            # caches keep the previous behavior and advance past the last chunk.
+            if any(
+                type(cache).__name__ == "ArraysCache" for cache in self.prompt_cache
+            ):
+                save_state.next_chunk_idx = min(
+                    end_chunk_idx, len(save_state.chunks) - 1
+                )
+            else:
+                save_state.next_chunk_idx = end_chunk_idx
             # One large prefill can backfill several crossed cache chunks.
             save_state.callback(
                 [

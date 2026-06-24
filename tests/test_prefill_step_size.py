@@ -24,10 +24,10 @@ from mlx_engine.generate import (
 
 CUSTOM_PREFILL_STEP_SIZE = 256
 TEXT_MODEL_PATH = Path(
-    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/models/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit"
+    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit"
 )
 VLM_MODEL_PATH = Path(
-    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/models/mlx-community/gemma-4-12B-it-8bit"
+    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit"
 )
 
 
