@@ -200,6 +200,37 @@ Feature `m1-warm-restore-image-fidelity` fixes the warm-restore divergence on th
 - `python3 quality_compare.py` against the retained benchmark baseline
 - `env PYTHONPATH=. pytest tests/test_shared_bench.py tests/test_quality_compare.py` in the benchmark harness when report-format logic changes
 
+## M1 state-only restore eval decision (2026-06-24)
+
+Feature `m1-state-only-restore-eval` benched `MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1` against a fresh LFM2.5-VL `vlm_image_long_quality.json` persistent-cache baseline in process-restart mode. The opt-in evaluates only cache `state` payloads at the restore-time `mx.eval(...)` barrier instead of full cache objects.
+
+- **Baseline report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T210226.711363Z-shared-bench.json`
+- **Candidate run 1:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T210245.745879Z-shared-bench.json`
+- **Candidate run 1 compare:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T210245.745879Z-quality-compare.json` — `status=fail`
+- **Candidate run 2:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T210319.821177Z-shared-bench.json`
+- **Candidate run 2 compare:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T210319.821177Z-quality-compare.json` — `status=fail`
+- **Row errors:** zero on all runs; all warm restores completed without `RuntimeError: There is no Stream(...)`.
+- **Output quality:** all rows produced `A toucan.` and passed the `toucan` keyword check.
+- **Restore-time barrier:** `mx.eval(...)` remains present in `mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py`; the opt-in only narrows the evaluated payload, it does not remove the barrier.
+
+### Measured deltas vs baseline
+
+| Metric | Run 1 delta | Run 2 delta |
+|---|---|---|
+| cold TTFT | -2.34% | -2.51% |
+| warm TTFT | +6.77% | +12.05% |
+| decode TPS | -6.38% | +15.53% |
+| total latency | -1.90% | -2.44% |
+| warm total | +9.43% | +4.12% |
+
+### Decision: REJECT
+
+The state-only restore-eval opt-in does not meet the promotion bar on the retained LFM2.5-VL path-load lane. Both repeated-sample runs regressed warm TTFT beyond the 5% quality_compare threshold, and no real, repeatable improvement in total latency, decode TPS, or restore `eval_ms` was observed. The default full-cache-object restore path remains the retained behavior. The env opt-in code is left in place (committed WIP 869b7bf) but should not be made default; it is recorded as a rejected experiment for this lane.
+
+### M4 gating note
+
+This M1 opt-in did not produce a real, repeatable eval-path win. M4 should still be evaluated against the broader M1 evidence (including the restore-freshness-flush opt-in), but the state-only-eval path alone does not justify proceeding with a new restore-eval reduction candidate.
+
 ## Reference artifacts
 
 - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/.continue-here.md`
