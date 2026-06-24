@@ -70,6 +70,8 @@ from mlx_engine.utils.generation_helpers import (
 )
 from mlx_engine.utils.sampling import create_sampler
 from mlx_engine.utils.mlx_lm_stream import (
+    describe_stream_configuration,
+    emit_stream_configuration_probe,
     log_mlx_generation_exception,
     log_mlx_stream_state,
     prepare_mlx_lm_generation_stream,
@@ -482,6 +484,19 @@ def load_model(
         )
 
         if use_batched_kit:
+            emit_stream_configuration_probe(
+                reason="load-model-batched-text",
+                use_default_stream=False,
+            )
+            logger.info(
+                "Text load resolved to BatchedModelKit model_path=%s model_type=%s "
+                "max_seq_nums=%s prefill_step_size=%s stream_config=%s",
+                model_path,
+                model_type,
+                max_seq_nums,
+                batched_prefill_step_size,
+                describe_stream_configuration(False),
+            )
             model_kit = BatchedModelKit(
                 model_path,
                 max_kv_size=max_kv_size,
@@ -490,6 +505,19 @@ def load_model(
                 seed=seed,
             )
         else:
+            emit_stream_configuration_probe(
+                reason="load-model-sequential-text",
+                use_default_stream=False,
+            )
+            logger.info(
+                "Text load resolved to ModelKit model_path=%s model_type=%s "
+                "max_seq_nums=%s prefill_step_size=%s stream_config=%s",
+                model_path,
+                model_type,
+                max_seq_nums,
+                prefill_step_size,
+                describe_stream_configuration(False),
+            )
             model_kit = ModelKit(
                 model_path,
                 prefill_step_size=prefill_step_size,
