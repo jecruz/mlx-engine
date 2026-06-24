@@ -256,6 +256,19 @@ The WIP README claimed second-request cached tokens `0 → 2048` and TTFT `-12.1
 
 `MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH` remains the default-on behavior. The flush demonstrably allows a second overlapping same-prefix VLM request to reuse the first request's in-progress cached tokens, cutting second-request TTFT by ~14% and total latency by ~13% while preserving output stability and zero row errors. The explicit opt-out (`MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH=0`) is retained for rollback, but the default path is promoted.
 
+## M1 restore opt-in decisions summary (2026-06-24)
+
+Feature `m1-record-decisions` consolidates the M1 promote/keep/reject decisions for both restore opt-ins and records the M1 outcome that gates M4.
+
+| M1 opt-in | Decision | Evidence | Repeated samples / quality gate | Key deltas |
+|---|---|---|---|---|
+| `MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1` | **REJECT** | Baseline: `20260624T210226.711363Z-shared-bench.json`; Candidate run 1: `20260624T210245.745879Z-shared-bench.json` + `20260624T210245.745879Z-quality-compare.json` (`status=fail`); Candidate run 2: `20260624T210319.821177Z-shared-bench.json` + `20260624T210319.821177Z-quality-compare.json` (`status=fail`) | 2 repeated candidate runs vs the M1 retained baseline; all rows `error: null`; warm restore showed no `RuntimeError: There is no Stream(...)`; `toucan` keyword preserved | Run 1: warm TTFT +6.77%, warm total +9.43%; Run 2: warm TTFT +12.05%, decode TPS +15.53% |
+| `MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH` (default-on) | **KEEP as promoted default** | Flush-on: `20260624T214000Z-freshness-flush-on.json`; Flush-off: `20260624T214500Z-freshness-flush-off.json`; earlier repeated probe: `20260623-vlm-restore-freshness-concurrency.md` and `20260623-vlm-restore-freshness-rerun.md` | 5 fresh-namespace repeated runs per setting (2026-06-24), all rows `error: null`, `flushed_matching_saves=1` on every on-run, `second_output_unique_count=1`; prior 3-run rerun showed the same cached-token reuse and TTFT win | Second-request cached tokens 0 → 2048; second-request TTFT −14.10%; second-request total −13.25% |
+
+### M1 outcome and M4 gating statement
+
+M1 did **not** produce a real, repeatable eval-path win. The only M1 candidate that targeted restore-time `eval_ms` reduction (`MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1`) was rejected because both repeated runs regressed warm TTFT and failed the `quality_compare.py` gate. The promoted M1 change (`MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH`) is a targeted overlapping-request cache-reuse win, not an `eval_ms` / restore-materialization reduction. Therefore, the M1 outcome that gates M4 is: **no real, repeatable eval-path win exists**, so the next restore-eval reduction candidate should not be pursued under M1 evidence. The orchestrator should cancel the M4 restore-eval candidate workstream.
+
 ## Reference artifacts
 
 - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/.continue-here.md`
