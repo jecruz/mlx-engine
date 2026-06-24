@@ -270,6 +270,99 @@ prompt-boundary VLM cache saves. Based on repeated-sample benchmark evidence on
 retained long-VLM profiles plus LM Studio validation of the current worktree,
 this path is now the promoted default for final-boundary saves.
 
+### Shared Thread-Unsafe Stream
+
+Set `MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM=1` to opt into the
+candidate shared-stream path for text generation when the active MLX runtime
+exposes `mx.new_thread_unsafe_stream`.
+
+```bash
+MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM=1 python demo.py --model /path/to/model
+```
+
+State: `experiment`.
+
+For live LM Studio validation, the same experiment can also be enabled by
+creating the file `/tmp/mlx-engine-thread-unsafe-stream`. This exists because
+LM Studio does not reliably preserve custom backend env vars for Python-side
+experiments, so a file toggle is the reversible validation path on the real
+server runtime.
+
+The current default remains per-thread `mx.new_thread_local_stream` for
+non-distributed generation and the device default stream for distributed
+paths. The shared thread-unsafe stream path is wired only as an opt-in
+benchmark candidate. It should not be promoted until it is tested against the
+retained prompt-processing workloads, repeated-sample latency analysis, the
+response-quality regression harness, and live LM Studio validation.
+
+### Registering a Custom LM Studio Runtime Pair
+
+Use `scripts/lmstudio-register-engine.sh` to register a custom backend from the
+current checkout. For isolated LM Studio validation, the script can target a
+cloned vendor runtime pair instead of the default shipped one:
+
+```bash
+LMSTUDIO_MLX_RUNTIME_NAME=app-mlx-generate-mac14-arm64@31 \
+LMSTUDIO_CPYTHON_RUNTIME_NAME=cpython3.11-mac-arm64@11 \
+./scripts/lmstudio-register-engine.sh cheetara-mlx-thread-unsafe-runtime 2026.6.23
+```
+
+The version must be semver-compatible, for example `2026.6.23`.
+
+The registration script now writes the selected vendor runtime pair into both
+the LM Studio engine registry entry and the backend package
+`backend-manifest.json`. That manifest update is required when validating
+against a cloned runtime pair; otherwise LM Studio can appear to select the
+custom backend while still launching against the stock vendor MLX runtime.
+
+When no override env vars are provided, the script now defaults to the vendor
+runtime pair recorded in the installed official LM Studio MLX backend manifest
+instead of blindly picking the newest Amphibian app/Python copies on disk.
+That keeps custom registrations aligned with the runtime pair LM Studio itself
+currently ships and avoids drifting onto newer unsigned vendor runtimes.
+
+The script also preflights code-signing compatibility between the selected MLX
+runtime binary and the active LM Studio worker binary. A cloned runtime whose
+`mlx/core.cpython-311-darwin.so` does not carry the LM Studio worker Team ID
+will be rejected before registration because LM Studio will fail that runtime
+at model-load time under hardened runtime library validation. Use
+`LMSTUDIO_SKIP_RUNTIME_CODESIGN_CHECK=1` only for deliberate low-level signing
+experiments.
+
+If you do override the runtime pair, provide both
+`LMSTUDIO_MLX_RUNTIME_NAME` and `LMSTUDIO_CPYTHON_RUNTIME_NAME` together so the
+custom backend does not mix vendor app and Python runtimes from different
+LM Studio builds.
+
+### VLM Restore Freshness Flush
+
+The VLM cache I/O thread now flushes an ordered prefix of immediately matching
+queued prompt-cache saves before preparing one restore.
+
+```bash
+MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH=0 python demo.py --model /path/to/vlm-model
+```
+
+State: `promoted default`.
+
+Set `MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH=0` to disable it.
+
+This path does not reprioritize arbitrary disk writes; it only allows the
+active restore to commit queued save jobs whose prefix chunk chain exactly
+matches the restore candidate, while preserving queued budget updates ahead of
+those saves.
+
+Promotion basis:
+
+- repeated cold-sample direct runtime probe: second-request cached tokens
+  `0 -> 2048`, TTFT `-12.19%`, stable output
+- live LM Studio validation on overlapping same-prefix VLM requests:
+  - with a fresh unique prompt prefix and `0.01s` overlap, the baseline second
+    request stayed a full miss
+  - with the flush enabled, the live second request restored `2048` cached
+    tokens with `flushed_matching_saves=1` across `0.02s` to `0.05s` overlap
+    windows
+
 ## Attribution
 
 Ernie 4.5 modeling code is sourced from [Baidu](https://huggingface.co/baidu/ERNIE-4.5-0.3B-PT/tree/da6f3b1158d5d0d2bbf552bfc3364c9ec64e8aa5)

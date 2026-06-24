@@ -10,12 +10,18 @@ Related issue: Redmine `#1190`
 - Keep the path-based safetensor load optimization. It retained quality and produced the strongest repeatable VLM cache-load win.
 - Keep one-step KV span coalescing. The full-prefix KV span candidate was rejected on 2026-06-20 because it regressed persistent-cache warm restore performance.
 - Keep the redundant current-only KV record skip for chunks that already save a two-chunk KV span. It reduced persistent-cache benchmark TTFT and total latency while preserving quality.
+- Keep terminal-packed final KV as an accepted defaulted layout with an opt-out, but do not treat it as the next likely retained-lane win. The 2026-06-23 retained Gemma 4 long-lane 10-run rerun was effectively neutral: TTFT `+0.012%`, decode TPS `-0.791%`, total latency `+0.230%` versus explicit opt-out while quality passed.
 - Keep KV span selection bounded to the current chunk plus its immediate predecessor. Full-prefix span records remain a rejected format and should not win restore planning if stale experimental records exist in a persistent index.
 - Keep indexed KV-record lookup inside restore planning. It avoids scanning the full persistent record index once per chunk when selecting span records.
 - Do not treat forced unload during active generation as a performance regression. That behavior is the expected guard path.
 - Treat the empty `stopGenerating()` replay warning as a separate runtime/integration issue, not as a performance win or loss.
 - Treat the restore-materialization track as paused. Two eager candidates stayed below the promotion threshold or regressed decode throughput.
 - Treat contiguous-copy removal as rejected for restore eval work. The 2026-06-20 microbenchmark showed `mx.contiguous` median cost around `0.05 ms` and no meaningful difference between `concat + eval` and the current `concat + contiguous + eval` path.
+- Treat eval-target splatting as rejected for retained-lane work. The 2026-06-23 Gemma 4 long-lane A/B for `mx.eval(*flat_targets)` versus `mx.eval([flat_targets])` passed quality but only moved total latency by `-0.203%` and TTFT by `+0.035%`, which is below the promotion threshold.
+- Treat the retained Gemma 4 restore surface as now measured: `4` physical records, `96` eval targets, and about `434.7 MiB` crossing the restore-time barrier for the long VLM lane. Use that as the sizing reference for future restore-materialization work instead of reasoning from synthetic chunk counts alone.
+- Treat the retained Gemma 4 restore surface as primarily a rotating-delta problem: `40` rotating layers account for `80 / 96` eval targets and about `320 / 434.7 MiB` of the restore-time barrier surface. Bias the next candidate toward reducing rotating-delta arrays or bytes before the barrier.
+- Treat naive post-assembly rotating grouping as rejected. The 2026-06-23 retained Gemma spike collapsed the barrier from `96` arrays to `18` while preserving parity, but rebuilt-graph list-eval slowed from about `2.61 ms` median to about `4.17 ms` median because stacking existing per-layer rotating tensors cost more than it saved. Any future grouped rotating candidate must move earlier in the record/load pipeline.
+- Treat earlier preassembled grouped rotating as measured but not yet promotable. The 2026-06-23 retained Gemma spike that grouped rotating layers before per-layer reconstruction preserved parity and improved sharply over the naive grouped spike, but its combined grouped-materialize-plus-view path still landed slightly slower than the current retained barrier shape. Do not treat grouped rotating record/load as a default next candidate unless a stronger byte-reduction or end-to-end win hypothesis exists.
 
 ## Remaining experiments worth trying
 
@@ -30,6 +36,7 @@ Related issue: Redmine `#1190`
 2. Record packing and cache-layout redesign
    - Compare current one-record-at-a-time restore assembly with a layout that stores more of the final restored tensor structure up front.
    - Measure whether this reduces Python-side overhead, file opens, and post-load materialization.
+   - Do not revisit grouped rotating layout work unless it can reduce bytes, not just target count. The earlier preassembled grouped spike made the view-rebuild cost small, but the total retained-lane barrier still did not beat current.
    - Do not spend time removing `mx.contiguous` from restore assembly for this goal; the measured cost is below the promotion threshold.
 
 3. Prompt-processing and prefill tuning
