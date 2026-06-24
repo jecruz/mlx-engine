@@ -10,6 +10,7 @@ from mlx_engine.model_kit.batched_vision.model_kit import (
     _prefix_chunk_size_for_model,
     _requires_global_no_chunked_prefill,
     _restore_splits_gemma4_image_span,
+    _vlm_restore_freshness_flush_enabled,
 )
 import mlx_engine.model_kit.batched_vision.model_kit as model_kit_module
 from mlx_engine.model_kit.batched_vision.prompt_cache.types import (
@@ -86,6 +87,17 @@ def test_prefix_chunk_size_caps_to_rotating_window(monkeypatch):
     )
 
     assert _prefix_chunk_size_for_model(SimpleNamespace()) == DEFAULT_PREFIX_CHUNK_SIZE
+
+
+def test_vlm_restore_freshness_flush_env_defaults_on(monkeypatch):
+    monkeypatch.delenv("MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH", raising=False)
+    assert _vlm_restore_freshness_flush_enabled() is True
+
+    monkeypatch.setenv("MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH", "1")
+    assert _vlm_restore_freshness_flush_enabled() is True
+
+    monkeypatch.setenv("MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH", "off")
+    assert _vlm_restore_freshness_flush_enabled() is False
 
 
 def test_load_model_forces_no_trust_remote_code(monkeypatch, tmp_path):

@@ -1,6 +1,7 @@
 import copy
 import gc
 import logging
+import os
 import sys
 import time
 import traceback
@@ -86,6 +87,14 @@ from mlx_engine.model_kit.patches.gemma4 import (
 
 logger = logging.getLogger(__name__)
 DEFAULT_MAX_SEQ_NUMS = 4
+_VLM_RESTORE_FRESHNESS_FLUSH_ENV = "MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH"
+
+
+def _vlm_restore_freshness_flush_enabled() -> bool:
+    value = os.environ.get(_VLM_RESTORE_FRESHNESS_FLUSH_ENV, "")
+    if not value:
+        return True
+    return value.lower() not in {"0", "false", "no", "off"}
 
 
 def _requires_global_no_chunked_prefill(model, model_type: str | None) -> bool:
@@ -434,7 +443,11 @@ class BatchedVisionModelKit:
             ),
         )
 
-    def _prepare_request_for_insert(self, request: GenerationRequest) -> PreparedInsert:
+    def _prepare_request_for_insert(
+        self,
+        request: GenerationRequest,
+        flush_matching_save_jobs=None,
+    ) -> PreparedInsert:
         timing_enabled = batched_timing_enabled()
         prepare_start = time.perf_counter() if timing_enabled else None
         request_key = build_prepared_prompt_request_key(
@@ -461,6 +474,18 @@ class BatchedVisionModelKit:
                 config=self.config,
             )
             prepare_inputs_ms = elapsed_ms(prepare_inputs_start) if timing_enabled else 0.0
+        prefix_chunks = build_prefix_cache_chunks(
+            prepared_prompt.prompt_input_ids,
+            prepared_prompt.image_spans,
+            prefix_chunk_size=self._prompt_cache_chunk_size,
+        )
+        flushed_matching_saves = 0
+        if (
+            flush_matching_save_jobs is not None
+            and self._prompt_cache_store.can_store_records()
+            and _vlm_restore_freshness_flush_enabled()
+        ):
+            flushed_matching_saves = flush_matching_save_jobs(prefix_chunks)
         restore_start = time.perf_counter() if timing_enabled else None
         restored = self._prompt_cache_coordinator.restore(
             prompt_input_ids=prepared_prompt.prompt_input_ids,
@@ -483,6 +508,11 @@ class BatchedVisionModelKit:
                 elapsed_ms(prepare_inputs_start) if timing_enabled else 0.0
             )
             metadata_hit = False
+            prefix_chunks = build_prefix_cache_chunks(
+                prepared_prompt.prompt_input_ids,
+                prepared_prompt.image_spans,
+                prefix_chunk_size=self._prompt_cache_chunk_size,
+            )
             restore_start = time.perf_counter() if timing_enabled else None
             restored = self._prompt_cache_coordinator.restore(
                 prompt_input_ids=prepared_prompt.prompt_input_ids,
@@ -490,11 +520,6 @@ class BatchedVisionModelKit:
             )
             restore_ms = elapsed_ms(restore_start) if timing_enabled else 0.0
         if request_key is not None and not metadata_hit:
-            prefix_chunks = build_prefix_cache_chunks(
-                prepared_prompt.prompt_input_ids,
-                prepared_prompt.image_spans,
-                prefix_chunk_size=self._prompt_cache_chunk_size,
-            )
             self._prompt_cache_store.remember_prepared_prompt_metadata(
                 metadata_from_prepared_prompt(request_key, prepared_prompt),
                 prefix_chunks=prefix_chunks,
@@ -512,6 +537,7 @@ class BatchedVisionModelKit:
                     0, len(prepared_prompt.prompt_input_ids) - cached_prefix_len
                 ),
                 metadata_hit=metadata_hit,
+                flushed_matching_saves=flushed_matching_saves,
                 prepare_inputs_ms=prepare_inputs_ms,
                 restore_ms=restore_ms,
                 duration_ms=elapsed_ms(prepare_start),
