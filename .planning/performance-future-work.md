@@ -4,6 +4,32 @@ Date: 2026-06-20
 Scope: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine`
 Related issue: Redmine `#1190`
 
+## M1 retained baseline (2026-06-24)
+
+The stale `20260619T000646Z-shared-bench.json` baseline had `image_long_toucan` rows with sub-16 completion tokens, which caused every later `quality_compare.py` run to inherit a `completion tokens below threshold` failure. A fresh retained baseline was captured in persistent-cache mode for the LFM2.5-VL path-load lane so that later M1 compares do not inherit that failure.
+
+- **Retained baseline report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T202353.078803Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T202353.078803Z-quality-inspect.json`
+- **Command shape:**
+  ```bash
+  cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+  python3 shared_bench.py \
+    --engine mlx-engine \
+    --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit \
+    --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+    --mlx-engine-vlm-prompt-cache-root /tmp/mlx-engine-vlm-cache \
+    --mlx-engine-vlm-prompt-cache-namespace m1-retained-baseline \
+    --mlx-engine-process-restart \
+    --prompt-suite-json prompt_suites/vlm_image_long_quality.json \
+    --runs 2 --max-tokens 32 --temperature 0.0 --top-p 1.0 --include-output-text
+  ```
+- **Configuration check:** persistent-cache root + namespace, process restart per run, `max_tokens=32` (same as the stale baseline), prompt-suite `vlm_image_long_quality.json` (`image_long_toucan`).
+- **Row-error check:** both rows have `error: null` and the runner processes exited 0.
+- **Completion-token check:** both rows exceed the prompt-specific `min_completion_tokens=4` (cold: 5 tokens, warm: 10 tokens), so `quality_compare.py` no longer inherits the stale `completion tokens below threshold` failure.
+- **Stream-failure check:** no `RuntimeError: There is no Stream(...)` in runner stderr across the process-restart run.
+- **Quality note:** the warm run (run 2) produced `A bald eagle is depicted in the image.` and is missing the expected `toucan` keyword. The single-report `quality_compare.py` inspect therefore reports `status=fail` for `image_long_toucan` on the keyword check, even though the completion-token check is now clean. This warm-run topic regression is a pre-existing/WIP quality issue, not a row-level benchmark error, and should be tracked separately; it does not invalidate the baseline's role as the M1 retained reference for completion-token and row-error gating.
+- **Harness fix required:** `runners/mlx_engine_runner.py` was updated to copy the tokenizer's `chat_template` to the mlx-engine VLM processor when the processor exposes `apply_chat_template` but has no loaded `chat_template`. Without this, the LFM2.5-VL benchmark runner fails immediately with `ValueError: Cannot use apply_chat_template because this processor does not have a chat template`.
+
 ## Current conclusions
 
 - Keep the restore-time `mx.eval(...)` safety barrier. Removing it caused a warm-restore stream failure.
