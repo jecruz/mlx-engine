@@ -14,7 +14,7 @@
 
 import os
 from shutil import copyfile
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 import sentencepiece as spm
 
 from transformers import PreTrainedTokenizer

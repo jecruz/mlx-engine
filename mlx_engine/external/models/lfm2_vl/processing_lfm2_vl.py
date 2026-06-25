@@ -11,7 +11,7 @@ from transformers.processing_utils import (
     ProcessorMixin,
     Unpack,
 )
-from transformers.tokenization_utils_base import BatchEncoding, TextInput
+from transformers.tokenization_utils_base import BatchEncoding, PreTokenizedInput, TextInput
 from transformers.utils import logging
 
 logger = logging.get_logger(__name__)
