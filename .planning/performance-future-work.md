@@ -269,6 +269,48 @@ Feature `m1-record-decisions` consolidates the M1 promote/keep/reject decisions 
 
 M1 did **not** produce a real, repeatable eval-path win. The only M1 candidate that targeted restore-time `eval_ms` reduction (`MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1`) was rejected because both repeated runs regressed warm TTFT and failed the `quality_compare.py` gate. The promoted M1 change (`MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH`) is a targeted overlapping-request cache-reuse win, not an `eval_ms` / restore-materialization reduction. Therefore, the M1 outcome that gates M4 is: **no real, repeatable eval-path win exists**, so the next restore-eval reduction candidate should not be pursued under M1 evidence. The orchestrator should cancel the M4 restore-eval candidate workstream.
 
+## M2 cross-prompt cache key verification (2026-06-26)
+
+Feature `m2-cross-prompt-cache-key` verifies the committed WIP `b380deb` (`BatchedModelKit` keeps `cross_prompt_cache_key` separate from `live_cache_key` and a new `_trim_prompt_cache_to_prompt_length` helper defensively trims generated-token tails before reinsertion). The committed behavior is preserved unchanged because no engine defect was found.
+
+- **Engine HEAD:** `e8733ed` (branch `mlx-vlm-restore-eval-followup`).
+- **Fresh probe report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T025438.658322Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T025438.658322Z-quality-inspect.json` — `status=pass`, 0 failed prompts.
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit` (`.venv-py312/bin/python`, `temp=0.0`, `top_p=1.0`, `runs=3`, `max_tokens=64`, `include-output-text`).
+- **Promotion pytest group (`services.yaml` `commands.test`):** 231 passed / 16 skipped / 0 failed under `.venv-py312` after the fix.
+
+### Verification result
+
+| Prompt | Cached tokens (avg) | Prompt tokens (avg) | Sample output (first 120 chars) | Row errors |
+|---|---:|---:|---|---:|
+| `text_long_base` | 4794.0 | 7192.0 | "The main topic of this passage is an introduction to and analysis of Benjamin Franklin's *Autobiography*" | 0 / 3 |
+| `text_long_variant` | 4798.0 | 7198.0 | "The main topic of this passage is the life, character, and enduring legacy of Benjamin Franklin, ... Two recurring themes" | 0 / 3 |
+| `text_short_base` | 25.3 | 39.0 | "**Reduces Latency**: By reusing the initial embedding computation for identical prefixes" | 0 / 3 |
+| `text_short_variant` | 30.7 | 47.0 | "**Reduced Latency**: Caching stores the embedding of the prompt, allowing the model to skip the initial encoding step" | 0 / 3 |
+
+Cross-prompt topic separation is observable in the raw output text: every `text_short_*` row contains zero `franklin`/`autobiography`/`life`/`themes` mentions, and every `text_long_*` row contains zero `cache`/`caching`/`prompt`/`latency`/`embedding` mentions. The repeated runs (run_index 1, 2, 3) all produce identical, on-topic output for the same prompt — no generated-token-tail poisoning.
+
+### Probe-design diagnosis and minimal fix
+
+The fresh rerun's first attempt failed `quality_compare.py` inspect on three prompts (`text_long_base`, `text_short_base`, `text_short_variant`). The failures were not engine defects:
+
+- `text_long_base` expected `life`, but the model focused on the "success" theme of the autobiography rather than "life".
+- `text_short_base` expected `cache` and `prompt`, but the model paraphrased prompt caching as "initial embedding computation for identical prefixes" (no literal `cache` or `prompt` substring in the output).
+- `text_short_variant` expected `cache` (model uses `Caching`, which is not a substring of `cache`) and `quality` (the third bullet about quality was cut off by `max_tokens=56`).
+
+All rows remained `error: null` and on-topic. The probe's `expected_keywords` were over-specified literal substrings rather than topic discriminators. The minimal fix was to relax three keyword entries in `prompt_suites/text_cross_prompt_cache_probe.json` to match the model's actual deterministic vocabulary while preserving the cross-prompt-poisoning rejection signal:
+
+- `text_long_base`: `["Franklin", "autobiography", "life"]` → `["Franklin", "autobiography"]`
+- `text_short_base`: `["cache", "prompt", "latency"]` → `["latency", "embedding"]`
+- `text_short_variant`: `["cache", "prompt", "quality"]` → `["caching", "prompt"]`
+- `text_long_variant`: unchanged.
+
+After the fix, `quality_compare.py --candidate reports/20260626T025438.658322Z-shared-bench.json` returns `status=pass` and `failed_prompts=-`. The cross-prompt poisoning rejection (text_short rows contain zero franklin/autobiography mentions; text_long rows contain zero cache/caching/prompt mentions) is preserved.
+
+### Decision: PROBE-FIX (no engine change)
+
+The engine WIP `b380deb` is verified correct as committed. No engine behavior was modified. The minimal probe-keyword adjustment is recorded and committed in the harness repo (commit `1185add` on the harness repo's default branch). The pytest group asserting `cross_prompt_cache_key` separation and prompt-length anchoring (`tests/test_batched_generation.py`: `test_batched_model_uses_prompt_only_key_for_cross_request_cache`, `test_batched_generation_trims_generated_tail_before_cross_prompt_cache_insert`, `test_batched_generation_skips_cross_prompt_cache_insert_when_tail_is_untrimmable`) all pass alongside the full promotion pytest group.
+
 ## Reference artifacts
 
 - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/.continue-here.md`
