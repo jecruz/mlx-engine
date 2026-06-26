@@ -769,3 +769,46 @@ The fix is **purely source-level**: two new monkey-patch modules under `cheetara
 | cheetara runtime patch tests (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/engine-source/tests/test_vmlx_lfm2_vl_runtime_patch.py` |
 | MLLM.load() integration point | `/Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/engine-source/vmlx_engine/models/mllm.py` (added `_apply_lfm2_vl_runtime_patch()` call alongside the existing `_apply_lfm2_vl_patch()` from feature `m5-vmlx-lfm2-vl-loader-fix`) |
 | vmlx.app.asar md5 | `d27106b78546424046384e813fe23b7c` (unchanged before and after this fix's smoke runs) |
+
+## M7 external cheetara cutover — scripted remote-session smoke (2026-06-26)
+
+Feature `m7-cheetara-remote-session-smoke` adds the M7 cutover evidence runner. The new scripted smoke proves the `127.0.0.1:3180` adapter serves a cheetara-compatible remote session through the OpenAI surface without packaged GUI automation. The runner exercises five adapter modes end-to-end against the `LFM2.5-VL-1.6B-MLX-8bit` model on `cheetara-m7`: `connect` (model discovery), `text` (streaming chat), `image` (multimodal `image_url` data URL chat), `health` (diagnostics), and `auth` (auth-mode probe). Each mode produces a per-mode pass/fail with HTTP status, elapsed seconds, SSE chunk count, and the captured text content. The auth mode records the adapter's current posture (no-auth by default; bearer-auth verified when `--api-key` is supplied to a `cheetara-m7-auth` adapter instance). The full smoke report closes all five M7 external-cutover assertions without modifying `vmlx.app.asar` (md5 still `d27106b78546424046384e813fe23b7c`).
+
+### Validation evidence
+
+- **Scripted smoke runner (new):** `scripts/cheetara_compat_smoke.py`. Standard-library only (`urllib.request` + `json`), so it runs under the mlx-engine py312 venv or the cheetara Python 3.14 venv without an extra dependency. Streams SSE responses with `urllib.request.urlopen` so the smoke can observe the incremental `data: { ... }\n\n` chunks AND the terminal `data: [DONE]\n\n` marker. Verifying the terminal marker is part of the M7 streaming contract; trusting just the exit code is not enough.
+- **Smoke tests (new):** `tests/test_cheetara_compat_smoke.py` — 15 focused tests covering each subcommand's pass/fail path, the SSE streamer, the auth-mode detector, the cheetara-extras forwarding, the end-to-end CLI aggregator, and the `exit 1` path on partial failure. Runs against a thread-pooled fake adapter (`_FakeAdapterServer`) bound to an ephemeral localhost port; no model load required.
+- **Focused adapter route tests (existing):** `tests/test_openai_adapter.py` — 25 tests covering `/health`, `/v1/models`, non-streaming and streaming chat, multimodal `image_url` data URLs, cheetara-extras tolerance, bearer-auth gating, and `repetition_context_size` defaults. All pass.
+- **Service manifest commands (new):** `services.yaml` adds `commands.smoke:adapter:cheetara` (and `…:connect`, `…:text`, `…:image`, `…:health`, `…:auth`) so any worker can re-run the evidence. The runner is a normal command (not a new service) because it talks to the existing `adapter3180` service.
+- **M7 full smoke run (authoritative, no-auth run mode):** `.planning/cheetara-compat-evidence/smoke-report.json`. `connect`: `GET /v1/models` returned the served model `cheetara-m7` (`model_count=1`, `selectable=true`). `text`: `POST /v1/chat/completions` with `stream=true` and cheetara extras (`top_k=40`, `min_p=0.05`, `repetition_penalty=1.05`, `chat_template_kwargs={"enable_thinking": false}`, `enable_thinking=false`, `reasoning_effort="low"`, `stream_options={"include_usage": true}`) returned 4 SSE chunks culminating in `Ok.` followed by `data: [DONE]\n\n` (`finish_reason=stop`, no error chunks). `image`: same surface with an OpenAI-style `messages[].content` array carrying `{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,…"}}` (the `toucan.jpeg` demo image) plus a text prompt, returned 6 SSE chunks culminating in `Toucan.` followed by `data: [DONE]\n\n` (`finish_reason=stop`, no error chunks). The image-grounded answer matches the expected `toucan` keyword. `health`: `GET /health` returned `status=ok`, `served_model=cheetara-m7`, `model_type=lfm2_vl`, `supports_vision=true`, `uptime_s=4`. `auth`: auth mode detected as `no-auth`; evidence note explicitly records that auth was intentionally disabled for this run. Total: 5 / 5 passed.
+- **M7 auth-gate smoke (authoritative, bearer-auth run mode):** `.planning/cheetara-compat-evidence/auth-mode-report.json`. A second adapter instance was started on `127.0.0.1:3182` with `--api-key secret-test-key`; the smoke probe sequence returned `no_header -> 401`, `wrong_token -> 401`, `correct_token -> 200`, and the report records `auth_mode=bearer-auth`, `credential_gating=verified`. This second instance was stopped after the probe.
+- **vmlx.app.asar md5:** `d27106b78546424046384e813fe23b7c` before and after the M7 smoke runs (unchanged, 70,671,554 bytes). No bundle write.
+- **Adapter log captures (M7 evidence dir):** `adapter.log` (no-auth run) and `adapter-auth.log` (bearer-auth run) saved under `.planning/cheetara-compat-evidence/`.
+- **Lint:** ruff clean on the new runner and tests (also clean on the full repo `ruff check --exclude .worktrees .`).
+- **Test totals:** `pytest -q tests/test_distributed_server.py tests/test_openai_adapter.py tests/test_cheetara_compat_smoke.py` → `40 passed` (25 prior adapter tests + 15 new smoke tests). `0` failures, `0` skipped.
+
+### Validation contract assertions
+
+- `VAL-M7-001` (cheetara remote session connects through the adapter) — **satisfied** by the `connect` mode in `smoke-report.json`: `GET /v1/models` returned HTTP 200 with `model_count=1` (id `cheetara-m7`, `selectable=true`). No connect-time transport failure.
+- `VAL-M7-002` (streaming text chat works end to end) — **satisfied** by the `text` mode in `smoke-report.json`: streamed `Ok.` through 4 SSE chunks + `data: [DONE]\n\n`, `finish_reason=stop`, zero protocol/decoder/request failures, with cheetara extras forwarded as documented.
+- `VAL-M7-003` (image-attachment VLM chat works end to end) — **satisfied** by the `image` mode in `smoke-report.json`: OpenAI-style `messages[].content` array carrying `image_url` data URL (the `toucan.jpeg` demo image) plus text, returned 6 SSE chunks culminating in `Toucan.` (the image-grounded answer matching the expected `toucan` keyword) + `data: [DONE]\n\n`, `finish_reason=stop`, zero request errors. Image validation is judged on the streamed multimodal content-array response, not the packaged Image tab.
+- `VAL-M7-004` (adapter auth behavior matches the configured mode) — **satisfied** by both the no-auth evidence and the bearer-auth evidence: the no-auth run records `auth_mode=no-auth`, `credential_gating=disabled`, and the bearer-auth probe returns 401 for missing/wrong tokens and 200 for the correct token (`credential_gating=verified`). The smoke runner records which auth mode was under test on every run.
+- `VAL-M7-005` (adapter diagnostics expose a useful health route) — **satisfied** by the `health` mode in `smoke-report.json`: `GET /health` returned `status=ok`, `served_model=cheetara-m7`, `model_type=lfm2_vl`, `supports_vision=true`, `uptime_s=4`. The diagnostic response matches the served model name and model type returned by `GET /v1/models` and the chat surface for the same running adapter.
+
+### Decision: SATISFIED (no further smoke work required for M7)
+
+This feature captures the M7 cutover evidence and closes the five M7 external-cutover assertions (`VAL-M7-001` through `VAL-M7-005`). No `vmlx.app.asar` modification occurred; the bundle md5 is unchanged. The M7 cutover is now proven by scripted cheetara-compatible remote-session smoke plus the adapter HTTP contract, exactly as the staged plan requires. No LM Studio runtime is used; the adapter was started directly via `mlx_engine.openai_adapter` and verified through `urllib.request` from `.venv-py312`. The runner is reusable for any future M7 regression check or cheetara-vs-mlx remote-session comparison.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| M7 scripted cheetara-compatible smoke (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/cheetara_compat_smoke.py` |
+| M7 smoke tests (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_cheetara_compat_smoke.py` |
+| M7 full smoke report (no-auth run, authoritative) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/cheetara-compat-evidence/smoke-report.json` |
+| M7 auth-gate smoke report (bearer-auth run, authoritative) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/cheetara-compat-evidence/auth-mode-report.json` |
+| M7 no-auth adapter log | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/cheetara-compat-evidence/adapter.log` |
+| M7 bearer-auth adapter log | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/cheetara-compat-evidence/adapter-auth.log` |
+| Service manifest additions | `/Users/jeffreycruz/.factory/missions/dbaf7c9f-269e-49f0-993a-ded7115a0792/services.yaml` (`smoke:adapter:cheetara*` commands) |
+| vmlx.app.asar md5 | `d27106b78546424046384e813fe23b7c` (unchanged before and after this feature's smoke runs) |
+
