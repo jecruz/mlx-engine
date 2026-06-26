@@ -644,9 +644,11 @@ As called out in the expected behavior, the vmlx server in this build delivers t
 | cheetara-vs-mlx driver (existing) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/runners/cheetara_mlx_profile.py` |
 | vmlx.app.asar pre-run md5 | `d27106b78546424046384e813fe23b7c` (unchanged post-run) |
 
-## M5 image baseline (2026-06-26)
+## M5 image baseline (2026-06-26, rerun after `m5-vmlx-lfm2-vl-loader-fix` and `m5-vmlx-image-placeholder-fix`)
 
 Feature `m5-image-baseline` reuses the existing `cheetara-vs-mlx` benchmark profile (`runners/cheetara_mlx_profile.py`) introduced by `m5-cheetara-bench-profile` to capture the **M5 image baseline**: one paired report containing rows from both stacks (cheetara `vmlx` + `mlx-engine`) on identical image prompts/images and the same VLM model file. **This is evidence capture only — no promotion decision, no cheetara repackaging, no `vmlx.app.asar` modification.** The harness driver also MD5-records `vmlx.app.asar` before and after the run as a no-write integrity check.
+
+The original 2026-06-26 first-attempt evidence (`reports/20260626T052342.909372Z-shared-bench.json`) recorded a vmlx server-startup failure (`Missing 2 parameters: multi_modal_projector.layer_norm.{bias,weight}`) on the LFM2.5-VL projector; the mlx-engine half of the baseline worked correctly but the paired-engine schema could not be satisfied. After the source-level fixes in features `m5-vmlx-lfm2-vl-loader-fix` (port of the mlx-engine `lfm2_vl.py` projector-name remap into `cheetara/engine-source`) and `m5-vmlx-image-placeholder-fix` (the `patches/lfm2_vl_runtime.py` `_patched_call` placeholder-injection and `lfm2_vl.Model.__call__` keyword-routing wrappers), this rerun produces a real vmlx image row on every request and closes both defects.
 
 ### Profile inputs
 
@@ -673,80 +675,64 @@ env PYTHONPATH=. python3 runners/cheetara_mlx_profile.py \
   --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
 ```
 
-### Report and row inspection
+### Report and row inspection (post-fix rerun)
 
-- **M5 image baseline report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-shared-bench.json`
-- **Engines present in report:** `["mlx-engine", "vmlx"]` (the harness driver accepted the paired-engine schema; both engines were exercised in the same invocation).
-- **Total rows:** 4 (3 from `mlx-engine`, 1 placeholder `__runner__` error row from `vmlx`).
+- **M5 image baseline report (authoritative):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T072551.438648Z-shared-bench.json`
+- **Quality inspect (informational; probe-threshold sensitive, see note below):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T072551.438648Z-quality-inspect.json` — `keyword_hits.toucan=true` on every row; status=fail purely on the `min_completion_tokens=16` default threshold (model answered "one short sentence" → 11 tokens for mlx-engine, 5 tokens for vmlx, both well-formed and on-topic).
+- **Prior partial-failure report (superseded, kept for reference):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-shared-bench.json` (the pre-`m5-vmlx-image-placeholder-fix` attempt with vmlx server startup failure).
+- **Engines present in the rerun report:** `["mlx-engine", "vmlx"]` (the harness driver accepted the paired-engine schema; both engines were exercised in the same invocation).
+- **Total rows:** 6 (3 from `mlx-engine`, 3 from `vmlx`).
 - **Row-error check:**
-  - `mlx-engine`: 3/3 rows have `error: null`. All three runs are deterministic ("The animal in the image is a toucan.", 11 completion_tokens each, `finish_reason=eos_token`, `image_count=1`, `prompt_tokens=36`); expected keyword `toucan` is present in every output preview.
-  - `vmlx`: 0/0 successful rows. The vmlx runner exited with `returncode=1` because the vmlx server itself exited with code 3 during startup. The harness recorded a single `prompt_id="__runner__"`, `error="runner exited 1"` placeholder row (no vmlx chat-completion rows are present, since `wait_for_health(...)` raised before any request was issued).
+  - `mlx-engine`: 3/3 rows have `error: null`. All three runs are deterministic ("The animal in the image is a toucan.", 11 completion_tokens each, `finish_reason=eos_token`, `image_count=1`, `prompt_tokens=36`); expected keyword `toucan` is present in every output.
+  - `vmlx`: 3/3 rows have `error: null`. All three runs are deterministic ("A toucan.", 5 completion_tokens each, `finish_reason=null` because the vmlx SSE stream delivered the entire completion as one chunk, `image_count=1`, `prompt_tokens=37`); expected keyword `toucan` is present in every output.
 - **Per-engine row breakdown:**
 
-  | Engine | Rows (success / error) | Successful output preview (run 1) |
-  |---|---:|---|
-  | `mlx-engine` | 3 / 0 | "The animal in the image is a toucan." (deterministic across all 3 runs; expected keyword `toucan` present in every run; 11 completion_tokens per run, `finish_reason=eos_token`) |
-  | `vmlx` | 0 / 1 (`__runner__` startup failure) | n/a — see "vmlx VLM model-load defect" below |
+  | Engine | Rows (success / error) | Output preview (run 1) | Keyword `toucan` |
+  |---|---:|---|:---:|
+  | `mlx-engine` | 3 / 0 | "The animal in the image is a toucan." (deterministic across all 3 runs; 11 completion_tokens per run, `finish_reason=eos_token`) | hit on all 3 runs |
+  | `vmlx` | 3 / 0 | "A toucan." (deterministic across all 3 runs; 5 completion_tokens per run, `finish_reason=null` on the single-SSE-chunk completion) | hit on all 3 runs |
 
 - **Summary-level timings (informational only — data capture, no promotion):**
 
   | Engine | runs | avg total (s) | avg decode tps | cold ttft (s) | warm ttft (s) | avg completion tokens | cached tokens (warm) |
   |---|---:|---:|---:|---:|---:|---:|---:|
-  | `mlx-engine` | 3 | 0.301 | 38.41 | 0.253 | 0.025 | 11.0 | 35 |
-  | `vmlx` | 0 | n/a | n/a | n/a | n/a | n/a | n/a (server did not reach `/health`) |
+  | `mlx-engine` | 3 | 0.213 | 350.68 | 0.517 | 0.014 | 11.0 | 35 |
+  | `vmlx` | 3 | 1.487 | (inflated — see caveat) | 1.781 | 1.318 | 5.0 | n/a (not reported by vmlx) |
 
-  mlx-engine's warm-cache path is dramatically faster than its cold path (warm TTFT `0.025 s` vs cold TTFT `0.253 s`, warm total `0.045 s` vs cold total `0.528 s`) because the 36-token prompt prefix is fully cached and reused — every warm run reports `cached_tokens=35` from the engine. This is the expected mlx-engine prompt-cache reuse behavior; the warm-cache numbers are the apples-to-apples comparison point against any future vmlx run that can successfully reach `/health` with the same model.
+  mlx-engine's warm-cache path is dramatically faster than its cold path (warm TTFT `0.014 s` vs cold TTFT `0.517 s`, warm total `0.043 s` vs cold total `0.552 s`) because the 36-token prompt prefix is fully cached and reused — every warm run reports `cached_tokens=35` from the engine. This is the expected mlx-engine prompt-cache reuse behavior; the warm-cache numbers are the apples-to-apples comparison point against vmlx, which does not expose `cached_tokens` on the same path.
 
-### vmlx VLM model-load defect (BLOCKER for paired image evidence)
+### vmlx non-fatal MLLM chat-template warning (DOCUMENTED, not blocking)
 
-The vmlx `serve` subprocess fails to start when asked to load the LFM2.5-VL-1.6B-MLX-8bit checkpoint. The captured server stderr (saved to `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-vmlx-server-stderr.log`) shows:
+The vmlx server emits the known non-fatal warning during multimodal chat-template rendering:
 
 ```
-INFO:vmlx_engine:Registered vendored minimax_m3_vl runtime
-INFO:vmlx_engine.model_config_registry:Model config: matched text_config.model_type='lfm2' (wrapper='lfm2_vl') → lfm2
-INFO:vmlx_engine.server:Loading model with BatchedEngine: …/LFM2.5-VL-1.6B-MLX-8bit
-INFO:vmlx_engine:is_mllm_model(…/LFM2.5-VL-1.6B-MLX-8bit): tier=config_json_vision_config result=True
-INFO:vmlx_engine.server:Model loaded (batched mode): …/LFM2.5-VL-1.6B-MLX-8bit
-INFO:vmlx_engine.server:Native tool format enabled for parser: lfm2
-INFO:vmlx_engine.server:Default max tokens fallback: 4096
-INFO:     Started server process [23158]
-INFO:     Waiting for application startup.
-INFO:vmlx_engine.server:Started caffeinate system wake lock for PID 23158
-INFO:vmlx_engine.models.mllm:Loading MLLM: …/LFM2.5-VL-1.6B-MLX-8bit
-ERROR:vmlx_engine.models.mllm:Failed to load MLLM: Missing 2 parameters:
-multi_modal_projector.layer_norm.bias,
-multi_modal_projector.layer_norm.weight.
-ERROR:    Application startup failed. Exiting.
-ValueError: Missing 2 parameters:
-multi_modal_projector.layer_norm.bias,
-multi_modal_projector.layer_norm.weight.
+WARNING:vmlx_engine.engine.batched:Failed to apply MLLM chat template: can only concatenate str (not "list") to str
 ```
 
-**Root cause (observed, not fixed in this mission):** `cheetara/engine-source/vmlx_engine/models/mllm.py:load()` calls `mlx_vlm.utils.load(...)`, which calls `mlx.nn.base.load_weights(...)`. The model's `Module` definitions register `multi_modal_projector.layer_norm.{bias,weight}` parameters, but the LFM2.5-VL safetensors checkpoint stores the corresponding `LayerNorm` weights under `vision_tower.encoder.layers.{0..N}.layer_norm{1,2}.{bias,weight}` instead. The `mlx_vlm` `load_weights` path is strict and raises `ValueError: Missing {n} parameters: …`. A grep over `engine-source/vmlx_engine/models/mllm.py` confirms the source-level intent: `# Do not silence strict loading:` followed by `def load_weights(self, weights, strict=True): return self.inner.load_weights(weights, strict=strict)`. There is no CLI flag, env var, or `--strict=false` knob in `vmlx_engine.cli serve --help` that allows skipping this check.
+This warning fires once per `image_toucan` request as the vmlx batched engine falls back from the strict MLLM chat-template path to the raw prompt-rendering path. It does NOT cause any row to error: every vmlx row reports `error: null`, `completion_tokens=5`, and the expected `toucan` keyword in the output. The fallback path produces the correct multimodal prompt assembly (after the `m5-vmlx-image-placeholder-fix` `_patched_call` wrapper injects the required `<image>` marker), and the generation proceeds to completion. Per the user-testing library rule, "non-fatal stderr warnings like `Failed to apply MLLM chat template: can only concatenate str (not 'list') to str` do not fail the assertion by themselves if the run still produces real vmlx rows with `error: null` and the expected image keyword" — this rerun satisfies that rule.
 
-**Why this is a vmlx defect, not a config issue:** the same `LFM2.5-VL-1.6B-MLX-8bit` checkpoint loads cleanly on the mlx-engine side of the same harness invocation — `mlx-engine_runner.py` runs the three `image_toucan` requests through `ModelKit` and produces three deterministic, error-free rows in the same report. The model files, the prompt, and the harness invocation are identical between the two engines. The defect is in vmlx's `mllm.py` weight-binding layer for this specific architecture, not in anything the bench harness can fix.
+### vmlx SSE single-chunk timing caveat (`decode_tps` is NOT promotion-quality throughput evidence)
+
+The `vmlx_runner` parses vmlx's OpenAI streaming `/v1/chat/completions` SSE stream and records `first_token_seen` from the first `data:` chunk containing a `content` delta. The vmlx server in this build streams the entire completion as a single `data:` chunk (one final `chat.completion` chunk after a brief generation phase), so `decode_s ≈ 0.013–0.018 s` and `decode_tps ≈ 280–370 tokens/s` for every vmlx row, while `ttft_s ≈ 1.30–1.78 s` rolls up the full prefill + generation time. The observed `decode_s / total_s` ratio per run is `0.0076`, `0.0134`, `0.0102` — well below `0.10`, confirming the single-chunk streaming shape on every request. This is the same vmlx streaming-measurement quirk recorded in the M5 short-text and long-text baselines; per the user-testing library, **these `decode_tps` values are NOT promotion-quality throughput evidence**. The M5 image baseline records the raw measurements exactly as the runner produced them, without adjustment, so future M5 follow-up work can either wait for vmlx to start incremental token streaming or restrict apples-to-apples throughput comparison to mlx-engine's `decode_tps` and `total_s` fields.
 
 ### Decision: DATA-ONLY (no promotion)
 
-This feature captures the M5 image baseline as evidence and **makes no promotion decision** for either stack. The mlx-engine side produced 3/3 deterministic, keyword-matching, error-free rows against LFM2.5-VL on the canonical `image_toucan` prompt; the vmlx side is recorded as a server-startup failure (`runner exited 1`, server exit code 3) with the full server stderr captured as a reference log next to the report. The paired report path above is the authoritative M5 image baseline reference for any future M5 follow-up work (cheetara-vs-mlx promotion analysis, or a re-run once vmlx is fixed to recognize the LFM2.5-VL projector weight layout). M5 is explicitly data-only per `VAL-M5-005`; the cheetara app bundle is unchanged (MD5 verified pre-run and post-run by the harness driver) and no `vmlx.app.asar` write occurred during this run.
+This feature captures the M5 image baseline as evidence and **makes no promotion decision** for either stack. Both stacks produced real, keyword-matching, error-free rows on the canonical `image_toucan` prompt using the same LFM2.5-VL checkpoint: `mlx-engine` emitted 3/3 deterministic 11-token rows ending in `"The animal in the image is a toucan."` with `finish_reason=eos_token`; `vmlx` emitted 3/3 deterministic 5-token rows ending in `"A toucan."` on a single SSE chunk. The rerun closes the prior partial result (the `m5-vmlx-lfm2-vl-loader-fix` + `m5-vmlx-image-placeholder-fix` features resolved both the vmlx projector-weight `Missing 2 parameters: multi_modal_projector.layer_norm.{bias,weight}` startup failure and the `processing_lfm2_vl._patched_call` `The number of images in the text [0] and images [1] should be the same.` placeholder-mismatch failure). The non-fatal `Failed to apply MLLM chat template` warning is recorded but does not fail the feature because both engines still produce clean keyword-matching rows with `error: null`. M5 is explicitly data-only per `VAL-M5-005`; the cheetara app bundle is unchanged (MD5 `d27106b78546424046384e813fe23b7c`, 70,671,554 bytes, verified pre-run and post-run by the harness driver) and no `vmlx.app.asar` write occurred during this run.
 
-### vmlx SSE caveat not applicable
+### Validation contract assertion
 
-Because vmlx never reached the chat-completion stage for this report (the server failed during MLLM load, before any request was issued), the "vmlx delivers a single SSE chunk" caveat from the M5 short-text / long-text baselines does not apply to this report — there are no vmlx `ttft_s` / `decode_s` / `decode_tps` rows to caveat. The report records the vmlx startup failure as the only signal from the vmlx side.
-
-### Worker return-to-orchestrator note
-
-Per the bench-worker skill ("A benchmark cannot produce error-free rows after configuration fixes (a real engine defect, not a config issue)"), this worker returns to the orchestrator with `returnToOrchestrator: true` because the `VAL-M5-004` "zero row errors for both engines" assertion cannot be fully satisfied as written against the current vmlx `serve` build. The mlx-engine half of the evidence is captured and recorded; the vmlx half requires a vmlx-engine code change (either a weight-name remap for the LFM2.5-VL projector or a `--no-strict-weights` opt-out) that is out of mission scope per the AGENTS.md cheetara-repackaging and off-limits-bundle rules. The orchestrator should decide whether to (a) treat `VAL-M5-004` as mlx-engine-only evidence with a documented vmlx defect note, (b) cancel the paired-image baseline assertion and accept this report as the M5 image evidence, or (c) defer the image baseline until vmlx ships a fix.
+- `VAL-M5-004` (`image-suite baseline captured for both stacks`) — **satisfied** by the rerun above: the authoritative paired report `20260626T072551.438648Z-shared-bench.json` contains image rows for both `mlx-engine` and `vmlx` on the same prompt (`image_toucan`), same image (`toucan.jpeg`), and same model file (`LFM2.5-VL-1.6B-MLX-8bit`), with zero row errors on either engine and the expected `toucan` keyword hit on every one of the six rows. The prior partial result is preserved as a reference for the pre-fix defect history but is no longer authoritative.
 
 ### Artifacts
 
 | Artifact | Path |
 |---|---|
-| M5 image baseline report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-shared-bench.json` |
-| M5 image sub-suite (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m5_image.json` |
+| M5 image baseline report (authoritative, post-fix rerun) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T072551.438648Z-shared-bench.json` |
+| M5 image baseline quality inspect (probe-threshold sensitive, see note above) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T072551.438648Z-quality-inspect.json` |
+| Prior partial-failure report (superseded, pre-fix, kept for reference) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-shared-bench.json` |
+| M5 image sub-suite (existing) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m5_image.json` |
 | cheetara-vs-mlx driver (existing) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/runners/cheetara_mlx_profile.py` |
-| vmlx.app.asar pre-run md5 | `d27106b78546424046384e813fe23b7c` (unchanged post-run) |
-| vmlx server stderr (reference) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-vmlx-server-stderr.log` |
+| vmlx.app.asar pre-run + post-run md5 | `d27106b78546424046384e813fe23b7c` (unchanged, 70,671,554 bytes) |
 
 ## M5 vmlx image-placeholder fix (2026-06-26)
 
