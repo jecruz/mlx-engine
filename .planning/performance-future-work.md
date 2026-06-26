@@ -859,3 +859,64 @@ This feature closes the M8 fast-path intake lane (`VAL-M8-001`) with focused `te
 | Scrutiny gate pytest summary | `232 passed, 16 skipped, 0 failed` (full promotion pytest group) |
 | Lint summary | ruff clean on `tests/test_patched_qwen3_5.py` and the full repo |
 
+## M8 Qwen left-padded decode follow-ups (2026-06-26)
+
+Feature `m8-qwen-left-padded-followups` is the second M8 lane. It intakes the three approved left-padded Qwen decode correctness follow-ups (`ae55e21 Handle Qwen left-padded decode mask`, `970a7c7 Handle Qwen left-padded text decode`, `bfdd7b9 Limit Qwen left-padded positions to decode`) as one bundle after the base fast-path intake. The bundle is tightly scoped to the approved Qwen left-padding surface (no broad upstream sync, no unrelated changes) and preserves both text-only and VLM decode correctness.
+
+### Bundle state on this branch
+
+The three follow-up commits were originally part of upstream PR #334 "Add Gemma 12b Unified Support" (`9445b31`), which was already merged into `mlx-vlm-restore-eval-followup` ahead of the formal M8 cutover as part of the broader upstream sync that also brought the `0cdae5e Restore Qwen decode fast path` commit. The three SHAs themselves are not separate commits on this branch, but every code and test change they contain is present in the working tree:
+
+- `ae55e21` → `mlx_engine/model_kit/patches/qwen3_5.py::_patched_vlm_qwen3_5_attention_call` (adds the `or (isinstance(mask, str) and mask == "left_padded_decode")` fallback guard to attention routing).
+- `970a7c7` → `mlx_engine/model_kit/patches/qwen3_5.py::_vlm_qwen3_5_batched_left_padding_position_ids` (new helper) plus a small refactor of `_patched_vlm_qwen3_5_language_model_call` so the helper feeds `position_ids=...` into the original VLM call when the batch cache carries non-zero left padding.
+- `bfdd7b9` → `mlx_engine/model_kit/patches/qwen3_5.py::_vlm_qwen3_5_batched_left_padding_position_ids` (adds the `seq_length != 1` early return so multi-token prefill never builds padded per-row positions and stays on the existing fast path).
+
+The companion tests from each commit are also present in `tests/test_patched_qwen3_5.py` (`test_vlm_qwen3_5_attention_left_padded_decode_uses_original_vlm`, `test_vlm_qwen3_5_text_left_padded_decode_uses_original_vlm`, `test_vlm_qwen3_5_text_left_padded_prefill_uses_fast_path`). This feature's contribution is the focused multi-step decode coverage and the formal decision record for the bundle.
+
+### Bundle effects (what each follow-up preserves)
+
+| Follow-up | Fallback surface | Fast-path surface preserved | Behavior asserted |
+|---|---|---|---|
+| `ae55e21` | `OriginalVlmQwen3_5AttentionCall` when the attention mask is the `"left_padded_decode"` sentinel | The `Qwen3NextAttention.__call__` fast path stays in use for every other ordinary-decode mask | Attention layer defers to upstream whenever the model signals left-padded decode, so per-row position handling is not lost |
+| `970a7c7` | `OriginalVlmQwen3_5LanguageModelCall` plus the new `_vlm_qwen3_5_batched_left_padding_position_ids` helper feeds `position_ids` derived from `cache[fa_idx].offset[:batch_size]` | Plain text-only single-step decode with no left padding still routes through `self.model(...)` and the original fast path | Left-padded decode gets correct per-row positions (`arange(seq_length) + offset`) without breaking the non-padded fast path |
+| `bfdd7b9` | (no fallback added) | The fast-path condition `seq_length != 1` guarantees multi-token prefill never builds padded per-row positions | Multi-token prefill stays on the existing fast path even when the cache carries non-zero left padding |
+
+### Focused test coverage
+
+- **Existing cherry-pick tests (unchanged from `ae55e21` / `970a7c7` / `bfdd7b9`):**
+  - `test_vlm_qwen3_5_attention_left_padded_decode_uses_original_vlm` — proves the attention layer routes to the original VLM path when `mask == "left_padded_decode"`, and only then.
+  - `test_vlm_qwen3_5_text_left_padded_decode_uses_original_vlm` — proves the language model falls back to the original VLM path for single-step left-padded decode and forwards the correct per-row position_ids (`[[7], [5]]` for `offset=[7, 5]`).
+  - `test_vlm_qwen3_5_text_left_padded_prefill_uses_fast_path` — proves the multi-token prefill branch never touches the padded position helper and uses the fast path even when `cache[fa_idx].left_padding` is non-zero.
+- **New multi-step per-row position test (this feature):** `test_vlm_qwen3_5_text_left_padded_decode_advances_per_row_positions` runs three sequential single-token decode calls through `_patched_vlm_qwen3_5_language_model_call` against a mutable cache whose `offset` advances between calls. The test asserts the `position_ids` returned to the original VLM call match the offset at each step (`[[7], [5]]` → `[[8], [6]]` → `[[9], [7]]`). This is the focused per-row position proof the feature description calls out: it shows the left-padded decode helper stays in lockstep with the cache offset across the autoregressive loop instead of freezing on the first step's value or losing the per-row structure.
+- **Existing real-model mixed-length prefill coverage (unchanged):** `test_vlm_qwen3_5_left_padded_batch_prefill_preserves_batch_cache_metadata` runs the real `vlm_qwen3_5_language.Qwen3_5Model` against a batched cache with mixed `left_padding=[5, 0]` across two sequential prefill chunks and asserts the `offset` and `left_padding` metadata remain coherent (`[-2, 3]` → `[1, 6]`; `left_padding` stays `[5, 0]`). This is the real-model proof that mixed-length prefill correctness survives the bundle.
+
+### Validation
+
+- **Targeted pytest:** `.venv-py312/bin/python -m pytest -q tests/test_patched_qwen3_5.py` → **25 passed**, 9 skipped (heavy/real-model), 0 failed. The new multi-step per-row position test is in the passing set.
+- **Full scrutiny gate (mission `commands.test`):** `.venv-py312/bin/python -m pytest -q` over the full promotion pytest group defined in `services.yaml` `commands.test` → **233 passed**, 16 skipped, 0 failed. One more passing test than the prior M8 fast-path intake baseline (the new multi-step per-row position test); no other regressions.
+- **Lint:** `ruff check tests/test_patched_qwen3_5.py mlx_engine/model_kit/patches/qwen3_5.py` (system ruff 0.15.7) → **All checks passed**. The new test function is ruff-clean on its own and matches the surrounding monkeypatched-class style.
+- **Stability checks:** zero row errors across all 25 passing tests; no `RuntimeError: There is no Stream(...)`; no tokenizer / cache corruption. The patched code paths in `mlx_engine/model_kit/patches/qwen3_5.py` keep the cache record format unchanged (no new keys, no migration), so old caches still load and the restore-time `mx.eval(...)` safety barrier is untouched.
+
+### Validation contract assertions
+
+- `VAL-M8-002` (left-padded decode follow-ups preserve mixed-length correctness) — **satisfied** by the combination of the three cherry-pick tests plus the new `test_vlm_qwen3_5_text_left_padded_decode_advances_per_row_positions` plus the real-model `test_vlm_qwen3_5_left_padded_batch_prefill_preserves_batch_cache_metadata`. The bundle preserves mixed-length and padded decode correctness (no token misalignment, no prompt leakage, no truncation, no request failure) and keeps multi-token prefill on the existing fast path. The implementation stays limited to the approved Qwen left-padding surface.
+- `VAL-M8-001` / `VAL-M8-003` / `VAL-M8-004` / `VAL-M8-005` — out of scope for this lane. `VAL-M8-001` was satisfied by `m8-qwen-fast-path-intake`. `VAL-M8-003` / `VAL-M8-004` / `VAL-M8-005` (deterministic text-quality, VLM parity, promotion-evidence recording) are reserved for the `m8-qwen-promotion-evidence` lane.
+
+### Decision: SATISFIED for the `m8-qwen-left-padded-followups` lane
+
+This feature closes the M8 left-padded decode follow-up lane (`VAL-M8-002`) with one new focused test plus the existing cherry-pick tests and the real-model mixed-length prefill coverage. The implementation stays tightly scoped to the approved Qwen left-padding surface (no broad upstream sync). The deterministic text-quality / VLM parity / promotion-evidence assertions are reserved for the `m8-qwen-promotion-evidence` lane.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| New focused per-row position test | `tests/test_patched_qwen3_5.py::test_vlm_qwen3_5_text_left_padded_decode_advances_per_row_positions` |
+| Cherry-pick attention fallback test (unchanged from `ae55e21`) | `tests/test_patched_qwen3_5.py::test_vlm_qwen3_5_attention_left_padded_decode_uses_original_vlm` |
+| Cherry-pick text-decode fallback test (unchanged from `970a7c7`) | `tests/test_patched_qwen3_5.py::test_vlm_qwen3_5_text_left_padded_decode_uses_original_vlm` |
+| Cherry-pick prefill fast-path test (unchanged from `bfdd7b9`) | `tests/test_patched_qwen3_5.py::test_vlm_qwen3_5_text_left_padded_prefill_uses_fast_path` |
+| Real-model mixed-length prefill test (unchanged) | `tests/test_patched_qwen3_5.py::test_vlm_qwen3_5_left_padded_batch_prefill_preserves_batch_cache_metadata` |
+| Engine code (already on branch from upstream merge `9445b31`) | `mlx_engine/model_kit/patches/qwen3_5.py::_patched_vlm_qwen3_5_attention_call`, `mlx_engine/model_kit/patches/qwen3_5.py::_vlm_qwen3_5_batched_left_padding_position_ids`, `mlx_engine/model_kit/patches/qwen3_5.py::_patched_vlm_qwen3_5_language_model_call` |
+| Source cherry-pick commits | `origin/cherry-pick/mlx-upstream-sync` commits `ae55e21`, `970a7c7`, `bfdd7b9` |
+| Scrutiny gate pytest summary | `233 passed, 16 skipped, 0 failed` (full promotion pytest group) |
+| Lint summary | ruff clean on `tests/test_patched_qwen3_5.py` and `mlx_engine/model_kit/patches/qwen3_5.py` |
+

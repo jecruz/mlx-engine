@@ -919,6 +919,74 @@ def test_vlm_qwen3_5_text_left_padded_decode_uses_original_vlm(monkeypatch):
     assert position_ids.tolist() == [[7], [5]]
 
 
+def test_vlm_qwen3_5_text_left_padded_decode_advances_per_row_positions(monkeypatch):
+    """Sequential decode steps must keep per-row positions in lockstep with cache offsets."""
+    calls = []
+
+    class FakeInnerModel:
+        fa_idx = 0
+
+        def __call__(self, *args, **kwargs):
+            raise AssertionError("text fast path should not be used")
+
+    class FakeLanguageModel:
+        model = FakeInnerModel()
+        _position_ids = None
+        _rope_deltas = None
+
+    class MutableFakeCache:
+        def __init__(self):
+            self.left_padding = mx.array([0, 2])
+            self.offset = mx.array([7, 5])
+
+    def fake_original_call(
+        self,
+        inputs,
+        inputs_embeds=None,
+        mask=None,
+        cache=None,
+        **kwargs,
+    ):
+        calls.append(kwargs.get("position_ids"))
+        return "original"
+
+    monkeypatch.setattr(
+        qwen3_5_patches,
+        "OriginalVlmQwen3_5LanguageModelCall",
+        fake_original_call,
+    )
+
+    cache = [MutableFakeCache()]
+    inputs = mx.array([[11], [12]])
+
+    qwen3_5_patches._patched_vlm_qwen3_5_language_model_call(
+        FakeLanguageModel(),
+        inputs,
+        cache=cache,
+    )
+
+    cache[0].offset = mx.array([8, 6])
+
+    qwen3_5_patches._patched_vlm_qwen3_5_language_model_call(
+        FakeLanguageModel(),
+        inputs,
+        cache=cache,
+    )
+
+    cache[0].offset = mx.array([9, 7])
+
+    qwen3_5_patches._patched_vlm_qwen3_5_language_model_call(
+        FakeLanguageModel(),
+        inputs,
+        cache=cache,
+    )
+
+    assert len(calls) == 3
+    assert calls[0].tolist() == [[7], [5]]
+    assert calls[1].tolist() == [[8], [6]]
+    assert calls[2].tolist() == [[9], [7]]
+
+
 def test_vlm_qwen3_5_text_left_padded_prefill_uses_fast_path(monkeypatch):
     """Multi-token prefill must not build positions over padded query columns."""
     calls = []
