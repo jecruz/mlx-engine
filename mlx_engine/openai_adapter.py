@@ -30,6 +30,7 @@ import argparse
 import asyncio
 import base64
 import binascii
+import json
 import logging
 import os
 import threading
@@ -161,6 +162,35 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
 
 
+class ResponsesRequest(BaseModel):
+    """OpenAI Responses-style request body (``POST /v1/responses``).
+
+    The Responses API differs from Chat Completions in two ways:
+
+    * The user turn is carried as ``input`` (a bare string or a list of
+      structured message parts) instead of ``messages=[{"role":"user",
+      "content": "..."}]``. The M9 compatibility layer normalizes this
+      into the same chat-shaped messages the chat-completions route
+      consumes so we reuse the same generation backend.
+    * Streamed output is a sequence of typed events
+      (``response.created`` → ``response.output_item.added`` →
+      ``response.content_part.added`` → ``response.output_text.delta``
+      → ``response.content_part.done`` → ``response.output_item.done``
+      → ``response.completed``), not the chat-completion chunk stream.
+
+    Like :class:`ChatCompletionRequest`, this body uses ``extra="allow"``
+    so cheetara extras (``top_k``, ``min_p``, ``repetition_penalty``,
+    ``chat_template_kwargs``, ``enable_thinking``, ``reasoning_effort``,
+    ``stream_options``, ...) are accepted without 400ing.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    model: str
+    input: Any
+    stream: bool = False
+
+
 def _build_app(
     state: _AdapterState,
     *,
@@ -248,6 +278,28 @@ def _build_app(
             )
         return await _non_stream_chat_completion(raw_body, state)
 
+    @app.post("/v1/responses")
+    async def responses(body: ResponsesRequest = Body(...)) -> Any:
+        """OpenAI Responses-style generation surface.
+
+        Preserves the ``vmlx_engine.cli serve`` / cheetara local-runtime
+        Responses surface. The M9 source-level compatibility layer reaches
+        this route through the same mlx-engine adapter that handles
+        chat completions on port 3181 (and the external adapter on 3180).
+        """
+        raw_body = body.model_dump(exclude_none=False)
+        await _validate_and_dispatch_responses(raw_body, state)
+        if raw_body.get("stream") is True:
+            return StreamingResponse(
+                _stream_responses(raw_body, state),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+        return await _non_stream_responses(raw_body, state)
+
     return app
 
 
@@ -282,6 +334,218 @@ async def _validate_and_dispatch(raw_body: dict[str, Any], state: _AdapterState)
         ) from exc
     # Detect vision content.
     if _request_has_image_payload(raw_body) and not state.supports_vision:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "message": (
+                        "Loaded model does not support image inputs; "
+                        "request contained image_url parts."
+                    )
+                }
+            },
+        )
+
+
+def _normalize_responses_input(raw_input: Any) -> list[dict[str, Any]]:
+    """Convert a Responses-API ``input`` to the standard chat messages list.
+
+    The Responses API accepts three input shapes:
+
+    * A bare string: treated as a single user turn.
+    * A list of strings: each string becomes a user turn in order.
+    * A list of structured message parts (``{"role": ..., "content": ...}``
+      or the Responses-API ``{"type": "message", "role": ..., "content": ...}``
+      form). ``content`` may be a string or a list of typed parts
+      (``{"type": "input_text", "text": ...}`` /
+      ``{"type": "input_image", ...}``); text parts are joined, and
+      image parts are folded into the multimodal extraction path via
+      ``image_url`` aliases so they reuse the existing VLM route.
+
+    Anything that is not string / list, or any structured part without
+    a recognised ``type`` / ``role``, raises ``HTTPException`` with a
+    400 invalid_request_error so the caller sees the rejection before
+    SSE starts.
+    """
+
+    if isinstance(raw_input, str):
+        text = raw_input.strip()
+        if not text:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": {"message": "input must be non-empty"}},
+            )
+        return [{"role": "user", "content": text}]
+    if not isinstance(raw_input, list) or len(raw_input) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": {"message": "input must be a non-empty string or list"}},
+        )
+    normalized: list[dict[str, Any]] = []
+    for index, part in enumerate(raw_input):
+        if isinstance(part, str):
+            normalized.append({"role": "user", "content": part})
+            continue
+        if not isinstance(part, dict):
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "message": f"input[{index}] must be a string or object",
+                    }
+                },
+            )
+        # ``type == "message"`` wraps the OpenAI Responses shape; the
+        # ``role``/``content`` keys live one level deeper.
+        if part.get("type") == "message":
+            role = part.get("role", "user")
+            content = part.get("content", "")
+        else:
+            role = part.get("role", "user")
+            content = part.get("content", "")
+        if role not in {"user", "assistant", "system", "developer"}:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "message": (
+                            f"input[{index}].role {role!r} is not supported"
+                        ),
+                    }
+                },
+            )
+        # ``content`` may itself be a list of typed parts
+        # (``{"type": "input_text", "text": ...}`` / image variants).
+        if isinstance(content, list):
+            text_pieces: list[str] = []
+            for sub_index, sub_part in enumerate(content):
+                if not isinstance(sub_part, dict):
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": {
+                                "message": (
+                                    f"input[{index}].content[{sub_index}]"
+                                    " must be an object"
+                                ),
+                            }
+                        },
+                    )
+                sub_type = sub_part.get("type")
+                if sub_type in {"input_text", "text"}:
+                    text_pieces.append(str(sub_part.get("text", "")))
+                    continue
+                if sub_type in {"input_image", "image", "image_url"}:
+                    # Fold the Responses image shape into the same
+                    # multimodal payload the chat-completions path
+                    # consumes: ``{"type": "image_url", "image_url": {...}}``.
+                    image_field = sub_part.get("image_url")
+                    if image_field is None and "image" in sub_part:
+                        image_field = sub_part.get("image")
+                    normalized.append(
+                        {
+                            "role": role,
+                            "content": [
+                                {"type": "image_url", "image_url": image_field}
+                            ],
+                        }
+                    )
+                    continue
+                # Unknown typed part: tolerate silently (matches the
+                # chat-completions cheetara-extra tolerance) so the
+                # Responses surface does not 400 on unknown optional
+                # knobs the way the chat surface tolerates.
+                continue
+            normalized.append({"role": role, "content": "".join(text_pieces)})
+            continue
+        if isinstance(content, str):
+            normalized.append({"role": role, "content": content})
+            continue
+        if content is None:
+            normalized.append({"role": role, "content": ""})
+            continue
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "message": (
+                        f"input[{index}].content must be a string or an array"
+                    ),
+                }
+            },
+        )
+    return normalized
+
+
+def _responses_input_has_image_payload(raw_input: Any) -> bool:
+    """Return True if a Responses ``input`` carries any image-bearing part."""
+    if not isinstance(raw_input, list):
+        return False
+    for part in raw_input:
+        if not isinstance(part, dict):
+            continue
+        content = part.get("content")
+        if isinstance(content, list):
+            for sub_part in content:
+                if not isinstance(sub_part, dict):
+                    continue
+                if sub_part.get("type") in {
+                    "input_image",
+                    "image",
+                    "image_url",
+                }:
+                    return True
+        elif isinstance(content, dict):
+            if content.get("type") in {"input_image", "image", "image_url"}:
+                return True
+    return False
+
+
+async def _validate_and_dispatch_responses(
+    raw_body: dict[str, Any],
+    state: _AdapterState,
+) -> None:
+    """Validate a Responses-style request before SSE streaming begins.
+
+    Mirrors the chat-completion validation discipline: bad ``input``,
+    bad sampling fields, or image payloads on a text-only loaded model
+    are rejected with HTTP 400 BEFORE the stream is wired up so the
+    caller never sees a partial SSE failure.
+    """
+    raw_input = raw_body.get("input")
+    if raw_input is None or (
+        isinstance(raw_input, (list, str)) and len(raw_input) == 0
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": {"message": "input must be a non-empty string or list"}},
+        )
+    # Try the normalize step so we surface malformed input shapes as 400s
+    # rather than mid-stream server_error chunks.
+    try:
+        _normalize_responses_input(raw_input)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": {"message": str(exc)}},
+        ) from exc
+    # Translate ``max_output_tokens`` (Responses-style) into the
+    # ``max_tokens`` field that the chat-completions validation helper
+    # consumes. We only add the alias when ``max_tokens`` is absent so a
+    # caller that sets both gets the documented Responses semantics
+    # (``max_output_tokens`` wins).
+    if raw_body.get("max_tokens") is None and raw_body.get("max_output_tokens") is not None:
+        raw_body["max_tokens"] = raw_body["max_output_tokens"]
+    try:
+        _validate_sampling_fields(raw_body)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": {"message": str(exc)}},
+        ) from exc
+    if _responses_input_has_image_payload(raw_input) and not state.supports_vision:
         raise HTTPException(
             status_code=400,
             detail={
@@ -619,6 +883,60 @@ def _resolve_request_id(body: dict[str, Any]) -> str:
     return f"chatcmpl-{uuid.uuid4().hex}"
 
 
+def _resolve_responses_request_id(body: dict[str, Any]) -> str:
+    """Return the OpenAI Responses-API request id (``resp_<hex>``)."""
+    user_field = body.get("user")
+    if isinstance(user_field, str) and len(user_field) > 0:
+        return f"resp_{user_field}-{uuid.uuid4().hex[:8]}"
+    return f"resp_{uuid.uuid4().hex[:12]}"
+
+
+def _build_responses_chat_body(
+    raw_body: dict[str, Any],
+) -> dict[str, Any]:
+    """Translate a Responses-API body into the chat-completion body shape.
+
+    The Responses surface reuses the chat-completion generation
+    backend, so we normalize ``input`` to ``messages`` and rename
+    ``max_output_tokens`` to ``max_tokens`` here. The returned dict is
+    the body the chat-completion helpers already understand; no other
+    helper needs to know whether the caller used /v1/responses or
+    /v1/chat/completions.
+    """
+    chat_body = dict(raw_body)
+    chat_body.pop("input", None)
+    chat_body["messages"] = _normalize_responses_input(raw_body.get("input"))
+    if raw_body.get("max_output_tokens") is not None and chat_body.get("max_tokens") is None:
+        chat_body["max_tokens"] = raw_body["max_output_tokens"]
+    return chat_body
+
+
+def _serialize_responses_event(event_type: str, payload: dict[str, Any]) -> bytes:
+    """Encode one typed Responses-style SSE event with the typed-event header.
+
+    The Responses API uses ``event: <type>\\ndata: <json>\\n\\n`` so
+    clients can dispatch by event type without parsing the payload. The
+    chat-completion ``data: <json>\\n\\n`` events remain unchanged for
+    /v1/chat/completions.
+    """
+    encoded = json.dumps(payload, separators=(",", ":"))
+    return f"event: {event_type}\ndata: {encoded}\n\n".encode("utf-8")
+
+
+def _serialize_responses_terminal(data_event: Optional[str] = None) -> bytes:
+    """Emit the terminal ``[DONE]`` marker for the Responses surface.
+
+    Responses clients (e.g. the OpenAI SDK) accept a trailing
+    ``data: [DONE]`` line regardless of the typed-event format, so we
+    emit the same marker the chat-completion surface uses. The function
+    is a no-op when ``data_event`` is ``None`` so callers can choose
+    between a typed terminal event and the standard terminal marker.
+    """
+    if data_event is None:
+        return b"data: [DONE]\n\n"
+    return f"data: {data_event}\n\n".encode("utf-8")
+
+
 def _serialize_sse(payload: dict[str, Any]) -> bytes:
     return f"data: {__import__('json').dumps(payload, separators=(',', ':'))}\n\n".encode("utf-8")
 
@@ -851,6 +1169,374 @@ async def _non_stream_chat_completion(
             "prompt_tokens": len(prompt_tokens),
             "completion_tokens": sum(len(part) for part in text_parts),
             "total_tokens": len(prompt_tokens),
+        },
+    }
+
+
+async def _stream_responses(
+    raw_body: dict[str, Any],
+    state: _AdapterState,
+) -> AsyncIterator[bytes]:
+    """Stream an OpenAI Responses-style SSE response.
+
+    Emits the canonical Responses event sequence:
+
+    1. ``response.created`` — request accepted, status=in_progress.
+    2. ``response.output_item.added`` — the assistant message item
+       has been created with status=in_progress.
+    3. ``response.content_part.added`` — the first ``output_text`` part
+       has been added to the item.
+    4. ``response.output_text.delta`` — one event per generation step,
+       carrying the incremental text produced by the chat-completions
+       generator. The chat-completion backend emits non-empty chunks
+       per step; the Responses surface wraps each chunk in a typed
+       ``response.output_text.delta`` event so cheetara-style clients
+       can render streaming output incrementally without parsing the
+       chat-completion ``choices[0].delta.content`` envelope.
+    5. ``response.content_part.done`` — content_part finalized.
+    6. ``response.output_item.done`` — output item finalized.
+    7. ``response.completed`` — final response object with
+       status=completed and the full output text.
+    8. ``data: [DONE]`` — terminal marker, matching the
+       chat-completion surface.
+
+    All events share the same ``response_id`` and ``sequence_number``
+    so the client can order and de-duplicate them. Any exception during
+    the generation step surfaces as a typed
+    ``error`` chunk in the SSE stream followed by ``[DONE]`` so the
+    client never sees a half-finished response without a terminal
+    marker (the M9 streaming contract).
+    """
+    request_id = _resolve_responses_request_id(raw_body)
+    model_name = state.served_model_name
+    item_id = f"item_{uuid.uuid4().hex[:12]}"
+    chat_body = _build_responses_chat_body(raw_body)
+    try:
+        prompt_tokens, images_b64, sampling = _build_chat_request(state, chat_body)
+    except HTTPException as http_exc:
+        logger.warning(
+            "Adapter Responses request_id=%s validation failed: %s",
+            request_id,
+            http_exc.detail,
+        )
+        yield _serialize_responses_event(
+            "error",
+            {
+                "type": "error",
+                "error": {
+                    "message": str(
+                        http_exc.detail.get("error", {}).get(
+                            "message", "Invalid request"
+                        )
+                    ),
+                    "type": "invalid_request_error",
+                },
+                "response_id": request_id,
+            },
+        )
+        yield _serialize_responses_terminal()
+        return
+    except ValueError as exc:
+        logger.warning(
+            "Adapter Responses request_id=%s pre-stream validation failed: %s",
+            request_id,
+            exc,
+        )
+        yield _serialize_responses_event(
+            "error",
+            {
+                "type": "error",
+                "error": {
+                    "message": str(exc),
+                    "type": "invalid_request_error",
+                },
+                "response_id": request_id,
+            },
+        )
+        yield _serialize_responses_terminal()
+        return
+
+    sequence_number = 0
+    created_at = int(time.time())
+    output_text_pieces: list[str] = []
+    status = "completed"
+
+    def _next_seq() -> int:
+        nonlocal sequence_number
+        current = sequence_number
+        sequence_number += 1
+        return current
+
+    yield _serialize_responses_event(
+        "response.created",
+        {
+            "type": "response.created",
+            "sequence_number": _next_seq(),
+            "response": {
+                "id": request_id,
+                "object": "response",
+                "created_at": created_at,
+                "status": "in_progress",
+                "model": model_name,
+                "output": [],
+            },
+        },
+    )
+    yield _serialize_responses_event(
+        "response.output_item.added",
+        {
+            "type": "response.output_item.added",
+            "sequence_number": _next_seq(),
+            "output_index": 0,
+            "item": {
+                "id": item_id,
+                "type": "message",
+                "status": "in_progress",
+                "role": "assistant",
+                "content": [],
+            },
+        },
+    )
+    yield _serialize_responses_event(
+        "response.content_part.added",
+        {
+            "type": "response.content_part.added",
+            "sequence_number": _next_seq(),
+            "item_id": item_id,
+            "output_index": 0,
+            "content_index": 0,
+            "part": {"type": "output_text", "text": "", "annotations": []},
+        },
+    )
+
+    def _run_generator() -> Iterable[Any]:
+        return state.generator_factory(
+            state.model_kit,
+            prompt_tokens,
+            max_tokens=sampling["max_tokens"],
+            stop_strings=sampling["stop_strings"],
+            temp=sampling["temperature"],
+            top_p=sampling["top_p"],
+            top_k=sampling["top_k"],
+            min_p=sampling["min_p"],
+            repetition_penalty=sampling["repetition_penalty"],
+            repetition_context_size=sampling["repetition_context_size"],
+            seed=sampling["seed"],
+            images_b64=images_b64,
+            request_id=request_id,
+        )
+
+    loop = asyncio.get_running_loop()
+    try:
+        generator = await loop.run_in_executor(None, _run_generator)
+        sentinel = object()
+        while True:
+            try:
+                result = await loop.run_in_executor(
+                    None, _next_safely, generator, sentinel
+                )
+            except HTTPException as http_exc:
+                logger.warning(
+                    "Adapter Responses request_id=%s generation failed: %s",
+                    request_id,
+                    http_exc.detail,
+                )
+                yield _serialize_responses_event(
+                    "error",
+                    {
+                        "type": "error",
+                        "error": {
+                            "message": str(
+                                http_exc.detail.get("error", {}).get(
+                                    "message", ""
+                                )
+                            ),
+                            "type": "server_error",
+                        },
+                        "response_id": request_id,
+                    },
+                )
+                yield _serialize_responses_terminal()
+                return
+            if result is sentinel:
+                break
+            text = getattr(result, "text", "") or ""
+            if text:
+                output_text_pieces.append(text)
+                yield _serialize_responses_event(
+                    "response.output_text.delta",
+                    {
+                        "type": "response.output_text.delta",
+                        "sequence_number": _next_seq(),
+                        "item_id": item_id,
+                        "output_index": 0,
+                        "content_index": 0,
+                        "delta": text,
+                    },
+                )
+            stop_condition = getattr(result, "stop_condition", None)
+            next_finish_reason = _finish_reason_from_stop_condition(stop_condition)
+            if next_finish_reason == _FINISH_REASON_LENGTH:
+                status = "incomplete"
+    except Exception as exc:
+        logger.exception(
+            "Adapter Responses streaming failed request_id=%s", request_id
+        )
+        yield _serialize_responses_event(
+            "error",
+            {
+                "type": "error",
+                "error": {
+                    "message": f"{type(exc).__name__}: {exc}",
+                    "type": "server_error",
+                },
+                "response_id": request_id,
+            },
+        )
+        yield _serialize_responses_terminal()
+        return
+
+    full_text = "".join(output_text_pieces)
+    yield _serialize_responses_event(
+        "response.content_part.done",
+        {
+            "type": "response.content_part.done",
+            "sequence_number": _next_seq(),
+            "item_id": item_id,
+            "output_index": 0,
+            "content_index": 0,
+            "part": {
+                "type": "output_text",
+                "text": full_text,
+                "annotations": [],
+            },
+        },
+    )
+    yield _serialize_responses_event(
+        "response.output_item.done",
+        {
+            "type": "response.output_item.done",
+            "sequence_number": _next_seq(),
+            "output_index": 0,
+            "item": {
+                "id": item_id,
+                "type": "message",
+                "status": "completed",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": full_text,
+                        "annotations": [],
+                    }
+                ],
+            },
+        },
+    )
+    yield _serialize_responses_event(
+        "response.completed",
+        {
+            "type": "response.completed",
+            "sequence_number": _next_seq(),
+            "response": {
+                "id": request_id,
+                "object": "response",
+                "created_at": created_at,
+                "status": status,
+                "model": model_name,
+                "output": [
+                    {
+                        "id": item_id,
+                        "type": "message",
+                        "status": "completed",
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": full_text,
+                                "annotations": [],
+                            }
+                        ],
+                    }
+                ],
+                "usage": {
+                    "input_tokens": len(prompt_tokens),
+                    "output_tokens": sum(len(part) for part in output_text_pieces),
+                    "total_tokens": len(prompt_tokens)
+                    + sum(len(part) for part in output_text_pieces),
+                },
+            },
+        },
+    )
+    yield _serialize_responses_terminal()
+
+
+async def _non_stream_responses(
+    raw_body: dict[str, Any],
+    state: _AdapterState,
+) -> dict[str, Any]:
+    """Return a single JSON response for a non-streaming Responses request.
+
+    Mirrors the chat-completion non-streaming shape but emits the
+    Responses-API ``output[]`` array instead of ``choices[]`` and uses
+    ``input_tokens``/``output_tokens`` usage keys per the OpenAI
+    Responses contract.
+    """
+    request_id = _resolve_responses_request_id(raw_body)
+    model_name = state.served_model_name
+    chat_body = _build_responses_chat_body(raw_body)
+    prompt_tokens, images_b64, sampling = _build_chat_request(state, chat_body)
+    text_parts: list[str] = []
+    finish_reason = _FINISH_REASON_STOP
+    generator = state.generator_factory(
+        state.model_kit,
+        prompt_tokens,
+        max_tokens=sampling["max_tokens"],
+        stop_strings=sampling["stop_strings"],
+        temp=sampling["temperature"],
+        top_p=sampling["top_p"],
+        top_k=sampling["top_k"],
+        min_p=sampling["min_p"],
+        repetition_penalty=sampling["repetition_penalty"],
+        repetition_context_size=sampling["repetition_context_size"],
+        seed=sampling["seed"],
+        images_b64=images_b64,
+        request_id=request_id,
+    )
+    for result in generator:
+        text_parts.append(getattr(result, "text", "") or "")
+        stop_condition = getattr(result, "stop_condition", None)
+        next_finish_reason = _finish_reason_from_stop_condition(stop_condition)
+        if next_finish_reason is not None:
+            finish_reason = next_finish_reason
+    full_text = "".join(text_parts)
+    completion_tokens = sum(len(part) for part in text_parts)
+    status = "incomplete" if finish_reason == _FINISH_REASON_LENGTH else "completed"
+    return {
+        "id": request_id,
+        "object": "response",
+        "created_at": int(time.time()),
+        "status": status,
+        "model": model_name,
+        "output": [
+            {
+                "id": f"item_{uuid.uuid4().hex[:12]}",
+                "type": "message",
+                "status": "completed",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": full_text,
+                        "annotations": [],
+                    }
+                ],
+            }
+        ],
+        "usage": {
+            "input_tokens": len(prompt_tokens),
+            "output_tokens": completion_tokens,
+            "total_tokens": len(prompt_tokens) + completion_tokens,
         },
     }
 

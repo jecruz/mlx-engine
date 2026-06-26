@@ -32,6 +32,7 @@ from mlx_engine.openai_adapter import (
     _detect_vision_support,
     _extract_image_payload,
     _extract_text_and_images,
+    _normalize_responses_input,
     _validate_sampling_fields,
 )
 
@@ -991,3 +992,343 @@ def test_chat_completion_rejects_permissive_bare_base64_payload(
     )
     assert response.status_code == 400
     assert "image_url" in json.dumps(response.json())
+
+
+# --- M9 /v1/responses surface parity ---------------------------------------
+
+
+def test_normalize_responses_input_accepts_string() -> None:
+    """A bare string input becomes a single user turn."""
+    normalized = _normalize_responses_input("Reply with the single word ok.")
+    assert normalized == [{"role": "user", "content": "Reply with the single word ok."}]
+
+
+def test_normalize_responses_input_accepts_string_list() -> None:
+    """A list of strings becomes one user turn per string."""
+    normalized = _normalize_responses_input(
+        ["first turn", "second turn"]
+    )
+    assert normalized == [
+        {"role": "user", "content": "first turn"},
+        {"role": "user", "content": "second turn"},
+    ]
+
+
+def test_normalize_responses_input_accepts_structured_message_list() -> None:
+    """Structured Responses-API messages with role/content are accepted."""
+    normalized = _normalize_responses_input(
+        [
+            {
+                "type": "message",
+                "role": "user",
+                "content": "structured message text",
+            }
+        ]
+    )
+    assert normalized == [{"role": "user", "content": "structured message text"}]
+
+
+def test_normalize_responses_input_collects_input_text_parts() -> None:
+    """``input_text`` parts are concatenated in order."""
+    normalized = _normalize_responses_input(
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "hello "},
+                    {"type": "input_text", "text": "world"},
+                ],
+            }
+        ]
+    )
+    assert normalized == [{"role": "user", "content": "hello world"}]
+
+
+def test_normalize_responses_input_rejects_empty_string() -> None:
+    """An empty string is rejected with HTTP 400."""
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        _normalize_responses_input("   ")
+    assert exc_info.value.status_code == 400
+
+
+def test_normalize_responses_input_rejects_non_list_non_string() -> None:
+    """A non-string / non-list input is rejected with HTTP 400."""
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        _normalize_responses_input(42)
+    assert exc_info.value.status_code == 400
+
+
+def test_normalize_responses_input_rejects_empty_list() -> None:
+    """An empty list is rejected with HTTP 400."""
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        _normalize_responses_input([])
+    assert exc_info.value.status_code == 400
+
+
+def test_normalize_responses_input_rejects_unknown_role() -> None:
+    """A role outside the supported chat set is rejected with HTTP 400."""
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        _normalize_responses_input([{"role": "tool", "content": "x"}])
+    assert exc_info.value.status_code == 400
+
+
+def test_responses_rejects_empty_input(text_client: TestClient) -> None:
+    response = text_client.post(
+        "/v1/responses",
+        json={"model": "cheetara-m7-text", "input": ""},
+    )
+    assert response.status_code == 400
+    assert "input" in json.dumps(response.json())
+
+
+def test_responses_rejects_invalid_sampling_field(text_client: TestClient) -> None:
+    """A bad sampling field on Responses produces HTTP 400, not SSE error."""
+    response = text_client.post(
+        "/v1/responses",
+        json={
+            "model": "cheetara-m7-text",
+            "stream": True,
+            "input": "Reply with the single word ok.",
+            "temperature": "warm",
+        },
+    )
+    assert response.status_code == 400
+    assert "temperature" in json.dumps(response.json())
+
+
+def test_responses_rejects_image_when_model_is_text_only(
+    text_client: TestClient,
+) -> None:
+    """An image part in input is rejected on a text-only loaded model."""
+    response = text_client.post(
+        "/v1/responses",
+        json={
+            "model": "cheetara-m7-text",
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_image", "image_url": {"url": "data:image/png;base64,AAAA"}},
+                        {"type": "input_text", "text": "describe this"},
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 400
+    assert "image" in json.dumps(response.json()).lower()
+
+
+def test_responses_non_streaming_returns_output_text(
+    text_client: TestClient,
+) -> None:
+    response = text_client.post(
+        "/v1/responses",
+        json={
+            "model": "cheetara-m7-text",
+            "input": "Reply with the single word ok.",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["object"] == "response"
+    assert body["status"] in {"completed", "incomplete"}
+    assert len(body["output"]) == 1
+    item = body["output"][0]
+    assert item["role"] == "assistant"
+    assert item["content"][0]["text"] == "hi there"
+    assert body["usage"]["input_tokens"] >= 0
+    assert body["usage"]["output_tokens"] >= 0
+
+
+def test_responses_streams_typed_events_in_canonical_order(
+    text_client: TestClient,
+    text_state: _AdapterState,
+) -> None:
+    """The Responses surface emits the canonical event sequence with typed headers."""
+    text_state.model_kit._generated_chunks = ["abc", "def", "ghi"]
+    with text_client.stream(
+        "POST",
+        "/v1/responses",
+        json={
+            "model": "cheetara-m7-text",
+            "stream": True,
+            "input": "stream please",
+        },
+    ) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        raw = "".join(response.iter_text())
+
+    events = _parse_typed_sse_events(raw)
+    # Each ``events`` entry is ``(event_type, payload)`` for typed events
+    # or ``("data", payload)`` for untyped ``data:`` lines.
+    event_types = [event_type for event_type, _ in events]
+    # Required canonical Responses event order on the happy path:
+    expected_prefix = [
+        "response.created",
+        "response.output_item.added",
+        "response.content_part.added",
+    ]
+    assert event_types[: len(expected_prefix)] == expected_prefix, (
+        f"missing canonical Responses prefix in {event_types!r}"
+    )
+    delta_events = [
+        payload for event_type, payload in events
+        if event_type == "response.output_text.delta"
+    ]
+    assert delta_events, f"expected at least one delta in {event_types!r}"
+    delta_text = "".join(
+        delta.get("delta", "") for delta in delta_events
+    )
+    assert delta_text == "abcdefghi"
+    # Required canonical Responses suffix (immediately before the
+    # terminal ``[DONE]`` marker). Exclude the trailing data-only
+    # ``[DONE]`` entry from the typed-event list before checking the
+    # suffix so the assertion lines up with the typed events the
+    # adapter emits.
+    typed_event_types = [
+        event_type
+        for event_type, payload in events
+        if event_type != "data" or not (isinstance(payload, dict) and payload.get("_done"))
+    ]
+    expected_suffix = [
+        "response.content_part.done",
+        "response.output_item.done",
+        "response.completed",
+    ]
+    assert typed_event_types[-len(expected_suffix):] == expected_suffix, (
+        f"missing canonical Responses suffix in {typed_event_types!r}"
+    )
+    # The terminal ``[DONE]`` marker is preserved so OpenAI-SDK-style
+    # clients can rely on it as a stream-end signal.
+    assert any(
+        isinstance(payload, dict) and payload.get("_done") for _, payload in events
+    )
+
+
+def test_responses_streams_with_image_url(
+    vision_client: TestClient,
+    vision_state: _AdapterState,
+) -> None:
+    """Multimodal Responses requests route through the VLM path."""
+    vision_state.model_kit._generated_chunks = ["It", " is", " a", " toucan"]
+    with vision_client.stream(
+        "POST",
+        "/v1/responses",
+        json={
+            "model": "cheetara-m7-vision",
+            "stream": True,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_image",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{_png_b64()}"
+                            },
+                        },
+                        {"type": "input_text", "text": "Identify this bird."},
+                    ],
+                }
+            ],
+        },
+    ) as response:
+        assert response.status_code == 200
+        raw = "".join(response.iter_text())
+    events = _parse_typed_sse_events(raw)
+    delta_events = [
+        payload for event_type, payload in events
+        if event_type == "response.output_text.delta"
+    ]
+    joined = "".join(delta.get("delta", "") for delta in delta_events)
+    assert "toucan" in joined
+
+
+def test_responses_tolerates_cheetara_extras(text_client: TestClient) -> None:
+    """Cheetara extras must not 400 on the Responses surface."""
+    response = text_client.post(
+        "/v1/responses",
+        json={
+            "model": "cheetara-m7-text",
+            "input": "Reply with the single word ok.",
+            "top_k": 40,
+            "min_p": 0.05,
+            "repetition_penalty": 1.05,
+            "chat_template_kwargs": {"enable_thinking": False},
+            "enable_thinking": False,
+            "reasoning_effort": "low",
+            "stream_options": {"include_usage": True},
+            "user": "responses-smoke",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["output"][0]["content"][0]["text"] == "hi there"
+
+
+def test_responses_max_output_tokens_aliases_to_max_tokens(
+    text_client: TestClient,
+    text_state: _AdapterState,
+) -> None:
+    """``max_output_tokens`` (Responses-style) is forwarded to the generator."""
+    response = text_client.post(
+        "/v1/responses",
+        json={
+            "model": "cheetara-m7-text",
+            "input": "Reply with the single word ok.",
+            "max_output_tokens": 12,
+        },
+    )
+    assert response.status_code == 200
+    last_call = text_state.model_kit.generator_calls[-1]
+    assert last_call["max_tokens"] == 12
+
+
+# --- SSE typed-event helpers ----------------------------------------------
+
+
+def _parse_typed_sse_events(body: str) -> list[tuple[str, Any]]:
+    """Parse a typed-event SSE stream into ``(event_type, payload)`` pairs.
+
+    Lines of the form ``event: <type>`` set the event type for the
+    following ``data: <payload>`` line. Lines of the form
+    ``data: <payload>`` without a preceding ``event:`` line are kept
+    under the literal type ``"data"`` so untyped terminal markers
+    (``data: [DONE]``) round-trip cleanly.
+    """
+    parsed: list[tuple[str, Any]] = []
+    current_type = "data"
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        if not line:
+            current_type = "data"
+            continue
+        if line.startswith("event:"):
+            current_type = line[len("event:") :].strip() or "data"
+            continue
+        if not line.startswith("data:"):
+            continue
+        payload_str = line[len("data:") :].strip()
+        if payload_str == "[DONE]":
+            parsed.append((current_type, {"_done": True}))
+            current_type = "data"
+            continue
+        if not payload_str:
+            current_type = "data"
+            continue
+        try:
+            parsed.append((current_type, json.loads(payload_str)))
+        except json.JSONDecodeError:
+            continue
+        current_type = "data"
+    return parsed
