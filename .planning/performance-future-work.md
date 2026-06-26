@@ -402,7 +402,7 @@ Feature `m3-thread-unsafe-stream-experiment` runs the committed WIP `13cc526` (`
 - **Engine HEAD:** `e4831da` (branch `mlx-vlm-restore-eval-followup`); the WIP commit `13cc526` is on the branch.
 - **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit` (dense text).
 - **Suite:** `prompt_suites/task_diverse_deterministic_quality.json` (`short_nyc_det`, `code_python_det`, `reasoning_math_det`, `instruction_format_det`, `long_context_franklin_det`), `--include-output-text`, `temp=0.0`, `top_p=1.0`, `runs=3`, `max_tokens=256` (per-prompt caps honored).
-- **Hygiene (corrected 2026-06-26 by `m4-gating-check`):** a stale 0-byte `/tmp/mlx-engine-thread-unsafe-stream` toggle file from a previous session (Jun 22 23:05) was removed before the baseline so the env var alone controls the opt-in. `init.sh` step 7 (lines `7-11`) now removes `/tmp/mlx-engine-thread-unsafe-stream` between worker sessions so a stale toggle file can no longer silently enable the experiment on a fresh worker without the env var being explicitly set. The previous wording that said `init.sh` does not clean that path is stale and superseded; the env var is still the authoritative control surface, and the file removal is now reproducible idempotent mission hygiene rather than per-session ad-hoc cleanup.
+- **Hygiene (corrected 2026-06-26 by `m4-gating-check`; line numbers refreshed 2026-06-26 by `m5-short-text-baseline`):** a stale 0-byte `/tmp/mlx-engine-thread-unsafe-stream` toggle file from a previous session (Jun 22 23:05) was removed before the baseline so the env var alone controls the opt-in. `init.sh` step 7 (lines `60-66`) now removes `/tmp/mlx-engine-thread-unsafe-stream` between worker sessions so a stale toggle file can no longer silently enable the experiment on a fresh worker without the env var being explicitly set. The previous wording that said `init.sh` does not clean that path is stale and superseded; the env var is still the authoritative control surface, and the file removal is now reproducible idempotent mission hygiene rather than per-session ad-hoc cleanup. The old `(lines 7-11)` reference is stale and was superseded when `init.sh` was restructured to the numbered-step layout; lines 7-11 now sit inside the environment-variable block (`ENGINE`, `HARNESS`, `PY312`, `MODELS`), not the cleanup block.
 
 ### Runtime capability check (the critical finding)
 
@@ -503,3 +503,71 @@ The candidate opt-in is therefore a clean no-op on this MLX runtime: the experim
 | Candidate run 2 quality-compare | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040749.821729Z-quality-compare.json` |
 | WIP source | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/utils/mlx_lm_stream.py` (commit `13cc526`) |
 | WIP unit tests | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_mlx_lm_stream.py` |
+
+## M5 short-text baseline (2026-06-26)
+
+Feature `m5-short-text-baseline` uses the existing `cheetara-vs-mlx` benchmark profile (`runners/cheetara_mlx_profile.py`) introduced by `m5-cheetara-bench-profile` to capture the **M5 short-text baseline**: one paired report containing rows from both stacks (cheetara `vmlx` + `mlx-engine`) on identical prompts and the same local model file. **This is evidence capture only — no promotion decision, no cheetara repackaging, no `vmlx.app.asar` modification.** The harness driver also MD5-records `vmlx.app.asar` before and after the run as a no-write integrity check.
+
+### Profile inputs
+
+- **Driver:** `mlx-bench-harness/runners/cheetara_mlx_profile.py`, invoked with `--engine cheetara-mlx` so the combined report contains exactly `[mlx-engine, vmlx]` result rows.
+- **Suite:** `mlx-bench-harness/prompt_suites/m5_short_text.json` (newly added; single short-text prompt `short_nyc` lifted verbatim from the parent `cheetara_vs_mlx.json` so the M5 sub-suite uses the same prompt text, system prompt, and `expected_keywords` as the full M5 suite).
+- **Model (identical for both engines):** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit` (dense text, same path used for M2/M3 deterministic text-quality evidence).
+- **Sampling:** `temperature=0.0`, `top_p=1.0`, `--include-output-text`, `runs=3`, `max_tokens=96` (honoring the prompt's own `max_tokens` cap).
+- **vmlx interpreter:** the cheetara `.venv` defaults `python` to 3.12 but installs dependencies into Python 3.14's site-packages (`pyvenv.cfg` `home = Python.framework/Versions/3.14`). The bench is therefore invoked with `--vmlx-python /Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/.venv/bin/python3.14` so the vmlx serve subprocess can actually `import uvicorn` and `import vmlx_engine`; mlx-engine uses `.venv-py312/bin/python` via the harness defaults.
+- **cheetara app bundle integrity:** the harness `verify_app_bundle(...)` step MD5-recorded the bundle before the run (`vmlx.app.asar` md5 `d27106b78546424046384e813fe23b7c`, 70,671,554 bytes) and the bundle is not modified; this matches the AGENTS.md no-repackaging rule.
+
+### Command shape
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 runners/cheetara_mlx_profile.py \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit \
+  --suite prompt_suites/m5_short_text.json \
+  --runs 3 \
+  --max-tokens 96 \
+  --temperature 0.0 \
+  --top-p 1.0 \
+  --include-output-text \
+  --vmlx-python /Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/.venv/bin/python3.14 \
+  --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+```
+
+### Report and row inspection
+
+- **M5 short-text baseline report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T050900.761077Z-shared-bench.json`
+- **Engines present:** `["mlx-engine", "vmlx"]` (exactly the paired set required by `load_combined_report(...)`).
+- **Total rows:** 6 (3 per engine × 2 engines).
+- **Row-error check:** every row has `error: null` for both engines; both runners exited 0; no `__runner__` placeholder rows.
+- **Per-engine row breakdown:**
+
+  | Engine | Rows | Errors | Output preview (run 1) |
+  |---|---:|---:|---|
+  | `mlx-engine` | 3 | 0 | "*   It serves as the global hub for finance, housing the headquarters of major i…" (deterministic across all 3 runs; expected keywords `New York` and `finance` both present in every run; 91 completion_tokens per run) |
+  | `vmlx` | 3 | 0 | "*   New York City serves as the global hub for **finance**, hosting the New York…" (expected keywords `New York` and `finance` both present in every run; vmlx reports ~188 completion_tokens per run via its OpenAI streaming usage block) |
+
+- **Summary-level timings (informational only — data capture, no promotion):**
+
+  | Engine | avg total (s) | avg decode tps | cold ttft (s) | warm ttft (s) | avg completion tokens | cached tokens |
+  |---|---:|---:|---:|---:|---:|---:|
+  | `mlx-engine` | 1.4370 | 70.29 | 0.3354 | 0.0456 | 91.0 | 32.0 |
+  | `vmlx` | 4.8313 | (inflated — see caveat) | 6.0532 | 4.2199 | 188.7 | n/a (not reported) |
+
+- **Timing caveat (vmlx streaming instrumentation):** the `vmlx_runner` parses vmlx's OpenAI streaming `/v1/chat/completions` SSE stream and records `first_token_seen` from the first `data:` chunk containing a `content` delta. The vmlx server in this build streams the entire completion as a single `data:` chunk (one final `chat.completion` chunk after a brief generation phase), so `decode_s ≈ 0` and the entire request time is rolled into `ttft_s`. This is a vmlx streaming-measurement quirk, not a benchmark failure; both vmlx rows report `error: null` and produce on-topic, keyword-matching output. The M5 short-text baseline records the raw measurements exactly as the runner produced them, without adjustment, so future M5 evidence captures use the same instrumentation.
+
+### Decision: DATA-ONLY (no promotion)
+
+This feature captures the M5 short-text baseline as evidence and **makes no promotion decision** for either stack. The paired report path above is the authoritative M5 short-text baseline reference for any future M5 follow-up work (long-text baseline, image baseline, or cheetara-vs-mlx promotion analysis). M5 is explicitly data-only per `VAL-M5-005`; the cheetara app bundle is unchanged (MD5 verified pre-run by the harness driver) and no `vmlx.app.asar` write occurred during this run.
+
+### Stale M3 init.sh line reference (corrected in this commit)
+
+While recording the M5 short-text baseline, the stale `init.sh` line reference in the M3 section above was also refreshed: the line range now reads `lines 60-66` (the current thread-unsafe-stream cleanup block inside step 7), replacing the stale `lines 7-11` reference. Lines 7-11 of the current `init.sh` are inside the `ENGINE`/`HARNESS`/`PY312`/`MODELS` variable block, not the cleanup block; the old number was carried from an earlier shorter `init.sh` layout and is no longer accurate.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| M5 short-text baseline report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T050900.761077Z-shared-bench.json` |
+| M5 short-text sub-suite (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m5_short_text.json` |
+| cheetara-vs-mlx driver (existing) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/runners/cheetara_mlx_profile.py` |
+| vmlx.app.asar pre-run md5 | `d27106b78546424046384e813fe23b7c` (unchanged post-run) |
