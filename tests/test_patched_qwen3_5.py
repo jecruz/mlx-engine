@@ -631,18 +631,23 @@ def test_qwen3_5_ordinary_decode_fast_path_completes_correctly():
     gdn_sink=None, seq_len=1, plain KV cache) for every linear layer.
 
     The test guards against VAL-M8-001 regression: representative Qwen text
-    requests must complete without empty, shifted, duplicated, or prematurely
-    terminated output, and without row-level errors, before any promotion
-    decision is considered.
+    requests must complete without empty, collapsed, or prematurely terminated
+    output, and without row-level errors, before any promotion decision is
+    considered.
 
-    Assertions cover the full ordinary-decode lifecycle:
-      * non-empty logits at prefill and every decode step,
-      * non-shifted logits (last prefill logit matches the first decode logit
-        for the same KV state),
-      * non-duplicated tokens (no immediate token repetition across the
-        autoregressive loop),
+    Assertions cover only what this test independently proves on the synthetic
+    ordinary-decode path:
+      * non-empty logits at prefill and every decode step (max abs > 0),
+      * non-collapsed token stream (the autoregressive loop yields more than
+        one distinct token, so the fast path does not degenerate into a
+        constant-output repeat),
       * proper termination (the decode loop runs the configured number of
         steps and never aborts early).
+
+    Logit-alignment between full-sequence prefill and incremental prefill+decode
+    is covered separately by `test_qwen3_5_prefill_decode_consistency`, not by
+    this test. This test does not assert any latency improvement; it only proves
+    the fast path completes the ordinary-decode lifecycle correctly.
     """
     model = make_model()
     prefill_tokens = 8
