@@ -344,3 +344,112 @@ Feature `m2-qwen35-rope-index-patch` verifies the committed WIP `abebb5b` (`mlx_
 ### Decision: VERIFIED (no engine change)
 
 The Qwen3.5 fully-padded vision-row `get_rope_index` patch `abebb5b` is verified correct as committed. No engine behavior was modified. The pytest suite for the patch passes (including the dedicated fully-padded vision-row test), the deterministic text-quality suite passes on both dense/code lanes (Qwen3.5-9B and Qwen2.5-Coder-14B) with no visible-thinking leaks or structured-output regressions, the LFM2.5-VL image suite passes with zero row errors on both the short pair and long-context lanes (no VLM parity regression), and the in-file prefill/decode parity tests confirm no prefill/decode regression on the M2 WIP surface.
+
+## M3 thread-unsafe stream experiment (2026-06-26)
+
+Feature `m3-thread-unsafe-stream-experiment` runs the committed WIP `13cc526` (`mlx_engine/utils/mlx_lm_stream.py` exposes a `MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM` env var that, when supported by the active MLX runtime, swaps the per-thread `ThreadLocalStream` for a shared `mx.new_thread_unsafe_stream(...)` so cross-thread generation requests reuse one device stream) through the direct `shared_bench.py` harness and decides promote / keep-opt-in / reject. **No file toggle was used, no LM Studio runtime was involved** — only the env var as the feature description requires.
+
+- **Engine HEAD:** `e4831da` (branch `mlx-vlm-restore-eval-followup`); the WIP commit `13cc526` is on the branch.
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit` (dense text).
+- **Suite:** `prompt_suites/task_diverse_deterministic_quality.json` (`short_nyc_det`, `code_python_det`, `reasoning_math_det`, `instruction_format_det`, `long_context_franklin_det`), `--include-output-text`, `temp=0.0`, `top_p=1.0`, `runs=3`, `max_tokens=256` (per-prompt caps honored).
+- **Hygiene:** a stale 0-byte `/tmp/mlx-engine-thread-unsafe-stream` toggle file from a previous session (Jun 22 23:05) was removed before the baseline so the env var alone controls the opt-in; `init.sh` does not clean that path. The removal was session-state hygiene only and is reproducible by re-creating the empty file (or by setting the env var).
+
+### Runtime capability check (the critical finding)
+
+The `_resolve_stream_source(...)` helper in `mlx_engine/utils/mlx_lm_stream.py` only resolves to `"thread-unsafe"` when both `_thread_unsafe_stream_experiment_enabled()` is True AND `_runtime_supports_thread_unsafe_stream()` is True. The runtime capability check is `hasattr(mx, "new_thread_unsafe_stream")`.
+
+- Direct module introspection under `.venv-py312/bin/python`:
+  ```
+  hasattr(mx, "new_thread_unsafe_stream"): False
+  hasattr(mx, "new_thread_local_stream"): True
+  ```
+- Stream configuration reported by `describe_stream_configuration(False)`:
+  - Baseline (env unset, no toggle file): `source=thread-local toggle_env=False toggle_file=False runtime_supports_thread_unsafe=False`
+  - Candidate (`MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM=1`, no toggle file): `source=thread-local toggle_env=True toggle_file=False runtime_supports_thread_unsafe=False`
+  - Direct `prepare_mlx_lm_generation_stream` log line under the env var: `stream_source=thread-local default_stream=Stream(Device(gpu, 0), 0) stream=ThreadLocalStream(Device(gpu, 0), 1)`
+
+The candidate opt-in is therefore a clean no-op on this MLX runtime: the experiment is enabled and the selection logic engages, but because `mx.new_thread_unsafe_stream` is not exposed, `_runtime_supports_thread_unsafe_stream()` returns False and the helper degrades to the thread-local path — exactly the documented fallback (`test_prepare_stream_falls_back_when_runtime_lacks_thread_unsafe_api`).
+
+### Baseline run (thread-local default)
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040444.745185Z-shared-bench.json`
+- **Invocation:**
+  ```bash
+  cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+  env -u MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM PYTHONPATH=. python3 shared_bench.py \
+    --engine mlx-engine \
+    --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit \
+    --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+    --prompt-suite-json prompt_suites/task_diverse_deterministic_quality.json \
+    --include-output-text \
+    --temperature 0.0 --top-p 1.0 --runs 3 --max-tokens 256 \
+    --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+  ```
+- **Row check:** 15 rows (5 prompts × 3 runs), every row `error: null`, runner process returncode 0, no `RuntimeError: There is no Stream(...)` in stderr, every cold run completes a full warm-cache reuse cycle (warm `cached_tokens=7202` on the long-context prompt; warm `cached_tokens=54..65` on the short prompts).
+- **Per-prompt outputs:** `short_nyc_det` and `code_python_det` hit the expected keywords (`New York`, `finance`, `stable_unique`, `return`); `reasoning_math_det` produces the expected `38.9%` answer; `instruction_format_det` produces a valid JSON object with the required `risk`/`mitigation`/`owner` keys; `long_context_franklin_det` summarizes Franklin's Autobiography. No `forbid_substrings` or `forbid_reasoning_prefixes` findings.
+
+### Candidate run 1 (env var on, no file toggle)
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040526.729772Z-shared-bench.json`
+- **Invocation:** identical to baseline except `MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM=1` is set in the shell before `shared_bench.py`.
+- **Row check:** 15 rows, every row `error: null`, runner process returncode 0, no stream-failure text in stderr.
+- **Quality compare (candidate vs baseline):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040526.729772Z-quality-compare.json` — **`status: pass`**, `failed_prompts: []`, `global_findings: []`, every prompt-level `status: pass`.
+- **Per-prompt deltas (candidate − baseline, %):**
+
+  | prompt | cold_ttft | warm_ttft_p50 | total | decode_tps | warm_total_p50 |
+  |---|---:|---:|---:|---:|---:|
+  | `code_python_det` | +4.52 | -0.41 | +0.46 | -0.34 | +0.33 |
+  | `instruction_format_det` | +5.81 | -7.55 | -1.66 | +1.79 | -2.38 |
+  | `long_context_franklin_det` | +0.25 | +3.12 | +0.19 | -0.05 | -0.06 |
+  | `reasoning_math_det` | +5.09 | +0.25 | +0.33 | -0.00 | -0.19 |
+  | `short_nyc_det` | -2.13 | +1.96 | +1.14 | -1.30 | +0.59 |
+
+  All deltas are within run-to-run sampling noise (no consistent direction; warm_ttft_p50 mixed signs; total/decoded well inside ±2%).
+
+### Candidate run 2 (repeat confirmation)
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040749.821729Z-shared-bench.json`
+- **Quality compare (candidate vs baseline):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040749.821729Z-quality-compare.json` — **`status: fail`** on exactly one prompt (`reasoning_math_det`) due to `warm TTFT median regression 6.603% exceeds 5.000%`. All other prompts pass; `raw_candidate_findings: []` and `candidate_only_findings: []` — **zero quality findings**, only a regression-threshold trip on a prompt whose absolute warm TTFT is ~0.07s, where 5 ms of jitter is ±7% of the signal.
+- **Row check:** 15 rows, every row `error: null`, runner process returncode 0.
+- **Per-prompt deltas (candidate − baseline, %):** again mixed signs (cold_ttft −5.77 to +7.43, total −1.30 to +2.80, decode_tps −2.23 to +1.79), with no consistent direction across prompts or runs. This is consistent with the "no real stream swap happened" finding rather than a genuine performance signal.
+
+### Pytest (M3 unit tests)
+
+- `.venv-py312/bin/python -m pytest tests/test_mlx_lm_stream.py tests/test_mlx_threading.py -q` → **7 passed / 2 warnings**, 0 failed. Warnings are unrelated `SwigPyPacked/SwigPyObject has no __module__ attribute` deprecations from MLX bindings, not caused by the WIP.
+- `test_prepare_stream_defaults_to_thread_local` — env unset, runtime lacks `new_thread_unsafe_stream` → uses `ThreadLocalStream`.
+- `test_prepare_stream_uses_shared_thread_unsafe_stream_when_enabled` — env set, monkeypatched runtime exposes `new_thread_unsafe_stream` → shared stream is reused across simulated worker threads.
+- `test_prepare_stream_uses_toggle_file_when_env_is_unset` — file toggle alone enables the experiment.
+- `test_prepare_stream_falls_back_when_runtime_lacks_thread_unsafe_api` — env set but runtime lacks the new API → degrades cleanly to thread-local (this is the exact code path the M3 harness exercises on this machine).
+- `test_describe_stream_configuration_reports_toggle_and_runtime` — probe output reflects all three inputs.
+- `test_prepare_stream_keeps_default_stream_for_distributed_paths` — `use_default_stream=True` always wins.
+
+### Decision: REJECT (no promotion evidence exists; explicit rejection is the documented acceptable outcome for the M3 experiment lane)
+
+**Promotion cannot be claimed on this evidence.** The committed WIP `13cc526` is engineered correctly — the selection helper, fallback logic, logger probes, file toggle, distributed-path override, and unit tests all behave as documented — but the active `.venv-py312` MLX runtime does **not** expose `mx.new_thread_unsafe_stream`. Therefore:
+
+- The candidate run resolves to the same thread-local stream configuration as the baseline. There is no shared-stream-vs-thread-local comparison to make on this machine.
+- The observed TTFT / decode-TPS / total deltas are pure sampling noise (mixed signs, ≤7.4%, no consistent direction across two candidate runs). They cannot be promoted under the ≥2 quality-passing repeated-sample + real, repeatable move rule.
+- Zero row-level errors and zero cross-thread stream failures across both candidate runs (the M3 stability gate is satisfied), but stability under a no-op configuration does not constitute promotion evidence.
+
+**What this rejection does NOT mean:**
+
+- The WIP `13cc526` itself is not buggy. The unit tests confirm the selection helper picks the shared stream whenever the runtime exposes `new_thread_unsafe_stream`. The opt-in degrades cleanly when the API is missing (the M3 harness exercises this branch). The runtime capability check is the correct gate.
+- The opt-in env var should remain in the codebase. Future MLX runtime upgrades that expose `mx.new_thread_unsafe_stream` will let this experiment be re-run for real; until then, no production user can accidentally enable the shared stream because `_runtime_supports_thread_unsafe_stream()` gates the swap.
+
+**What this rejection DOES mean:**
+
+- **Do not promote** `MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM` to a default or even to an opt-in doc surface. The experiment has no measurable effect on this MLX runtime, so there is nothing to gain and nothing to document for end users until the underlying API ships in the MLX distribution this checkout consumes.
+- **Do not delete** the WIP. It is correct defensive plumbing for a runtime capability the engine cannot predict in advance, and it remains a future-proofing hook for the next MLX release.
+- **Re-run** the experiment if/when the MLX runtime in `.venv-py312` gains `mx.new_thread_unsafe_stream`. The expected signal then would be measurable reductions in per-thread stream-allocation overhead on a multi-threaded harness, not on the single-threaded `shared_bench.py` lane used here. A multi-connection or concurrent-prompt harness (currently out of mission scope — M5 cheetara-vs-mlx is a sequential single-stack comparison) would be the surface that could observe a real shared-stream win.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| Baseline report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040444.745185Z-shared-bench.json` |
+| Candidate run 1 report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040526.729772Z-shared-bench.json` |
+| Candidate run 1 quality-compare | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040526.729772Z-quality-compare.json` |
+| Candidate run 2 report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040749.821729Z-shared-bench.json` |
+| Candidate run 2 quality-compare | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T040749.821729Z-quality-compare.json` |
+| WIP source | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/utils/mlx_lm_stream.py` (commit `13cc526`) |
+| WIP unit tests | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_mlx_lm_stream.py` |
