@@ -571,3 +571,75 @@ While recording the M5 short-text baseline, the stale `init.sh` line reference i
 | M5 short-text sub-suite (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m5_short_text.json` |
 | cheetara-vs-mlx driver (existing) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/runners/cheetara_mlx_profile.py` |
 | vmlx.app.asar pre-run md5 | `d27106b78546424046384e813fe23b7c` (unchanged post-run) |
+
+## M5 long-text baseline (2026-06-26)
+
+Feature `m5-long-text-baseline` reuses the existing `cheetara-vs-mlx` benchmark profile (`runners/cheetara_mlx_profile.py`) introduced by `m5-cheetara-bench-profile` to capture the **M5 long-text baseline**: one paired report containing rows from both stacks (cheetara `vmlx` + `mlx-engine`) on identical long-context prompts and the same local model file. **This is evidence capture only — no promotion decision, no cheetara repackaging, no `vmlx.app.asar` modification.** The harness driver also MD5-records `vmlx.app.asar` before and after the run as a no-write integrity check.
+
+### Profile inputs
+
+- **Driver:** `mlx-bench-harness/runners/cheetara_mlx_profile.py`, invoked with `--engine cheetara-mlx` so the combined report contains exactly `[mlx-engine, vmlx]` result rows.
+- **Suite:** `mlx-bench-harness/prompt_suites/m5_long_text.json` (newly added; single long-text prompt `long_franklin` lifted verbatim from the parent `cheetara_vs_mlx.json` so the M5 sub-suite uses the same prompt text, system prompt, `user_file`, `user_suffix`, `max_tokens`, and `expected_keywords` as the full M5 suite). The prompt reads the full Benjamin-Franklin Autobiography start text (`ben_franklin_autobiography_start.txt`, 33,222 chars / 7,193 prompt tokens after chat-template rendering) and asks the model to summarize Franklin and his *Autobiography* in three bullets.
+- **Model (identical for both engines):** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit` (dense text, same path used for M2/M3 deterministic text-quality and M5 short-text evidence).
+- **Sampling:** `temperature=0.0`, `top_p=1.0`, `--include-output-text`, `runs=3`, `max_tokens=160` (honoring the prompt's own `max_tokens` cap).
+- **vmlx interpreter:** the cheetara `.venv` defaults `python` to 3.12 but installs dependencies into Python 3.14's site-packages (`pyvenv.cfg` `home = Python.framework/Versions/3.14`). The bench is therefore invoked with `--vmlx-python /Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/.venv/bin/python3.14` so the vmlx serve subprocess can actually `import uvicorn` and `import vmlx_engine`; mlx-engine uses `.venv-py312/bin/python` via the harness defaults. Verified pre-run that `python3.14 -c "import uvicorn, vmlx_engine"` succeeds.
+- **cheetara app bundle integrity:** the harness `verify_app_bundle(...)` step MD5-recorded the bundle before the run (`vmlx.app.asar` md5 `d27106b78546424046384e813fe23b7c`, 70,671,554 bytes) and re-checked after the run — the md5 is unchanged. This matches the AGENTS.md no-repackaging rule.
+
+### Command shape
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 runners/cheetara_mlx_profile.py \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit \
+  --suite prompt_suites/m5_long_text.json \
+  --runs 3 \
+  --max-tokens 160 \
+  --temperature 0.0 \
+  --top-p 1.0 \
+  --include-output-text \
+  --vmlx-python /Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/.venv/bin/python3.14 \
+  --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+```
+
+### Report and row inspection
+
+- **M5 long-text baseline report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T051648.588677Z-shared-bench.json`
+- **Engines present:** `["mlx-engine", "vmlx"]` (exactly the paired set required by `load_combined_report(...)`).
+- **Total rows:** 6 (3 per engine × 2 engines).
+- **Row-error check:** every row has `error: null` for both engines; both runners exited 0; no `__runner__` placeholder rows; no `RuntimeError: There is no Stream(...)` text in any runner stderr; no cross-thread stream failures.
+- **Per-engine row breakdown:**
+
+  | Engine | Rows | Errors | Prompt tokens | Output preview (run 1) |
+  |---|---:|---:|---:|---|
+  | `mlx-engine` | 3 | 0 | 7,194 (cold 7,194 / warm 7,194 — full 7,193-token prefix matches across all 3 runs; warm `cached_tokens=7193`) | "Based on the text provided, here is a summary of Benjamin Franklin and his *Autobiography*: … Franklin's Multifaceted Legacy … The Human Value of the Autobiography" (deterministic across all 3 runs; expected keywords `Franklin` and `Autobiography` both present in every run; 160 completion_tokens per run, `finish_reason=token_limit`) |
+  | `vmlx` | 3 | 0 | 7,187 | "*   Franklin's Autobiography is valued not as a formula for success, but as a vivid, human account of his rise from poverty and obscurity …" (expected keywords `Franklin` and `Autobiography` both present in every run; vmlx reports 320 completion_tokens per run via its OpenAI streaming usage block, `finish_reason=stop`) |
+
+- **Summary-level timings (informational only — data capture, no promotion):**
+
+  | Engine | runs | avg total (s) | avg decode tps | cold ttft (s) | warm ttft (s) | warm total (s) | avg completion tokens | cached tokens (warm) |
+  |---|---:|---:|---:|---:|---:|---:|---:|---:|
+  | `mlx-engine` | 3 | 4.756 | 66.82 | 6.875 | 0.103 | 2.465 | 160 | 7,193 |
+  | `vmlx` | 3 | 13.911 | (inflated — see caveat) | 14.446 | 13.643 | 13.643 | 320 | n/a (not reported by vmlx) |
+
+  mlx-engine's warm-cache path is dramatically faster than its cold path (warm TTFT `0.103 s` vs cold TTFT `6.875 s`, warm total `2.465 s` vs cold total `9.338 s`) because the 7,193-token prompt prefix is fully cached and reused — every warm run reports `cached_tokens=7193` from the engine. This is the expected mlx-engine prompt-cache reuse behavior; the warm-cache numbers are the apples-to-apples comparison point against vmlx, which does not expose `cached_tokens` on the same path.
+
+- **Timing caveat (vmlx streaming instrumentation — `decode_tps` is NOT promotion-quality throughput evidence):** the `vmlx_runner` parses vmlx's OpenAI streaming `/v1/chat/completions` SSE stream and records `first_token_seen` from the first `data:` chunk containing a `content` delta. The vmlx server in this build streams the entire completion as a single `data:` chunk (one final `chat.completion` chunk after a brief generation phase, evidenced in the captured `server_process.stderr` by `Paged cache hit` and `Captured SSM state` log lines, but the visible-answer stream itself arrives as one chunk per request), so `decode_s ≈ 0.0003 s` and `decode_tps ≈ 1.1M tokens/s` for every vmlx row. This is the same vmlx streaming-measurement quirk recorded in the M5 short-text baseline. Per the user-testing library, **these `decode_tps` values are NOT promotion-quality throughput evidence**: they are raw observed transport timings where the entire request time is rolled into `ttft_s`. For apples-to-apples throughput comparison, vmlx's `ttft_s`/`total_s` are the only honest signal; mlx-engine's `decode_tps ≈ 66.8 tokens/s` is the only true per-token decode rate in this report. The M5 long-text baseline records the raw measurements exactly as the runner produced them, without adjustment, so future M5 evidence captures use the same instrumentation.
+
+- **vmlx server log evidence:** the captured `server_process.stderr` confirms vmlx itself ran correctly across all 3 runs — visible-answer passes triggered `Captured SSM state`, `VLM HYBRID cache HIT` lines, and the `Qwen3.5 Chat Completions stream produced no visible content; running bounded thinking-off answer pass` reasoning-off path. No startup failure, no stream-failure text, no model-load errors.
+
+### Decision: DATA-ONLY (no promotion)
+
+This feature captures the M5 long-text baseline as evidence and **makes no promotion decision** for either stack. The paired report path above is the authoritative M5 long-text baseline reference for any future M5 follow-up work (image baseline, or cheetara-vs-mlx promotion analysis). M5 is explicitly data-only per `VAL-M5-005`; the cheetara app bundle is unchanged (MD5 verified pre-run and post-run by the harness driver) and no `vmlx.app.asar` write occurred during this run.
+
+### vmlx SSE caveat repeated in this handoff
+
+As called out in the expected behavior, the vmlx server in this build delivers the completion as a single SSE `data:` chunk, so vmlx `decode_tps` in this report is raw observed transport timing, not promotion-quality throughput evidence. Any future M5 follow-up that wants to compare apples-to-apples decode throughput must either wait for vmlx to start incremental token streaming or restrict the comparison to mlx-engine's `decode_tps` and `total_s` fields. The M5 long-text baseline records this caveat exactly so the orchestrator does not treat `vmlx.decode_tps` as a promotion signal.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| M5 long-text baseline report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T051648.588677Z-shared-bench.json` |
+| M5 long-text sub-suite (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m5_long_text.json` |
+| cheetara-vs-mlx driver (existing) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/runners/cheetara_mlx_profile.py` |
+| vmlx.app.asar pre-run md5 | `d27106b78546424046384e813fe23b7c` (unchanged post-run) |
