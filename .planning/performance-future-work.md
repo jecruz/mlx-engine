@@ -747,3 +747,39 @@ Per the bench-worker skill ("A benchmark cannot produce error-free rows after co
 | cheetara-vs-mlx driver (existing) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/runners/cheetara_mlx_profile.py` |
 | vmlx.app.asar pre-run md5 | `d27106b78546424046384e813fe23b7c` (unchanged post-run) |
 | vmlx server stderr (reference) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-vmlx-server-stderr.log` |
+
+## M5 vmlx image-placeholder fix (2026-06-26)
+
+Feature `m5-vmlx-image-placeholder-fix` removes the remaining cheetara vmlx multimodal defects that prevented the vmlx half of the M5 image baseline from emitting any tokens. After this fix, the direct `cheetara_mlx_profile.py` smoke run against `image_toucan` produces a **real vmlx image result row** (`completion_tokens=5`, `output_text="A toucan."`, `error=null`) — the same correct keyword match as the mlx-engine half. The text-only behavior is preserved end-to-end (the vmlx `short_nyc` row still emits 96 keyword-matching tokens identical to mlx-engine).
+
+The fix is **purely source-level**: two new monkey-patch modules under `cheetara/engine-source/vmlx_engine/patches/`, both installed by `MLLM.load()` before `mlx_vlm.load()`. No `vmlx.app.asar` change; the bundle md5 is `d27106b78546424046384e813fe23b7c` both before and after the smoke run.
+
+### Source-level defects addressed
+
+1. **`processing_lfm2_vl._patched_call`** raised `ValueError: The number of images in the text [0] and images [1] should be the same.` whenever the LFM2-VL processor received a chat-rendered prompt with fewer `<image>` markers than images. Some chat-template paths (multi-turn prefix replay, system-only prefixes, batched warm-cache hits) skip the marker injection that mlx_vlm's chat template normally adds for `{type:image}` items. The new `patches/lfm2_vl_runtime.py` wraps `_patched_call` to inject missing `<image>` markers into the first text fragment before the count check, while leaving text-only calls untouched (`images=None` short-circuits the wrapper).
+
+2. **`lfm2_vl.Model.__call__`** passed `spatial_shapes` and `pixel_attention_mask` positionally into `Model.get_input_embeddings`, which only accepts `input_ids` and `pixel_values` as positional parameters. The result was `TypeError: takes from 1 to 3 positional arguments but 5 were given` on every vision forward pass. The wrapper rewrites `__call__` to:
+   * route `spatial_shapes` / `pixel_attention_mask` as keyword arguments to `get_input_embeddings`,
+   * unwrap the `InputEmbeddingsFeatures` dataclass returned by `get_input_embeddings` to its underlying `inputs_embeds` `mx.array` before forwarding to `self.language_model(..., inputs_embeds=...)` (the language model does `inputs_embeds.shape`, which fails when given the dataclass wrapper directly),
+   * support both call shapes — the standard mlx_vlm `(input_ids, pixel_values, mask, [cache], **kwargs)` and the cheetara batched-engine `(input_ids, **kwargs)` shape where everything arrives as kwargs.
+
+   Both wrappers are idempotent (stamp a sentinel attribute to prevent double-wrapping), no-op on non-LFM2-VL models (skip when the underlying `mlx_vlm.models.lfm2_vl` module is unavailable), and preserve backward compatibility for callers that already use the keyword-only call shape.
+
+### Validation evidence
+
+- **Cheetara pytest:** `engine-source/tests/test_vmlx_lfm2_vl_runtime_patch.py` adds 12 focused tests covering placeholder injection for string and list text, the no-op behavior when markers already suffice, the text-only short-circuit, the idempotency of repeated `apply_patches()` calls, and the `Model.get_input_embeddings` wrapper's tolerance of positional vs keyword extras. All 19 cheetara tests pass (7 prior loader-patch tests + 12 new runtime-patch tests).
+- **Direct one-run cheetara_mlx_profile.py image smoke:** `reports/20260626T071044.589316Z-shared-bench.json` (this run). vmlx row: `image_toucan` `completion_tokens=5`, `output_text="A toucan."`, `error=null`, `finish_reason=null` (request ended cleanly on the first SSE chunk — the same vmlx streaming quirk recorded for the M5 long-text baseline). mlx-engine row: `image_toucan` `completion_tokens=11`, `output_text="The animal in the image is a toucan."`, `error=null`, `finish_reason=eos_token`. Both engines satisfy the expected-keyword check (`toucan` present in both outputs).
+- **Direct one-run cheetara_mlx_profile.py text smoke:** `reports/20260626T071158.493803Z-shared-bench.json` (this run). vmlx `short_nyc` row: `completion_tokens=96`, identical 3-bullet finance answer to mlx-engine. Text-only behavior preserved.
+- **vmlx.app.asar md5:** `d27106b78546424046384e813fe23b7c` before and after both smoke runs. Bundle unchanged.
+- **Lint:** ruff clean on both new files (`patches/lfm2_vl_runtime.py` and `tests/test_vmlx_lfm2_vl_runtime_patch.py`).
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| M5 vmlx image-placeholder fix smoke report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T071044.589316Z-shared-bench.json` |
+| M5 vmlx image-placeholder fix text smoke report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T071158.493803Z-shared-bench.json` |
+| cheetara runtime patch module (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/engine-source/vmlx_engine/patches/lfm2_vl_runtime.py` |
+| cheetara runtime patch tests (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/engine-source/tests/test_vmlx_lfm2_vl_runtime_patch.py` |
+| MLLM.load() integration point | `/Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/engine-source/vmlx_engine/models/mllm.py` (added `_apply_lfm2_vl_runtime_patch()` call alongside the existing `_apply_lfm2_vl_patch()` from feature `m5-vmlx-lfm2-vl-loader-fix`) |
+| vmlx.app.asar md5 | `d27106b78546424046384e813fe23b7c` (unchanged before and after this fix's smoke runs) |
