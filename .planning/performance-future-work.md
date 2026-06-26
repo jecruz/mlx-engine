@@ -269,6 +269,56 @@ Feature `m1-record-decisions` consolidates the M1 promote/keep/reject decisions 
 
 M1 did **not** produce a real, repeatable eval-path win. The only M1 candidate that targeted restore-time `eval_ms` reduction (`MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1`) was rejected because both repeated runs regressed warm TTFT and failed the `quality_compare.py` gate. The promoted M1 change (`MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH`) is a targeted overlapping-request cache-reuse win, not an `eval_ms` / restore-materialization reduction. Therefore, the M1 outcome that gates M4 is: **no real, repeatable eval-path win exists**, so the next restore-eval reduction candidate should not be pursued under M1 evidence. The orchestrator should cancel the M4 restore-eval candidate workstream.
 
+## M4 gating decision (2026-06-26, `m4-gating-check`)
+
+Feature `m4-gating-check` makes the M4 proceed-or-cancel decision explicit, with full citation to the M1 evidence paths and measured deltas. This section records the binding gate for `m4-restore-eval-candidate`.
+
+### M1 evidence cited by the gate
+
+- `MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1` (the only M1 candidate that targeted restore-time `eval_ms` reduction):
+  - **Retained baseline:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T210226.711363Z-shared-bench.json`
+  - **Candidate run 1:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T210245.745879Z-shared-bench.json`
+  - **Candidate run 1 compare:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T210245.745879Z-quality-compare.json` — `status=fail`
+  - **Candidate run 2:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T210319.821177Z-shared-bench.json`
+  - **Candidate run 2 compare:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T210319.821177Z-quality-compare.json` — `status=fail`
+  - **Repeated-sample deltas (vs M1 retained baseline):**
+
+    | Metric | Run 1 delta | Run 2 delta | Real, repeatable? |
+    |---|---:|---:|---|
+    | cold TTFT | -2.34% | -2.51% | yes (small, not eval-path) |
+    | warm TTFT | +6.77% | +12.05% | yes, but a regression beyond the 5% gate |
+    | decode TPS | -6.38% | +15.53% | no (signs disagree) |
+    | total latency | -1.90% | -2.44% | small, no `eval_ms` signal |
+    | warm total | +9.43% | +4.12% | regression on run 1, borderline on run 2 |
+    | `quality_compare.py` status | `fail` | `fail` | both runs failed the promotion gate |
+
+- `MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH` (default-on, kept as the promoted M1 default):
+  - **Flush-on report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T214000Z-freshness-flush-on.json`
+  - **Flush-off report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260624T214500Z-freshness-flush-off.json`
+  - **Second-request deltas (flush-on vs flush-off):** cached_tokens `0 → 2048`, TTFT `-14.10%`, total latency `-13.25%`, `flushed_matching_saves=1` on every run. **Not an `eval_ms` / restore-materialization reduction** — this is an overlapping-request cache-reuse win for repeated same-prefix VLM requests, and the underlying `mx.eval(...)` barrier, KV record count, and bytes crossing the barrier are unchanged.
+
+### Decision: **CANCEL** — `m4-restore-eval-candidate` must NOT be pursued under the M1 evidence above
+
+The M4 gate, taken verbatim from `m1-record-decisions`, says the next restore-eval reduction candidate is pursued "ONLY if M1 demonstrated a real, repeatable eval-path win." Two negative findings support a hard CANCEL:
+
+1. **The only M1 candidate that targeted restore-time `eval_ms` reduction was rejected.** `MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1` was the M1 lane closest to an `eval_ms` reduction, but both repeated candidate runs failed `quality_compare.py` (`status=fail` on run 1 and run 2) and regressed warm TTFT beyond the 5% threshold. There is no M1 evidence of a real, repeatable eval-path win.
+2. **The promoted M1 change is not an `eval_ms` reduction.** `MLX_ENGINE_VLM_RESTORE_FRESHNESS_FLUSH` is a cache-reuse win for overlapping requests and does not move the restore-time `mx.eval(...)` barrier, the bytes crossing the barrier, or restore `eval_ms`. Promoting it does not satisfy the M4 gate's precondition.
+
+Per the M4 gate, an `m4-restore-eval-candidate` implementation now requires an M1 evidence base that does not exist. Pursuing the candidate without that base would violate the gate as written and would risk burning engineering effort on a record-layout change that is not yet justified by any measured eval-path win.
+
+### What the orchestrator should do
+
+- **Cancel `m4-restore-eval-candidate` (status already `cancelled` in `features.json`, but the gate now records the explicit decision and the cited M1 evidence).**
+- **Keep the M4 resume-order guidance in `.planning/performance-future-work.md` current**, so that if a future M1 (or M5/M6) surfaces a real, repeatable eval-path win, the next candidate is ready to design. Specifically:
+  - Bias the next candidate toward reducing **rotating-delta arrays / bytes** before the restore-time `mx.eval(...)` barrier (the retained Gemma 4 restore surface measured `40` rotating layers = `80 / 96` eval targets and `~320 / 434.7 MiB` crossing the barrier).
+  - Move the grouped-rotating idea earlier in the record/load pipeline so it reduces **bytes**, not just target count — do not retry naive post-assembly grouping (rejected 2026-06-23: list-eval `2.61 ms → 4.17 ms` median) and do not retry preassembled grouping in its current form (below the retained-lane barrier cost).
+  - Keep the record format backward-readable so old persistent caches still load; never remove the restore-time `mx.eval(...)` safety barrier; do not reintroduce full-prefix KV span packing.
+  - Re-validate via `MLX_ENGINE_BATCHED_TIMING` `eval-state isolation` plus the warm-restore image-fidelity check (VAL-M1-006 style: warm LFM2.5-VL `image_long` must still return `toucan`) before claiming any byte reduction is real.
+
+### Validation contract assertion
+
+- `VAL-M4-001` (`M4 gated on a real M1 eval-path win`) — **satisfied** by this section: the gating decision (CANCEL) is documented with reference to M1 report paths and deltas. The orchestrator can close the assertion as `passed`.
+
 ## M2 cross-prompt cache key verification (2026-06-26)
 
 Feature `m2-cross-prompt-cache-key` verifies the committed WIP `b380deb` (`BatchedModelKit` keeps `cross_prompt_cache_key` separate from `live_cache_key` and a new `_trim_prompt_cache_to_prompt_length` helper defensively trims generated-token tails before reinsertion). The committed behavior is preserved unchanged because no engine defect was found.
@@ -352,7 +402,7 @@ Feature `m3-thread-unsafe-stream-experiment` runs the committed WIP `13cc526` (`
 - **Engine HEAD:** `e4831da` (branch `mlx-vlm-restore-eval-followup`); the WIP commit `13cc526` is on the branch.
 - **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit` (dense text).
 - **Suite:** `prompt_suites/task_diverse_deterministic_quality.json` (`short_nyc_det`, `code_python_det`, `reasoning_math_det`, `instruction_format_det`, `long_context_franklin_det`), `--include-output-text`, `temp=0.0`, `top_p=1.0`, `runs=3`, `max_tokens=256` (per-prompt caps honored).
-- **Hygiene:** a stale 0-byte `/tmp/mlx-engine-thread-unsafe-stream` toggle file from a previous session (Jun 22 23:05) was removed before the baseline so the env var alone controls the opt-in; `init.sh` does not clean that path. The removal was session-state hygiene only and is reproducible by re-creating the empty file (or by setting the env var).
+- **Hygiene (corrected 2026-06-26 by `m4-gating-check`):** a stale 0-byte `/tmp/mlx-engine-thread-unsafe-stream` toggle file from a previous session (Jun 22 23:05) was removed before the baseline so the env var alone controls the opt-in. `init.sh` step 7 (lines `7-11`) now removes `/tmp/mlx-engine-thread-unsafe-stream` between worker sessions so a stale toggle file can no longer silently enable the experiment on a fresh worker without the env var being explicitly set. The previous wording that said `init.sh` does not clean that path is stale and superseded; the env var is still the authoritative control surface, and the file removal is now reproducible idempotent mission hygiene rather than per-session ad-hoc cleanup.
 
 ### Runtime capability check (the critical finding)
 
