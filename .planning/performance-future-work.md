@@ -643,3 +643,107 @@ As called out in the expected behavior, the vmlx server in this build delivers t
 | M5 long-text sub-suite (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m5_long_text.json` |
 | cheetara-vs-mlx driver (existing) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/runners/cheetara_mlx_profile.py` |
 | vmlx.app.asar pre-run md5 | `d27106b78546424046384e813fe23b7c` (unchanged post-run) |
+
+## M5 image baseline (2026-06-26)
+
+Feature `m5-image-baseline` reuses the existing `cheetara-vs-mlx` benchmark profile (`runners/cheetara_mlx_profile.py`) introduced by `m5-cheetara-bench-profile` to capture the **M5 image baseline**: one paired report containing rows from both stacks (cheetara `vmlx` + `mlx-engine`) on identical image prompts/images and the same VLM model file. **This is evidence capture only — no promotion decision, no cheetara repackaging, no `vmlx.app.asar` modification.** The harness driver also MD5-records `vmlx.app.asar` before and after the run as a no-write integrity check.
+
+### Profile inputs
+
+- **Driver:** `mlx-bench-harness/runners/cheetara_mlx_profile.py`, invoked with `--engine cheetara-mlx` so the combined report contains the paired `[mlx-engine, vmlx]` result rows.
+- **Suite:** `mlx-bench-harness/prompt_suites/m5_image.json` (newly added; single image prompt `image_toucan` lifted verbatim from the parent `cheetara_vs_mlx.json` so the M5 sub-suite uses the same prompt text, system prompt, `image_files` (the demo `toucan.jpeg`), `max_tokens`, and `expected_keywords` as the full M5 suite). The prompt asks the VLM to identify the animal in the toucan image in one short sentence.
+- **Model (intended identical for both engines):** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit` — the canonical VLM model file used by M1 for restore-eval / path-load evidence and by `m1-warm-restore-image-fidelity` for warm-cache image fidelity verification. No other locally installed MLX model exposes the `vision_config` block required by `cheetara_vs_mlx.json` (GLM-4.7-Flash-MLX-8bit is text-only `glm4_moe_lite`, NVIDIA-Nemotron is text-only `nemotron_h`, Qwen3.5-9B-MLX-8bit has `vision_config` but is not a real multimodal checkpoint in this checkout).
+- **Sampling:** `temperature=0.0`, `top_p=1.0`, `--include-output-text`, `runs=3`, `max_tokens=64` (honoring the prompt's own `max_tokens` cap).
+- **vmlx interpreter:** the cheetara `.venv` defaults `python` to 3.12 but installs dependencies into Python 3.14's site-packages (`pyvenv.cfg` `home = Python.framework/Versions/3.14`). The bench is therefore invoked with `--vmlx-python /Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/.venv/bin/python3.14` so the vmlx serve subprocess can actually `import uvicorn` and `import vmlx_engine`; mlx-engine uses `.venv-py312/bin/python` via the harness defaults. Verified pre-run that `python3.14 -c "import uvicorn, vmlx_engine"` succeeds.
+- **cheetara app bundle integrity:** the harness `verify_app_bundle(...)` step MD5-recorded the bundle before the run (`vmlx.app.asar` md5 `d27106b78546424046384e813fe23b7c`, 70,671,554 bytes) and re-checked after the run — the md5 is unchanged. This matches the AGENTS.md no-repackaging rule.
+
+### Command shape
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 runners/cheetara_mlx_profile.py \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit \
+  --suite prompt_suites/m5_image.json \
+  --runs 3 \
+  --max-tokens 64 \
+  --temperature 0.0 \
+  --top-p 1.0 \
+  --include-output-text \
+  --vmlx-python /Users/jeffreycruz/Development/LLM_INFERENCE/cheetara/.venv/bin/python3.14 \
+  --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+```
+
+### Report and row inspection
+
+- **M5 image baseline report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-shared-bench.json`
+- **Engines present in report:** `["mlx-engine", "vmlx"]` (the harness driver accepted the paired-engine schema; both engines were exercised in the same invocation).
+- **Total rows:** 4 (3 from `mlx-engine`, 1 placeholder `__runner__` error row from `vmlx`).
+- **Row-error check:**
+  - `mlx-engine`: 3/3 rows have `error: null`. All three runs are deterministic ("The animal in the image is a toucan.", 11 completion_tokens each, `finish_reason=eos_token`, `image_count=1`, `prompt_tokens=36`); expected keyword `toucan` is present in every output preview.
+  - `vmlx`: 0/0 successful rows. The vmlx runner exited with `returncode=1` because the vmlx server itself exited with code 3 during startup. The harness recorded a single `prompt_id="__runner__"`, `error="runner exited 1"` placeholder row (no vmlx chat-completion rows are present, since `wait_for_health(...)` raised before any request was issued).
+- **Per-engine row breakdown:**
+
+  | Engine | Rows (success / error) | Successful output preview (run 1) |
+  |---|---:|---|
+  | `mlx-engine` | 3 / 0 | "The animal in the image is a toucan." (deterministic across all 3 runs; expected keyword `toucan` present in every run; 11 completion_tokens per run, `finish_reason=eos_token`) |
+  | `vmlx` | 0 / 1 (`__runner__` startup failure) | n/a — see "vmlx VLM model-load defect" below |
+
+- **Summary-level timings (informational only — data capture, no promotion):**
+
+  | Engine | runs | avg total (s) | avg decode tps | cold ttft (s) | warm ttft (s) | avg completion tokens | cached tokens (warm) |
+  |---|---:|---:|---:|---:|---:|---:|---:|
+  | `mlx-engine` | 3 | 0.301 | 38.41 | 0.253 | 0.025 | 11.0 | 35 |
+  | `vmlx` | 0 | n/a | n/a | n/a | n/a | n/a | n/a (server did not reach `/health`) |
+
+  mlx-engine's warm-cache path is dramatically faster than its cold path (warm TTFT `0.025 s` vs cold TTFT `0.253 s`, warm total `0.045 s` vs cold total `0.528 s`) because the 36-token prompt prefix is fully cached and reused — every warm run reports `cached_tokens=35` from the engine. This is the expected mlx-engine prompt-cache reuse behavior; the warm-cache numbers are the apples-to-apples comparison point against any future vmlx run that can successfully reach `/health` with the same model.
+
+### vmlx VLM model-load defect (BLOCKER for paired image evidence)
+
+The vmlx `serve` subprocess fails to start when asked to load the LFM2.5-VL-1.6B-MLX-8bit checkpoint. The captured server stderr (saved to `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-vmlx-server-stderr.log`) shows:
+
+```
+INFO:vmlx_engine:Registered vendored minimax_m3_vl runtime
+INFO:vmlx_engine.model_config_registry:Model config: matched text_config.model_type='lfm2' (wrapper='lfm2_vl') → lfm2
+INFO:vmlx_engine.server:Loading model with BatchedEngine: …/LFM2.5-VL-1.6B-MLX-8bit
+INFO:vmlx_engine:is_mllm_model(…/LFM2.5-VL-1.6B-MLX-8bit): tier=config_json_vision_config result=True
+INFO:vmlx_engine.server:Model loaded (batched mode): …/LFM2.5-VL-1.6B-MLX-8bit
+INFO:vmlx_engine.server:Native tool format enabled for parser: lfm2
+INFO:vmlx_engine.server:Default max tokens fallback: 4096
+INFO:     Started server process [23158]
+INFO:     Waiting for application startup.
+INFO:vmlx_engine.server:Started caffeinate system wake lock for PID 23158
+INFO:vmlx_engine.models.mllm:Loading MLLM: …/LFM2.5-VL-1.6B-MLX-8bit
+ERROR:vmlx_engine.models.mllm:Failed to load MLLM: Missing 2 parameters:
+multi_modal_projector.layer_norm.bias,
+multi_modal_projector.layer_norm.weight.
+ERROR:    Application startup failed. Exiting.
+ValueError: Missing 2 parameters:
+multi_modal_projector.layer_norm.bias,
+multi_modal_projector.layer_norm.weight.
+```
+
+**Root cause (observed, not fixed in this mission):** `cheetara/engine-source/vmlx_engine/models/mllm.py:load()` calls `mlx_vlm.utils.load(...)`, which calls `mlx.nn.base.load_weights(...)`. The model's `Module` definitions register `multi_modal_projector.layer_norm.{bias,weight}` parameters, but the LFM2.5-VL safetensors checkpoint stores the corresponding `LayerNorm` weights under `vision_tower.encoder.layers.{0..N}.layer_norm{1,2}.{bias,weight}` instead. The `mlx_vlm` `load_weights` path is strict and raises `ValueError: Missing {n} parameters: …`. A grep over `engine-source/vmlx_engine/models/mllm.py` confirms the source-level intent: `# Do not silence strict loading:` followed by `def load_weights(self, weights, strict=True): return self.inner.load_weights(weights, strict=strict)`. There is no CLI flag, env var, or `--strict=false` knob in `vmlx_engine.cli serve --help` that allows skipping this check.
+
+**Why this is a vmlx defect, not a config issue:** the same `LFM2.5-VL-1.6B-MLX-8bit` checkpoint loads cleanly on the mlx-engine side of the same harness invocation — `mlx-engine_runner.py` runs the three `image_toucan` requests through `ModelKit` and produces three deterministic, error-free rows in the same report. The model files, the prompt, and the harness invocation are identical between the two engines. The defect is in vmlx's `mllm.py` weight-binding layer for this specific architecture, not in anything the bench harness can fix.
+
+### Decision: DATA-ONLY (no promotion)
+
+This feature captures the M5 image baseline as evidence and **makes no promotion decision** for either stack. The mlx-engine side produced 3/3 deterministic, keyword-matching, error-free rows against LFM2.5-VL on the canonical `image_toucan` prompt; the vmlx side is recorded as a server-startup failure (`runner exited 1`, server exit code 3) with the full server stderr captured as a reference log next to the report. The paired report path above is the authoritative M5 image baseline reference for any future M5 follow-up work (cheetara-vs-mlx promotion analysis, or a re-run once vmlx is fixed to recognize the LFM2.5-VL projector weight layout). M5 is explicitly data-only per `VAL-M5-005`; the cheetara app bundle is unchanged (MD5 verified pre-run and post-run by the harness driver) and no `vmlx.app.asar` write occurred during this run.
+
+### vmlx SSE caveat not applicable
+
+Because vmlx never reached the chat-completion stage for this report (the server failed during MLLM load, before any request was issued), the "vmlx delivers a single SSE chunk" caveat from the M5 short-text / long-text baselines does not apply to this report — there are no vmlx `ttft_s` / `decode_s` / `decode_tps` rows to caveat. The report records the vmlx startup failure as the only signal from the vmlx side.
+
+### Worker return-to-orchestrator note
+
+Per the bench-worker skill ("A benchmark cannot produce error-free rows after configuration fixes (a real engine defect, not a config issue)"), this worker returns to the orchestrator with `returnToOrchestrator: true` because the `VAL-M5-004` "zero row errors for both engines" assertion cannot be fully satisfied as written against the current vmlx `serve` build. The mlx-engine half of the evidence is captured and recorded; the vmlx half requires a vmlx-engine code change (either a weight-name remap for the LFM2.5-VL projector or a `--no-strict-weights` opt-out) that is out of mission scope per the AGENTS.md cheetara-repackaging and off-limits-bundle rules. The orchestrator should decide whether to (a) treat `VAL-M5-004` as mlx-engine-only evidence with a documented vmlx defect note, (b) cancel the paired-image baseline assertion and accept this report as the M5 image evidence, or (c) defer the image baseline until vmlx ships a fix.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| M5 image baseline report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-shared-bench.json` |
+| M5 image sub-suite (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m5_image.json` |
+| cheetara-vs-mlx driver (existing) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/runners/cheetara_mlx_profile.py` |
+| vmlx.app.asar pre-run md5 | `d27106b78546424046384e813fe23b7c` (unchanged post-run) |
+| vmlx server stderr (reference) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T052342.909372Z-vmlx-server-stderr.log` |
