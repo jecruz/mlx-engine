@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+import binascii
 import logging
 import os
 import threading
@@ -266,6 +267,19 @@ async def _validate_and_dispatch(raw_body: dict[str, Any], state: _AdapterState)
             status_code=400,
             detail={"error": {"message": str(exc)}},
         ) from exc
+    # Normalize sampling-field errors to HTTP 400 before SSE streaming
+    # begins. ``max_tokens_from_value`` and ``normalize_stop`` raise
+    # ``ValueError`` on bad input; without this catch the exception
+    # would either become an SSE server_error chunk or a 500 once the
+    # stream is already wired up. Validating here returns a clean
+    # OpenAI-style invalid_request_error instead.
+    try:
+        _validate_sampling_fields(raw_body)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": {"message": str(exc)}},
+        ) from exc
     # Detect vision content.
     if _request_has_image_payload(raw_body) and not state.supports_vision:
         raise HTTPException(
@@ -279,6 +293,55 @@ async def _validate_and_dispatch(raw_body: dict[str, Any], state: _AdapterState)
                 }
             },
         )
+
+
+def _validate_sampling_fields(body: dict[str, Any]) -> None:
+    """Validate OpenAI sampling-field types before SSE streaming begins.
+
+    Mirrors the cheetara contract: only ``None`` or the documented type
+    is accepted for each knob. ``ValueError`` messages are normalized
+    by ``_validate_and_dispatch`` into HTTP 400 invalid_request_error
+    responses before any SSE chunk is yielded, so the caller never sees
+    a server_error chunk for a malformed sampling field.
+    """
+    # ``max_tokens`` uses ``max_tokens_from_value`` so we surface the
+    # same error the deprecated debug harness produced.
+    max_tokens_from_value(body.get("max_tokens"))
+    # ``stop`` uses ``normalize_stop`` for the same reason — a non-list
+    # of strings raises ValueError with a message suitable for HTTP 400.
+    normalize_stop(body.get("stop"))
+    # ``temperature`` / ``top_p`` / ``min_p`` / ``repetition_penalty``
+    # accept numbers or None. Reject booleans explicitly so ``True`` /
+    # ``False`` never coerce to ``1`` / ``0`` silently.
+    for float_field in ("temperature", "top_p", "min_p", "repetition_penalty"):
+        if not _is_optional_number(body.get(float_field)):
+            raise ValueError(
+                f"{float_field} must be a number or null"
+            )
+    # ``top_k`` / ``repetition_context_size`` / ``seed`` accept ints or
+    # None. ``bool`` is a subclass of ``int`` in Python so we exclude it
+    # explicitly to keep the contract strict.
+    for int_field in ("top_k", "repetition_context_size", "seed"):
+        if not _is_optional_int(body.get(int_field)):
+            raise ValueError(
+                f"{int_field} must be an integer or null"
+            )
+
+
+def _is_optional_number(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return False
+    return isinstance(value, (int, float))
+
+
+def _is_optional_int(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return False
+    return isinstance(value, int)
 
 
 def _extract_text_and_images(
@@ -389,7 +452,26 @@ def _extract_text_and_images(
 
 
 def _extract_image_payload(part: dict[str, Any]) -> Optional[str]:
-    """Return base64 image payload from an OpenAI ``image_url`` part."""
+    """Return base64 image payload from an OpenAI ``image_url`` part.
+
+    Only two forms of ``image_url`` payload are accepted:
+
+    - ``data:<mime>;base64,<payload>`` — the canonical OpenAI data URL.
+      The ``<payload>`` is rejected unless it passes strict base64
+      validation (``validate=True``); permissive decoding is not allowed
+      here so malformed payloads do not silently pass as image input.
+    - ``data:<mime>,<text>`` — the rare non-base64 data URL form, used
+      for inline ``image/svg+xml`` payloads. The text payload is
+      returned as-is after a minimal non-empty check.
+    - A bare base64 string (no ``data:`` prefix). The string is rejected
+      unless it passes strict base64 validation. Anything that is not
+      valid base64 is treated as a remote URL the VLM path cannot fetch,
+      and ``None`` is returned so the caller can reject the request.
+
+    Remote URLs (``https://...``, ``http://...``, ``file://...``, etc.)
+    are NOT accepted: returning ``None`` causes the caller to raise a
+    400 invalid_request_error before SSE streaming begins.
+    """
     image_field = part.get("image_url")
     if image_field is None and "image" in part:
         image_field = part.get("image")
@@ -403,26 +485,33 @@ def _extract_image_payload(part: dict[str, Any]) -> Optional[str]:
     if not isinstance(url, str) or len(url) == 0:
         return None
     if url.startswith("data:"):
-        # ``data:image/png;base64,XXXX`` -> strip prefix and decode
+        # ``data:image/png;base64,XXXX`` -> strip prefix and decode.
         comma_index = url.find(",")
         if comma_index < 0:
             return None
         prefix = url[:comma_index]
         payload = url[comma_index + 1 :]
+        if len(payload) == 0:
+            return None
         if ";base64" in prefix:
             try:
-                base64.b64decode(payload, validate=False)
-            except Exception:
+                # Strict base64 acceptance: reject any non-base64 chars
+                # or padding/segment-length issues instead of silently
+                # passing malformed payloads as image input.
+                base64.b64decode(payload, validate=True)
+            except (ValueError, binascii.Error):
                 return None
+            return payload
+        # Non-base64 data URL (e.g. ``data:image/svg+xml,...``).
         return payload
-    # Bare base64 string (no data URL prefix). Validate it looks like
-    # base64; if so, return as-is so the VLM path receives it.
+    # Bare string with no ``data:`` prefix. The hardened contract only
+    # accepts STRICT base64 — anything else is treated as a remote URL
+    # the VLM path does not fetch, so ``None`` is returned to signal a
+    # caller-side rejection rather than letting a malformed string pass
+    # as image input.
     try:
-        base64.b64decode(url, validate=False)
-    except Exception:
-        # Treat anything that is not valid base64 as a remote URL. The VLM
-        # path does not currently fetch remote URLs, so return None to
-        # signal that the caller should reject the request.
+        base64.b64decode(url, validate=True)
+    except (ValueError, binascii.Error):
         return None
     return url
 
@@ -572,6 +661,27 @@ async def _stream_chat_completion(
                     "message": str(
                         http_exc.detail.get("error", {}).get("message", "Invalid request")
                     ),
+                    "type": "invalid_request_error",
+                }
+            }
+        )
+        return
+    except ValueError as exc:
+        # Defense-in-depth: ``_validate_and_dispatch`` already converts
+        # sampling-field ``ValueError`` into HTTP 400 before SSE starts,
+        # but a residual ``ValueError`` from prompt construction should
+        # still surface as an invalid_request_error SSE chunk rather
+        # than a generic server_error or a 500 once the stream is wired
+        # up.
+        logger.warning(
+            "Adapter request_id=%s pre-stream validation failed: %s",
+            request_id,
+            exc,
+        )
+        yield _serialize_sse(
+            {
+                "error": {
+                    "message": str(exc),
                     "type": "invalid_request_error",
                 }
             }

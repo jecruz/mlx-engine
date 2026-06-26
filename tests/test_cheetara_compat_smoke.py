@@ -50,7 +50,13 @@ class _FakeAdapterHandler(BaseHTTPRequestHandler):
     server instance. The keys we honour for testing:
 
     - ``models_status``: HTTP status for ``GET /v1/models`` (default 200)
+    - ``models_returned_ids``: list of model ids to return from
+      ``/v1/models``; defaults to ``["cheetara-m7"]``
     - ``health_status``: HTTP status for ``GET /health`` (default 200)
+    - ``health_status_field``: value for the ``status`` field in
+      ``/health`` (default ``"ok"``)
+    - ``health_served_model``: value for ``served_model`` in
+      ``/health`` (default ``"cheetara-m7"``)
     - ``chat_status``: HTTP status for ``POST /v1/chat/completions``
     - ``chat_chunks``: list of pre-rendered SSE ``data:`` payload strings
       to send back, followed by ``"data: [DONE]\\n\\n"``. If empty and
@@ -99,8 +105,8 @@ class _FakeAdapterHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - http.server convention
         if self.path == "/health":
             self._send_json(self.config.get("health_status", 200), {
-                "status": "ok",
-                "served_model": "cheetara-m7",
+                "status": self.config.get("health_status_field", "ok"),
+                "served_model": self.config.get("health_served_model", "cheetara-m7"),
                 "model_path": "/tmp/fake-model",
                 "model_type": "lfm2-vl",
                 "supports_vision": True,
@@ -109,16 +115,18 @@ class _FakeAdapterHandler(BaseHTTPRequestHandler):
             })
             return
         if self.path == "/v1/models":
+            model_ids = self.config.get("models_returned_ids", ["cheetara-m7"])
             self._send_json(self.config.get("models_status", 200), {
                 "object": "list",
                 "data": [
                     {
-                        "id": "cheetara-m7",
+                        "id": model_id,
                         "object": "model",
                         "created": 1700000000,
                         "owned_by": "mlx-engine",
                         "supports_vision": True,
                     }
+                    for model_id in model_ids
                 ],
             })
             return
@@ -424,6 +432,112 @@ def test_main_returns_nonzero_on_failure() -> None:
     report = json.loads(captured["stdout"])
     assert report["summary"]["failed"] == 1
     assert report["results"]["text"]["status"] == "fail"
+
+
+# --- M7 hardening: connect smoke must fail when requested model is absent ----
+
+
+def test_connect_fails_when_requested_model_absent() -> None:
+    """The reusable connect smoke must FAIL when the requested model id
+    is not present in /v1/models.
+
+    Previously ``selectable`` was just recorded as ``False`` while the
+    smoke still returned ``pass``; the M7 hardening requires a
+    deterministic ``fail`` so cheetara can distinguish a real connect
+    from a misconfigured server during user testing.
+    """
+    with _FakeAdapterServer({"models_returned_ids": ["some-other-model"]}) as server:
+        result = SMOKE._run_connect(server.base_url, "cheetara-m7")
+    assert result["status"] == "fail"
+    assert "cheetara-m7" in result["details"]["reason"]
+    assert "some-other-model" in result["details"]["reason"]
+    assert result["details"]["selectable"] is False
+
+
+def test_connect_passes_when_model_present() -> None:
+    with _FakeAdapterServer() as server:
+        result = SMOKE._run_connect(server.base_url, "cheetara-m7")
+    assert result["status"] == "pass"
+    assert result["details"]["selectable"] is True
+
+
+# --- M7 hardening: health smoke requires status==ok and consistency ---------
+
+
+def test_health_requires_status_ok_field() -> None:
+    """``/health`` returning ``status != "ok"`` must fail the smoke."""
+    with _FakeAdapterServer({"health_status_field": "degraded"}) as server:
+        result = SMOKE._run_health(server.base_url, "cheetara-m7")
+    assert result["status"] == "fail"
+    assert "status=" in result["details"]["reason"]
+    assert "'degraded'" in result["details"]["reason"]
+
+
+def test_health_requires_served_model_consistency_between_health_and_models() -> None:
+    """``/health`` served_model must equal the requested model id AND
+    match an entry in ``/v1/models``."""
+    # /health reports a different model than /v1/models.
+    with _FakeAdapterServer({"health_served_model": "stale-name"}) as server:
+        result = SMOKE._run_health(server.base_url, "cheetara-m7")
+    assert result["status"] == "fail"
+    assert "mismatch" in result["details"]["reason"].lower()
+    consistency = result["details"]["consistency_check"]
+    assert consistency["models_requested_model_present"] is True
+    assert consistency["models_consistent"] is False
+
+
+def test_health_fails_when_requested_model_missing_from_models_endpoint() -> None:
+    """If the requested model is missing from /v1/models, the consistency
+    check must fail the health smoke even when /health reports ok."""
+    with _FakeAdapterServer({"models_returned_ids": ["different-model"]}) as server:
+        result = SMOKE._run_health(server.base_url, "cheetara-m7")
+    assert result["status"] == "fail"
+    assert "mismatch" in result["details"]["reason"].lower()
+
+
+def test_health_passes_when_status_ok_and_consistent() -> None:
+    with _FakeAdapterServer() as server:
+        result = SMOKE._run_health(server.base_url, "cheetara-m7")
+    assert result["status"] == "pass"
+    assert result["details"]["health_status"] == "ok"
+    consistency = result["details"]["consistency_check"]
+    assert consistency["models_consistent"] is True
+    assert consistency["models_requested_model_present"] is True
+
+
+def test_main_health_fails_when_consistency_mismatch() -> None:
+    """End-to-end: --modes health returns non-zero when the adapter's
+    /health served_model does not match /v1/models."""
+    with _FakeAdapterServer({"health_served_model": "drift"}) as server:
+        captured = _capture_main(
+            [
+                "--base-url",
+                server.base_url,
+                "--modes",
+                "health",
+            ]
+        )
+    assert captured["exit_code"] == 1
+    report = json.loads(captured["stdout"])
+    assert report["results"]["health"]["status"] == "fail"
+
+
+def test_main_connect_fails_when_model_absent() -> None:
+    """End-to-end: --modes connect returns non-zero when the requested
+    model is not present in /v1/models."""
+    with _FakeAdapterServer({"models_returned_ids": ["only-one"]}) as server:
+        captured = _capture_main(
+            [
+                "--base-url",
+                server.base_url,
+                "--modes",
+                "connect",
+            ]
+        )
+    assert captured["exit_code"] == 1
+    report = json.loads(captured["stdout"])
+    assert report["results"]["connect"]["status"] == "fail"
+    assert "only-one" in report["results"]["connect"]["details"]["reason"]
 
 
 # --- helpers -----------------------------------------------------------------

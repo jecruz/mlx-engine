@@ -32,6 +32,7 @@ from mlx_engine.openai_adapter import (
     _detect_vision_support,
     _extract_image_payload,
     _extract_text_and_images,
+    _validate_sampling_fields,
 )
 
 
@@ -703,3 +704,290 @@ def test_detect_vision_support_uses_processor_marker() -> None:
 def test_detect_vision_support_returns_false_for_text_only() -> None:
     kit = _FakeModelKit(supports_vision=False)
     assert _detect_vision_support(kit) is False
+
+
+# --- M7 hardening: image_url strict base64 acceptance -----------------------
+
+
+def test_extract_image_payload_rejects_malformed_data_url() -> None:
+    """A ``data:`` URL whose payload is not valid base64 is rejected.
+
+    The hardened contract replaces the previous ``validate=False`` path
+    with strict base64 validation so malformed payloads do not silently
+    pass as image input.
+    """
+    assert (
+        _extract_image_payload(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": "data:image/png;base64,!!!not-valid-base64!!!"
+                },
+            }
+        )
+        is None
+    )
+
+
+def test_extract_image_payload_rejects_empty_data_url_payload() -> None:
+    """An empty payload after the data-URL comma is rejected."""
+    assert (
+        _extract_image_payload(
+            {
+                "type": "image_url",
+                "image_url": {"url": "data:image/png;base64,"},
+            }
+        )
+        is None
+    )
+
+
+def test_extract_image_payload_rejects_malformed_bare_string() -> None:
+    """A bare string that is not strict base64 is rejected.
+
+    Previously the bare-string fallback used ``base64.b64decode(..., validate=False)``
+    which accepted strings with stray whitespace, partial padding, or
+    non-base64 characters. The hardened contract requires strict
+    acceptance.
+    """
+    assert (
+        _extract_image_payload(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": "not-base64!@#$"
+                },
+            }
+        )
+        is None
+    )
+    # Whitespace is no longer tolerated in the bare-string path.
+    assert (
+        _extract_image_payload(
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f" {_png_b64()} "
+                },
+            }
+        )
+        is None
+    )
+
+
+def test_extract_image_payload_accepts_strict_bare_base64() -> None:
+    """A bare base64 string that passes strict validation is accepted."""
+    payload = _extract_image_payload(
+        {"type": "image_url", "image_url": {"url": _png_b64()}}
+    )
+    assert payload == _png_b64()
+
+
+def test_extract_image_payload_rejects_remote_url_with_base64_chars() -> None:
+    """A URL whose path happens to decode permissively is still rejected.
+
+    ``validate=False`` previously accepted URLs that happened to consist
+    only of base64 characters; strict validation now requires that the
+    remote URL either have a ``data:`` prefix or be a bare base64 string
+    with no URL-like prefix.
+    """
+    # ``https`` happens to be valid base64 chars, but the ``:`` and
+    # ``.`` characters are not, so strict decode rejects it.
+    assert (
+        _extract_image_payload(
+            {"type": "image_url", "image_url": {"url": "https://x.png"}}
+        )
+        is None
+    )
+
+
+def test_extract_image_payload_returns_none_for_data_url_without_comma() -> None:
+    """A ``data:`` URL without a comma separator has no payload."""
+    assert (
+        _extract_image_payload(
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64"}}
+        )
+        is None
+    )
+
+
+# --- M7 hardening: sampling-field validation normalizes to HTTP 400 ----------
+
+
+def test_validate_sampling_fields_accepts_omitted_fields() -> None:
+    """All sampling fields are optional; an empty body must validate."""
+    _validate_sampling_fields({})
+
+
+def test_validate_sampling_fields_rejects_string_max_tokens() -> None:
+    with pytest.raises(ValueError, match="max_tokens"):
+        _validate_sampling_fields({"max_tokens": "not-an-int"})
+
+
+def test_validate_sampling_fields_rejects_zero_max_tokens() -> None:
+    with pytest.raises(ValueError, match="max_tokens"):
+        _validate_sampling_fields({"max_tokens": 0})
+
+
+def test_validate_sampling_fields_rejects_string_temperature() -> None:
+    with pytest.raises(ValueError, match="temperature"):
+        _validate_sampling_fields({"temperature": "hot"})
+
+
+def test_validate_sampling_fields_rejects_bool_temperature() -> None:
+    with pytest.raises(ValueError, match="temperature"):
+        _validate_sampling_fields({"temperature": True})
+
+
+def test_validate_sampling_fields_rejects_string_top_k() -> None:
+    with pytest.raises(ValueError, match="top_k"):
+        _validate_sampling_fields({"top_k": "40"})
+
+
+def test_validate_sampling_fields_rejects_bool_top_k() -> None:
+    with pytest.raises(ValueError, match="top_k"):
+        _validate_sampling_fields({"top_k": True})
+
+
+def test_validate_sampling_fields_rejects_non_list_stop() -> None:
+    with pytest.raises(ValueError, match="stop"):
+        _validate_sampling_fields({"stop": 42})
+
+
+def test_validate_sampling_fields_accepts_valid_numeric_fields() -> None:
+    _validate_sampling_fields(
+        {
+            "temperature": 0.7,
+            "top_p": 0.95,
+            "top_k": 40,
+            "min_p": 0.05,
+            "repetition_penalty": 1.1,
+            "repetition_context_size": 64,
+            "max_tokens": 256,
+            "seed": 7,
+            "stop": ["</s>"],
+        }
+    )
+
+
+def test_invalid_max_tokens_returns_http_400_before_sse_starts(
+    text_client: TestClient,
+) -> None:
+    """A bad ``max_tokens`` is rejected with HTTP 400, not SSE error."""
+    response = text_client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "cheetara-m7-text",
+            "stream": True,
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": "not-an-int",
+        },
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert "max_tokens" in json.dumps(body)
+
+
+def test_invalid_top_k_returns_http_400_before_sse_starts(
+    text_client: TestClient,
+) -> None:
+    response = text_client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "cheetara-m7-text",
+            "stream": True,
+            "messages": [{"role": "user", "content": "hi"}],
+            "top_k": "forty",
+        },
+    )
+    assert response.status_code == 400
+    assert "top_k" in json.dumps(response.json())
+
+
+def test_invalid_temperature_returns_http_400_before_sse_starts(
+    text_client: TestClient,
+) -> None:
+    response = text_client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "cheetara-m7-text",
+            "stream": True,
+            "messages": [{"role": "user", "content": "hi"}],
+            "temperature": "warm",
+        },
+    )
+    assert response.status_code == 400
+    assert "temperature" in json.dumps(response.json())
+
+
+def test_invalid_stop_returns_http_400_before_sse_starts(
+    text_client: TestClient,
+) -> None:
+    response = text_client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "cheetara-m7-text",
+            "stream": True,
+            "messages": [{"role": "user", "content": "hi"}],
+            "stop": 42,
+        },
+    )
+    assert response.status_code == 400
+    assert "stop" in json.dumps(response.json())
+
+
+# --- M7 hardening: strict image_url at the route boundary -------------------
+
+
+def test_chat_completion_rejects_malformed_data_url_payload(
+    vision_client: TestClient,
+) -> None:
+    """A malformed ``data:`` URL payload is rejected with HTTP 400."""
+    response = vision_client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "cheetara-m7-vision",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/png;base64,!!!not-valid-base64!!!"
+                            },
+                        },
+                        {"type": "text", "text": "What is this?"},
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 400
+    assert "image_url" in json.dumps(response.json())
+
+
+def test_chat_completion_rejects_permissive_bare_base64_payload(
+    vision_client: TestClient,
+) -> None:
+    """A bare string that is not strict base64 is rejected with HTTP 400."""
+    response = vision_client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "cheetara-m7-vision",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "not-base64!@#$"},
+                        },
+                        {"type": "text", "text": "What is this?"},
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 400
+    assert "image_url" in json.dumps(response.json())

@@ -265,7 +265,7 @@ def normalize_stop(value: Any) -> Optional[list[str]]:
                 raise ValueError("stop must not contain empty strings")
             stop_strings.append(stop_value)
         return stop_strings
-    return None
+    raise ValueError("stop must be a string or a list of strings")
 
 
 def reject_unsupported_request_fields(body: dict[str, Any]) -> None:

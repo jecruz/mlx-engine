@@ -249,7 +249,14 @@ def _stream_sse(
 
 
 def _run_connect(base_url: str, model: str) -> dict[str, Any]:
-    """VAL-M7-001: cheetara remote-session connect through GET /v1/models."""
+    """VAL-M7-001: cheetara remote-session connect through GET /v1/models.
+
+    Hardened: the smoke now FAILS when the requested model id is absent
+    from the ``/v1/models`` response. Previously a non-matching
+    ``selectable`` was recorded as ``pass``; the reusable surface must
+    fail loudly so cheetara can distinguish a real connect from a
+    misconfigured server during the M7 user-testing pass.
+    """
     started = time.time()
     status, body, headers = _http_get_json(base_url, "/v1/models")
     elapsed_s = round(time.time() - started, 4)
@@ -276,6 +283,25 @@ def _run_connect(base_url: str, model: str) -> dict[str, Any]:
             },
         }
     model_ids = [entry.get("id") for entry in data if isinstance(entry, dict)]
+    if model not in model_ids:
+        return {
+            "status": "fail",
+            "details": {
+                "http_status": status,
+                "elapsed_s": elapsed_s,
+                "reason": (
+                    f"requested model {model!r} not present in /v1/models"
+                    f" (available: {model_ids!r})"
+                ),
+                "object": body.get("object"),
+                "model_count": len(data),
+                "model_ids": model_ids,
+                "served_model": model,
+                "selectable": False,
+                "headers": dict(headers),
+                "body": body,
+            },
+        }
     return {
         "status": "pass",
         "details": {
@@ -285,7 +311,7 @@ def _run_connect(base_url: str, model: str) -> dict[str, Any]:
             "model_count": len(data),
             "model_ids": model_ids,
             "served_model": model,
-            "selectable": model in model_ids,
+            "selectable": True,
             "headers": dict(headers),
             "body": body,
         },
@@ -293,7 +319,15 @@ def _run_connect(base_url: str, model: str) -> dict[str, Any]:
 
 
 def _run_health(base_url: str, model: str) -> dict[str, Any]:
-    """VAL-M7-005: adapter diagnostics expose a useful /health route."""
+    """VAL-M7-005: adapter diagnostics expose a useful /health route.
+
+    Hardened: the smoke now requires ``status == "ok"`` on the
+    ``/health`` response AND verifies ``served_model`` consistency
+    between ``/health`` and ``/v1/models``. A ``/health`` that 200s
+    but reports ``status != "ok"`` is a diagnostic surface failure,
+    and a mismatch between the health and discovery surfaces means
+    one of them is stale or misconfigured.
+    """
     started = time.time()
     status, body, headers = _http_get_json(base_url, "/health")
     elapsed_s = round(time.time() - started, 4)
@@ -307,14 +341,75 @@ def _run_health(base_url: str, model: str) -> dict[str, Any]:
                 "body": body,
             },
         }
+    health_status = body.get("status")
     served_model = body.get("served_model")
     started_at = body.get("started_at")
     now = body.get("now")
+    if health_status != "ok":
+        return {
+            "status": "fail",
+            "details": {
+                "http_status": status,
+                "elapsed_s": elapsed_s,
+                "reason": (
+                    f"/health returned status={health_status!r}; expected 'ok'"
+                ),
+                "body": body,
+            },
+        }
+    # Cross-check served_model consistency with /v1/models so an
+    # adapter that mis-reports its served model name is caught here
+    # instead of leaking into chat errors.
+    models_status, models_body, _ = _http_get_json(base_url, "/v1/models")
+    consistency_check: dict[str, Any] = {
+        "models_http_status": models_status,
+        "models_requested_model_present": False,
+        "models_consistent": False,
+    }
+    if models_status == 200:
+        models_data = (models_body or {}).get("data") or []
+        if isinstance(models_data, list):
+            model_ids = [
+                entry.get("id")
+                for entry in models_data
+                if isinstance(entry, dict)
+            ]
+            consistency_check["models_requested_model_present"] = (
+                model in model_ids
+            )
+            consistency_check["models_consistent"] = (
+                isinstance(served_model, str)
+                and served_model in model_ids
+                and model in model_ids
+                and served_model == model
+            )
+    if not consistency_check["models_consistent"]:
+        return {
+            "status": "fail",
+            "details": {
+                "http_status": status,
+                "elapsed_s": elapsed_s,
+                "reason": (
+                    "served_model mismatch between /health and /v1/models"
+                ),
+                "served_model": served_model,
+                "model_path": body.get("model_path"),
+                "model_type": body.get("model_type"),
+                "supports_vision": body.get("supports_vision"),
+                "started_at": started_at,
+                "now": now,
+                "uptime_s": (now - started_at) if isinstance(now, int) and isinstance(started_at, int) else None,
+                "consistency_check": consistency_check,
+                "headers": dict(headers),
+                "body": body,
+            },
+        }
     return {
         "status": "pass",
         "details": {
             "http_status": status,
             "elapsed_s": elapsed_s,
+            "health_status": health_status,
             "served_model": served_model,
             "model_path": body.get("model_path"),
             "model_type": body.get("model_type"),
@@ -322,6 +417,7 @@ def _run_health(base_url: str, model: str) -> dict[str, Any]:
             "started_at": started_at,
             "now": now,
             "uptime_s": (now - started_at) if isinstance(now, int) and isinstance(started_at, int) else None,
+            "consistency_check": consistency_check,
             "headers": dict(headers),
             "body": body,
         },
