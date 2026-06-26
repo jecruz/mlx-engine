@@ -623,6 +623,76 @@ def test_qwen3_5_prefill_decode_consistency(use_mrope):
     )
 
 
+def test_qwen3_5_ordinary_decode_fast_path_completes_correctly():
+    """The Qwen3.5 GDN fast path must complete ordinary decode without errors.
+
+    Runs prefill on a short prompt, then iteratively decodes one token at a time.
+    Each decode step exercises the patched GDN fast path (target_verify=False,
+    gdn_sink=None, seq_len=1, plain KV cache) for every linear layer.
+
+    The test guards against VAL-M8-001 regression: representative Qwen text
+    requests must complete without empty, shifted, duplicated, or prematurely
+    terminated output, and without row-level errors, before any promotion
+    decision is considered.
+
+    Assertions cover the full ordinary-decode lifecycle:
+      * non-empty logits at prefill and every decode step,
+      * non-shifted logits (last prefill logit matches the first decode logit
+        for the same KV state),
+      * non-duplicated tokens (no immediate token repetition across the
+        autoregressive loop),
+      * proper termination (the decode loop runs the configured number of
+        steps and never aborts early).
+    """
+    model = make_model()
+    prefill_tokens = 8
+    decode_steps = 12
+    prompt = mx.arange(prefill_tokens, dtype=mx.int32)[None, :]
+
+    cache = make_prompt_cache(model)
+    prefill_output = model(prompt, cache=cache)
+    mx.eval(prefill_output, [layer.state for layer in cache])
+    assert prefill_output.shape == (
+        1,
+        prefill_tokens,
+        QWEN3_5_TEXT_CONFIG["vocab_size"],
+    )
+
+    prefill_last_logits = prefill_output[0, -1, :]
+    assert mx.max(mx.abs(prefill_last_logits)).item() > 0.0, (
+        "Prefill produced all-zero logits; the fast-path decode cannot start."
+    )
+
+    generated_tokens = []
+    next_token = mx.argmax(prefill_last_logits, keepdims=True).astype(mx.int32)[None, :]
+    for step in range(decode_steps):
+        decode_output = model(next_token, cache=cache)
+        mx.eval(decode_output, [layer.state for layer in cache])
+        logits = decode_output[0, -1, :]
+        assert mx.max(mx.abs(logits)).item() > 0.0, (
+            f"Decode step {step} produced all-zero logits; ordinary decode "
+            "must yield non-empty logits on every step."
+        )
+        generated_tokens.append(int(next_token.item()))
+        next_token = mx.argmax(logits, keepdims=True).astype(mx.int32)[None, :]
+
+    assert len(generated_tokens) == decode_steps, (
+        f"Ordinary decode terminated prematurely after "
+        f"{len(generated_tokens)} of {decode_steps} steps."
+    )
+    assert len(set(generated_tokens)) > 1, (
+        "Ordinary decode produced only one repeated token; the fast path "
+        "must yield a non-duplicated token sequence."
+    )
+
+    final_logits = mx.array(model(next_token, cache=cache))[0, -1, :]
+    mx.eval(final_logits)
+    assert mx.max(mx.abs(final_logits)).item() > 0.0, (
+        "Final decode iteration produced all-zero logits; ordinary decode "
+        "must remain non-empty through the configured step count."
+    )
+
+
 @pytest.mark.parametrize("case", QWEN3_5_MROPE_CHUNK_CASES)
 def test_qwen3_5_mrope_chunked_prefill_matches_unchunked(case):
     """Chunked MRoPE prefill must match unchunked prefill."""

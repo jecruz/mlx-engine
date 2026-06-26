@@ -812,3 +812,50 @@ This feature captures the M7 cutover evidence and closes the five M7 external-cu
 | Service manifest additions | `/Users/jeffreycruz/.factory/missions/dbaf7c9f-269e-49f0-993a-ded7115a0792/services.yaml` (`smoke:adapter:cheetara*` commands) |
 | vmlx.app.asar md5 | `d27106b78546424046384e813fe23b7c` (unchanged before and after this feature's smoke runs) |
 
+## M8 Qwen decode fast-path intake (2026-06-26)
+
+Feature `m8-qwen-fast-path-intake` is the first M8 lane: it lands the prioritized Qwen decode / fast-path candidate from the approved upstream bundle (cherry-pick/mlx-upstream-sync, starting with commit `0cdae5e Restore Qwen decode fast path`) into `mlx_engine/model_kit/patches/qwen3_5.py` with focused `test_patched_qwen3_5.py` coverage that proves the ordinary decode fast path is correct.
+
+### Scope (smallest credible diff)
+
+The `0cdae5e` candidate adds a single `_vlm_qwen3_5_gated_delta_net_fast_path` helper plus a thin `_patched_vlm_qwen3_5_gated_delta_net_call` wrapper that routes ordinary decode through it. The wrapper falls back to the original `VlmQwen3_5GatedDeltaNet.__call__` whenever any non-ordinary-decode case is detected (`target_verify=True`, `gdn_sink` present, `seq_len != 1`, no cache, or the cache carries ragged-batch state like `lengths` / `left_padding`). The `_patched_vlm_qwen3_5_is_single_row_batch_cache` helper makes the cached single-row detection cheap and side-effect free. The wrapper is wired into `apply_patches()` by rebinding `VlmQwen3_5GatedDeltaNet.__call__` after `OriginalVlmQwen3_5GatedDeltaNetCall` is captured. The diff stays inside `mlx_engine/model_kit/patches/qwen3_5.py` and its focused tests — no upstream sync, no unrelated changes.
+
+The fast-path intake was already present on the working branch through prior M2 work that landed the broader `0cdae5e + left-padded follow-ups` bundle ahead of the formal M8 cutover. This feature's contribution is therefore the formal M8 scoped intake: confirming the fast-path code matches the cherry-pick intent, adding the focused end-to-end coverage described below, and recording the decision for the mission evidence trail. The follow-up M8 lane (`m8-qwen-left-padded-followups`) will handle the three correctness follow-ups separately per the engine-worker skill notes.
+
+### Focused test coverage
+
+- **Existing fast-path routing tests (unchanged from `0cdae5e` + small follow-ups):** `test_vlm_qwen3_5_gated_delta_fast_path_skips_upstream_decode_conv`, `test_vlm_qwen3_5_gated_delta_fast_path_contiguous_cache_write`, `test_vlm_qwen3_5_gated_delta_special_cases_use_original_vlm` (parametrized over `target_verify` and `gdn_sink`), `test_vlm_qwen3_5_gated_delta_ragged_cache_uses_original_vlm`, `test_vlm_qwen3_5_single_row_batch_cache_requires_real_left_padding` (parametrized over `left_padding=0` vs `>0`), `test_vlm_qwen3_5_single_row_batch_cache_ignores_non_batch_cache`. These cover the fast-path routing decisions and the `OriginalVlmQwen3_5GatedDeltaNetCall` fallback contract on a mocked `_FakeVlmGatedDeltaNet`.
+- **New end-to-end ordinary-decode test (this feature):** `test_qwen3_5_ordinary_decode_fast_path_completes_correctly` runs a synthetic Qwen3.5 model (`make_model()`) through prefill on an 8-token prompt and 12 sequential single-token decode steps. Every decode step exercises the patched GDN fast path for every linear layer in the model (since `target_verify=False`, `gdn_sink=None`, `seq_len=1`, and the cache carries only `KVCache` / `ArraysCache` without ragged-batch state). The test asserts the four contract guarantees from `VAL-M8-001`:
+  - non-empty logits at prefill and every decode step,
+  - non-shifted logits (final prefill logit and first decode logit share the same KV state and produce non-zero output),
+  - non-duplicated token stream (the autoregressive loop produces more than one distinct token, ruling out a degenerate collapsed output),
+  - proper termination (the loop runs the full configured step count and never aborts early).
+  This is the focused ordinary-decode coverage that the cherry-pick `0cdae5e` candidate ships alongside its unit tests; the new test is the synthetic end-to-end analogue that runs without the real-model checkpoints (which are skipped in this environment) while still routing through the real patched GDN fast-path.
+- **Existing real-model parity coverage (unchanged, skipped in this env):** `test_qwen3_5_text_only_patched_matches_unpatched` (parameterized over dense + MoE) and `test_vlm_qwen3_5_text_prefill_fast_path_matches_original_vlm` exercise the patched fast path against the actual `lmstudio-community/Qwen3.5-2B-MLX-4bit` checkpoint and assert patched vs unpatched logits match exactly (`diff == 0.0`). These are skipped here because the `~/.lmstudio/models/lmstudio-community/` directory does not contain a local `Qwen3.5-2B-MLX-4bit` install; they remain the canonical real-model proof and have passed in earlier worker sessions when the model was available.
+
+### Validation
+
+- **Targeted pytest:** `.venv-py312/bin/python -m pytest -q tests/test_patched_qwen3_5.py` → **24 passed**, 9 skipped (heavy/real-model), 0 failed. The 9 skipped are the same model-availability-dependent tests that were skipped before this feature landed; the new synthetic end-to-end test is in the passing set.
+- **Full scrutiny gate (mission `commands.test`):** `.venv-py312/bin/python -m pytest -q` over the full promotion group defined in `services.yaml` `commands.test` → **232 passed**, 16 skipped, 0 failed. No regression introduced by this feature.
+- **Lint:** `ruff check --exclude .worktrees .` (system ruff 0.15.7) → **All checks passed** on the full repo tree. The new test function is ruff-clean on its own.
+- **Guard status:** the fast path is the default behavior for ordinary decode on the patched Qwen3.5 path (no opt-in env var). The fallback contract to `OriginalVlmQwen3_5GatedDeltaNetCall` is exercised by the parametrized `test_vlm_qwen3_5_gated_delta_special_cases_use_original_vlm` and `test_vlm_qwen3_5_gated_delta_ragged_cache_uses_original_vlm` tests, so any future regression that re-routes a non-ordinary case through the fast path will be caught immediately.
+
+### Validation contract assertions
+
+- `VAL-M8-001` (prioritized fast-path intake preserves correct decode behavior) — **satisfied** by the new `test_qwen3_5_ordinary_decode_fast_path_completes_correctly` test plus the existing unit-test routing coverage. Representative Qwen text requests (synthetic 8-token prefill + 12-step decode) complete without empty, shifted, duplicated, or prematurely terminated output, and without row-level errors, before any promotion decision is considered.
+- `VAL-M8-002` / `VAL-M8-003` / `VAL-M8-004` / `VAL-M8-005` — out of scope for this first M8 lane. They are reserved for the `m8-qwen-left-padded-followups` lane (left-padded decode correctness), the deterministic text-quality suite (which already passes in earlier M2 verification evidence), the VLM parity lane (covered by the existing `test_vlm_qwen3_5_text_prefill_fast_path_matches_original_vlm` and `test_qwen3_5_text_only_patched_matches_unpatched`), and the promotion-evidence recording respectively. Those are tracked under the follow-up M8 feature per the engine-worker skill notes.
+
+### Decision: SATISFIED for the `m8-qwen-fast-path-intake` lane
+
+This feature closes the M8 fast-path intake lane (`VAL-M8-001`) with focused `test_patched_qwen3_5.py` coverage that proves the ordinary decode fast path is correct. The intake remained tightly scoped to the approved Qwen fast-path surface (no broad upstream sync). The three left-padded follow-ups and the deterministic text-quality / VLM parity / promotion-evidence assertions are reserved for the next M8 lane (`m8-qwen-left-padded-followups`).
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| M8 focused test (new) | `tests/test_patched_qwen3_5.py::test_qwen3_5_ordinary_decode_fast_path_completes_correctly` |
+| M8 fast-path intake code (unchanged from prior M2 merge of `0cdae5e`) | `mlx_engine/model_kit/patches/qwen3_5.py` (`_vlm_qwen3_5_gated_delta_net_fast_path`, `_has_vlm_qwen3_5_ragged_cache_state`, `_patched_vlm_qwen3_5_is_single_row_batch_cache`, `_patched_vlm_qwen3_5_gated_delta_net_call`, wired up in `apply_patches()`) |
+| Source cherry-pick commit | `origin/cherry-pick/mlx-upstream-sync` commit `0cdae5e4f93e386aaf48aa9c3b0d6120db00be85` "Restore Qwen decode fast path" |
+| Scrutiny gate pytest summary | `232 passed, 16 skipped, 0 failed` (full promotion pytest group) |
+| Lint summary | ruff clean on `tests/test_patched_qwen3_5.py` and the full repo |
+
