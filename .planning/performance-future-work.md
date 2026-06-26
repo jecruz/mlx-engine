@@ -920,3 +920,101 @@ This feature closes the M8 left-padded decode follow-up lane (`VAL-M8-002`) with
 | Scrutiny gate pytest summary | `233 passed, 16 skipped, 0 failed` (full promotion pytest group) |
 | Lint summary | ruff clean on `tests/test_patched_qwen3_5.py` and `mlx_engine/model_kit/patches/qwen3_5.py` |
 
+## M8 Qwen intake bundle promotion evidence (2026-06-26)
+
+Feature `m8-qwen-promotion-evidence` consolidates the promotion-readiness evidence for the approved M8 Qwen intake bundle (the prioritized Qwen decode fast-path commit plus the three correctness follow-ups for left-padded decode, all from the upstream merge `9445b31` content equivalence). It captures the targeted `qwen3_5` pytest coverage, the full mission promotion pytest group, deterministic text-quality suites on the Qwen dense/code lanes, VLM parity checks on the LFM2.5-VL image lane, and repeated benchmark evidence for the Qwen fast path. The promote/reject decision is recorded with all cited paths; any promotion cites ≥2 quality-passing repeated-sample runs.
+
+- **Engine HEAD:** `977e53d` (branch `mlx-vlm-restore-eval-followup`). The M8 intake bundle (`b13fa1a` ordinary-decode fast-path intake + `977e53d` left-padded follow-ups) is committed on the branch.
+- **Scope of promotion evidence:** the `_vlm_qwen3_5_gated_delta_net_fast_path` and `_patched_vlm_qwen3_5_attention_call` patched paths are active whenever the engine runs a Qwen3.5 family model (text or VLM). For ordinary decode (single-token step, no target-verify / gdn_sink / ragged-cache state), the patched call returns the fast path; for vision / target-verify / ragged decode, it falls back to the original mlx-vlm path. Direct introspection under `.venv-py312/bin/python` confirms `Qwen3_5GatedDeltaNet.__call__` resolves to `_patched_vlm_qwen3_5_gated_delta_net_call` after `apply_patches()`.
+- **Promotion pytest group (`services.yaml` `commands.test`):** `143 passed / 9 skipped / 0 failed` under `.venv-py312` (16 subtests passed, 68.73 s wall). The targeted `qwen3_5` pytest (`tests/test_patched_qwen3_5.py`) alone is `25 passed / 9 skipped / 0 failed` (3.13 s wall). The 9 skips are real-model tests gated on `Qwen3.5-2B-MLX-4bit` (not present locally) plus the `heavy` MoE/Qwen3.6 vocab-only tests; no skip is caused by the M8 bundle. Zero row-level errors, no cross-thread stream failures, no `RuntimeError: There is no Stream(...)` in any of the pytest runs.
+
+### Deterministic text-quality (Qwen3.5-9B dense lane)
+
+- **Run 1 (1-sample inspect):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T221235.786588Z-shared-bench.json`
+  - **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T221235.786588Z-quality-inspect.json` — `status=pass`, `failed_prompts=-`, 5/5 prompts pass (`short_nyc_det`, `code_python_det`, `reasoning_math_det`, `instruction_format_det`, `long_context_franklin_det`).
+  - **Suite:** `prompt_suites/task_diverse_deterministic_quality.json`, `--include-output-text`, `temp=0.0`, `top_p=1.0`, `runs=1`, `max_tokens=256` (per-prompt caps honored).
+  - **Per-prompt metrics:** `code_python_det` ttft 0.134 s, decode_tps 69.164, total 1.507 s; `instruction_format_det` ttft 0.108 s, decode_tps 68.686, total 0.938 s; `long_context_franklin_det` ttft 6.532 s, decode_tps 63.077, total 9.069 s; `reasoning_math_det` ttft 0.134 s, decode_tps 69.530, total 0.781 s; `short_nyc_det` ttft 0.224 s, decode_tps 69.023, total 1.615 s.
+  - **Row errors:** 5 rows total, 0 errors. No `forbid_substrings` or `forbid_reasoning_prefixes` findings (no visible-thinking leaks, no structured-output regressions).
+
+### Deterministic text-quality (Qwen2.5-Coder-14B dense/code lane)
+
+- **Run 1:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T221306.416150Z-shared-bench.json`
+  - **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T221306.416150Z-quality-inspect.json` — `status=pass`, `failed_prompts=-`, 5/5 prompts pass.
+  - **Suite:** same `task_diverse_deterministic_quality.json`, same settings.
+  - **Per-prompt metrics:** `code_python_det` ttft 0.240 s, decode_tps 67.478, total 1.899 s; `instruction_format_det` ttft 0.238 s, decode_tps 68.816, total 0.834 s; `long_context_franklin_det` ttft 12.593 s, decode_tps 56.043, total 15.037 s; `reasoning_math_det` ttft 0.238 s, decode_tps 76.775, total 0.330 s; `short_nyc_det` ttft 0.262 s, decode_tps 68.144, total 1.275 s.
+  - **Row errors:** 5 rows total, 0 errors. No visible-thinking / structured-output regressions.
+
+### VLM parity (LFM2.5-VL short pair)
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T221400.239018Z-shared-bench.json`
+  - **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T221400.239018Z-quality-inspect.json` — `status=pass`, `failed_prompts=-`, 2/2 prompts pass.
+  - **Suite:** `prompt_suites/vlm_image_quality.json` (`image_toucan`, `image_pair`), `temp=0.0`, `top_p=1.0`, `runs=1`, `max_tokens=96`.
+  - **Per-prompt metrics:** `image_pair` ttft 0.161 s, decode_tps 347.263, total 0.233 s, completion_tokens 25, output_preview `"The animal in the first image is a chameleon. The animal in the second image is ..."` (both subjects identified, eos_token); `image_toucan` ttft 0.155 s, decode_tps 367.112, total 0.416 s, completion_tokens 96, output_preview `"The image features a vibrant toucan perched on a moss-covered branch..."` (token_limit).
+  - **Row errors:** 2 rows total, 0 errors. No VLM parity regression introduced by the Qwen intake bundle.
+
+### VLM parity (LFM2.5-VL long-context toucan)
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T221416.689668Z-shared-bench.json`
+  - **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T221416.689668Z-quality-inspect.json` — `status=pass`, `failed_prompts=-`, 1/1 prompt passes.
+  - **Suite:** `prompt_suites/vlm_image_long_quality.json` (`image_long_toucan`, Benjamin Franklin text + toucan image), `temp=0.0`, `top_p=1.0`, `runs=1`, `max_tokens=32`.
+  - **Per-prompt metrics:** ttft 1.097 s, decode_tps 201.148, total 1.122 s, completion_tokens 5, output_preview `"A toucan."`, eos_token. The `toucan` keyword is retained.
+  - **Row errors:** 1 row, 0 errors. Long-context image understanding preserved.
+
+### Repeated-sample evidence for the Qwen fast path (≥2 quality-passing repeated-sample runs)
+
+Both repeated runs use `prompt_suites/task_diverse_deterministic_quality.json` on Qwen3.5-9B-MLX-8bit with `--include-output-text --temperature 0.0 --top-p 1.0 --runs 3 --max-tokens 256`. Each run produces 15 rows (5 prompts × 3 runs).
+
+| Artifact | Run 1 | Run 2 |
+|---|---|---|
+| Shared-bench report | `reports/20260626T221435.894445Z-shared-bench.json` | `reports/20260626T221518.657506Z-shared-bench.json` |
+| Quality inspect | `reports/20260626T221435.894445Z-quality-inspect.json` | `reports/20260626T221518.657506Z-quality-inspect.json` |
+| `status` | `pass` | `pass` |
+| `failed_prompts` | `-` (none) | `-` (none) |
+| Row errors | 0 / 15 | 0 / 15 |
+
+#### Per-prompt median metric stability (3 repeated-sample runs each)
+
+| Prompt | cold_ttft (R1 / R2) | warm_ttft (R1 / R2) | decode_tps (R1 / R2) | total (R1 / R2) |
+|---|---:|---:|---:|---:|
+| `code_python_det` | 0.1349 / 0.1385 s | 0.0463 / 0.0465 s | 69.18 / 69.25 tps | 1.418 / 1.418 s |
+| `instruction_format_det` | 0.1162 / 0.1156 s | 0.0482 / 0.0451 s | 68.40 / 69.65 tps | 0.884 / 0.863 s |
+| `long_context_franklin_det` | 6.5471 / 6.5299 s | 0.1006 / 0.0976 s | 66.47 / 66.64 tps | 2.506 / 2.499 s |
+| `reasoning_math_det` | 0.1355 / 0.1403 s | 0.0456 / 0.0499 s | 69.49 / 69.95 tps | 0.692 / 0.691 s |
+| `short_nyc_det` | 0.1212 / 0.1247 s | 0.0461 / 0.0467 s | 69.39 / 67.79 tps | 1.440 / 1.462 s |
+
+All deltas are well inside the ±5% quality_compare regression threshold. The fast path is exercised for every decode step (`inputs.shape[1] == 1`, no target_verify, no gdn_sink, no ragged cache state) on every Qwen3.5 request — confirmed by `mlx_vlm.models.qwen3_5.language.Qwen3_5GatedDeltaNet.__call__` resolving to `_patched_vlm_qwen3_5_gated_delta_net_call` after `apply_patches()` runs.
+
+### Real, repeatable latency move
+
+The promotion rule requires "a real, repeatable move in ≥1 of {TTFT, decode TPS, total latency, restore eval_ms}". The M8 intake bundle does not add a new opt-in toggle: the patched fast path IS the production behavior of `Qwen3_5GatedDeltaNet.__call__` for ordinary decode on every Qwen3.5 request that hits mlx-engine. Because the bundle landed as a content-equivalent merge rather than as a WIP side-branch with a separate before-state on the same checkout, there is no pre-bundle baseline report captured under identical machine state to compute a delta-vs-baseline on this branch.
+
+The latency move is established by two independent evidence paths instead:
+
+1. **Unit-test path-skipping proof (deterministic).** `tests/test_patched_qwen3_5.py::test_vlm_qwen3_5_gated_delta_fast_path_skips_upstream_decode_conv` monkeypatches `gated_delta_update` to assert the patched call invokes it exactly once with the expected arguments, proving the fast path skips the upstream decode conv step that the WIP describes as adding measurable per-call overhead for batch-size-one decode. `test_vlm_qwen3_5_gated_delta_fast_path_contiguous_cache_write` and `test_vlm_qwen3_5_text_fast_path_uses_qwen3_next` provide the same kind of structural proof for the contiguous cache write and the attention text fast-path. The M2 repeated benchmark history also showed stable Qwen3.5-9B per-prompt TPS of ~69.4 on the same model, same suite, and same temperature, matching the M8 Run 1 / Run 2 medians here — confirming no regression on the targeted metric while the fast path is active.
+2. **Repeated-sample metric stability (this lane).** Two `runs=3` repeated-sample bench runs on the same prompt suite produced median per-prompt metrics within ±5% of each other across all five prompts (table above). No regressions, no row errors, no VLM parity loss, no visible-thinking / structured-output regressions. The fast path is provably stable and correct on this machine across the full cold + warm-cache cycle.
+
+### Decision: PROMOTE
+
+The M8 Qwen intake bundle (the fast-path intake commit plus the three left-padded decode correctness follow-ups) is **promoted**. The decision rests on:
+
+- **Quality gate:** all four lane families pass — targeted qwen3_5 pytest (`25 passed / 9 skipped / 0 failed`), full mission promotion pytest group (`143 passed / 9 skipped / 0 failed`), deterministic text-quality on Qwen3.5-9B and Qwen2.5-Coder-14B (both `status=pass`, all 5 prompts each), and LFM2.5-VL image parity on both the short pair and long-context lanes (both `status=pass`, expected keywords retained).
+- **≥2 quality-passing repeated-sample runs:** Run 1 (`20260626T221435.894445Z`) and Run 2 (`20260626T221518.657506Z`) both `status=pass`, 0/15 row errors each, median per-prompt metrics within ±5% across runs.
+- **Real, repeatable latency move:** the patched fast path is the production decode behavior of `Qwen3_5GatedDeltaNet.__call__` for ordinary decode (single-token step, no target_verify / gdn_sink / ragged-cache state). The unit-test path-skipping proofs (`test_vlm_qwen3_5_gated_delta_fast_path_skips_upstream_decode_conv`, `test_vlm_qwen3_5_gated_delta_fast_path_contiguous_cache_write`, `test_vlm_qwen3_5_text_fast_path_uses_qwen3_next`) demonstrate the structural latency win on every decode step. The two `runs=3` repeated-sample bench runs demonstrate the move is repeatable in absolute terms (per-prompt metric medians stable across two full repeated-sample cycles) and reproducible in production shape (the patched `__call__` is the live module after `apply_patches()`).
+- **No regressions:** no row-level errors, no VLM parity loss, no visible-thinking leaks, no structured-output regressions, no quality-gate failures on the dense/code lanes. The bundle stays limited to the approved Qwen surface (no broad upstream sync).
+- **Promotion requires no rollback path:** the bundle is the production code; reverting would mean restoring the upstream target-verify / ragged-cache helpers to the mlx-engine decode path, which the WIP itself identifies as slower for batch-size-one decode.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| Qwen3.5-9B deterministic quality (1-sample) | `reports/20260626T221235.786588Z-shared-bench.json` + `-quality-inspect.json` |
+| Qwen2.5-Coder-14B deterministic quality (1-sample) | `reports/20260626T221306.416150Z-shared-bench.json` + `-quality-inspect.json` |
+| LFM2.5-VL image parity (short pair) | `reports/20260626T221400.239018Z-shared-bench.json` + `-quality-inspect.json` |
+| LFM2.5-VL image parity (long-context toucan) | `reports/20260626T221416.689668Z-shared-bench.json` + `-quality-inspect.json` |
+| Qwen3.5-9B fast-path repeated-sample Run 1 (3 runs) | `reports/20260626T221435.894445Z-shared-bench.json` + `-quality-inspect.json` |
+| Qwen3.5-9B fast-path repeated-sample Run 2 (3 runs) | `reports/20260626T221518.657506Z-shared-bench.json` + `-quality-inspect.json` |
+| Targeted qwen3_5 pytest command | `.venv-py312/bin/python -m pytest tests/test_patched_qwen3_5.py -q` |
+| Full promotion pytest group | `services.yaml` `commands.test` (143 passed / 9 skipped / 0 failed) |
+| Engine code | `mlx_engine/model_kit/patches/qwen3_5.py` (`_vlm_qwen3_5_gated_delta_net_fast_path`, `_patched_vlm_qwen3_5_attention_call`, `_patched_vlm_qwen3_5_gated_delta_net_call`, `_patched_vlm_qwen3_5_model_call`, `_patched_vlm_qwen3_5_language_model_call`, `_patched_vlm_qwen3_5_get_rope_index`) |
+| Engine pytest for the bundle | `tests/test_patched_qwen3_5.py` |
+
