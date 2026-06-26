@@ -317,3 +317,30 @@ The engine WIP `b380deb` is verified correct as committed. No engine behavior wa
 - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/HANDOFF.json`
 - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260618-upstream-baseline-comparison.md`
 - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619-pause-handoff.md`
+
+## M2 Qwen3.5 fully-padded vision-row `get_rope_index` patch verification (2026-06-26)
+
+Feature `m2-qwen35-rope-index-patch` verifies the committed WIP `abebb5b` (`mlx_engine/model_kit/patches/qwen3_5.py` adds `_patched_vlm_qwen3_5_get_rope_index` that short-circuits empty batches to 3-row ones position_ids with zero rope_deltas, filters active rows when only some rows are padded, and rebuilds per-row position_ids with the standard inactive-row shape). The committed behavior is preserved unchanged because no engine defect was found.
+
+- **Engine HEAD:** `a5cef25` (branch `mlx-vlm-restore-eval-followup`), the patch commit `abebb5b` is on the branch.
+- **Pytest:** `.venv-py312/bin/python -m pytest tests/test_patched_qwen3_5.py -q` → **23 passed / 9 skipped / 0 failed**. The `test_vlm_qwen3_5_rope_index_handles_fully_padded_vision_rows` test passes, asserting `position_ids.shape == (3, 2, 4)` and `rope_deltas.tolist() == [[0], [0]]` for a fully-padded vision-row batch. The 9 skips are real-model tests gated on `Qwen3.5-2B-MLX-4bit` (not present locally) plus the `heavy` MoE/Qwen3.6 vocab-only tests; no skip is caused by the patch.
+- **Prefill/decode parity regression check:** the same pytest file covers `test_qwen3_5_prefill_decode_consistency` (text_only and mrope variants), `test_qwen3_5_mrope_chunked_prefill_matches_unchunked`, `test_qwen3_5_text_only_uncached_matches_prompt_cache`, `test_qwen3_5_text_only_batch_cache_matches_prompt_cache`, and `test_vlm_qwen3_5_left_padded_batch_prefill_preserves_batch_cache_metadata`. All pass on the committed WIP; no prefill/decode parity regression observed.
+- **Deterministic text-quality report (Qwen3.5-9B dense lane):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T025838.965231Z-shared-bench.json`
+  - **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T025838.965231Z-quality-inspect.json` — `status=pass`, 0 failed prompts.
+  - **Suite:** `prompt_suites/task_diverse_deterministic_quality.json` (`short_nyc_det`, `code_python_det`, `reasoning_math_det`, `instruction_format_det`, `long_context_franklin_det`), `--include-output-text`, `temp=0.0`, `top_p=1.0`, `runs=1`, `max_tokens=256` (per-prompt caps honored).
+  - **Per-prompt keyword hits:** `short_nyc_det` (New York + finance), `code_python_det` (stable_unique + return), `reasoning_math_det` (38.9), `instruction_format_det` (risk + mitigation + owner + JSON exact-keys), `long_context_franklin_det` (Franklin + Autobiography). All hits true; no `forbid_substrings` or `forbid_reasoning_prefixes` findings (no visible-thinking leaks, no structured-output regressions).
+- **Deterministic text-quality report (Qwen2.5-Coder-14B dense/code lane):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T025916.739478Z-shared-bench.json`
+  - **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T025916.739478Z-quality-inspect.json` — `status=pass`, 0 failed prompts.
+  - **Same suite and settings.** All 5 prompts hit their expected keywords with no forbid findings.
+- **LFM2.5-VL image-suite parity (short pair):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T025956.776219Z-shared-bench.json`
+  - **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T025956.776219Z-quality-inspect.json` — `status=pass`, 0 failed prompts.
+  - **Suite:** `prompt_suites/vlm_image_quality.json` (`image_toucan`, `image_pair`), `--min-completion-tokens 4`, `temp=0.0`, `top_p=1.0`, `runs=1`, `max_tokens=96`.
+  - **Per-prompt keyword hits:** `image_toucan` (toucan, completion_tokens=96, eos not hit within budget), `image_pair` (chameleon + toucan, completion_tokens=25). Both subjects correctly identified. Zero row errors.
+- **LFM2.5-VL image-suite parity (long-context toucan):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T030016.310541Z-shared-bench.json`
+  - **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260626T030016.310541Z-quality-inspect.json` — `status=pass`, 0 failed prompts.
+  - **Suite:** `prompt_suites/vlm_image_long_quality.json` (`image_long_toucan`, long-context Benjamin-Franklin text + toucan image), `--min-completion-tokens 4`.
+  - **Per-prompt keyword hits:** `image_long_toucan` (toucan, completion_tokens=5). Subject correctly identified despite the unrelated long-context text. Zero row errors.
+
+### Decision: VERIFIED (no engine change)
+
+The Qwen3.5 fully-padded vision-row `get_rope_index` patch `abebb5b` is verified correct as committed. No engine behavior was modified. The pytest suite for the patch passes (including the dedicated fully-padded vision-row test), the deterministic text-quality suite passes on both dense/code lanes (Qwen3.5-9B and Qwen2.5-Coder-14B) with no visible-thinking leaks or structured-output regressions, the LFM2.5-VL image suite passes with zero row errors on both the short pair and long-context lanes (no VLM parity regression), and the in-file prefill/decode parity tests confirm no prefill/decode regression on the M2 WIP surface.
