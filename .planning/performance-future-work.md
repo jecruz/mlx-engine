@@ -1000,3 +1000,62 @@ Until at least one of those evidence paths is captured, the bundle stays as-is (
 | Prior M8 scrutiny failure report (superseded by this reconcile) | `.factory/missions/dbaf7c9f-269e-49f0-993a-ded7115a0792/handoffs/2026-06-26T22-31-57-836Z__scrutiny-validator-m8-qwen-decode-intake__84f6becf-552f-47a4-9cc8-e839c490d457.json` |
 | Prior M8 scrutiny synthesis (superseded by this reconcile) | `.factory/missions/dbaf7c9f-269e-49f0-993a-ded7115a0792/validation/m8-qwen-decode-intake/scrutiny/synthesis.json` |
 
+## M11 mixed text+vision cheetara dogfood suite (2026-06-27)
+
+Feature `m11-mixed-text-vision-task-set` defines the repeatable cheetara dogfood
+suite for the staged cutover. The suite is host-local only, uses the validated
+non-GUI HTTP surfaces, and keeps `vmlx.app.asar` untouched. It is the executable
+task definition that later M7 and M9 runs will use to collect real evidence for
+the mixed text+vision path comparison.
+
+### What was added
+
+- **Suite definition doc (new):**
+  `.planning/cheetara-compat-evidence/m11-mixed-text-vision-suite.md`
+- **Executable suite runner (new):**
+  `scripts/cheetara_m11_dogfood_suite.py`
+- **Focused tests (new):**
+  `tests/test_cheetara_m11_dogfood_suite.py`
+- **Manifest commands (new):**
+  `services.yaml`
+  - `smoke:adapter:cheetara:m11`
+  - `smoke:localshim:m11`
+
+### Suite shape
+
+The defined task set is repeatable and covers the required mixed surfaces:
+
+1. text-only session status update
+2. image-grounded description
+3. image-grounded question answering
+4. mixed follow-up that combines the earlier text note with image evidence
+
+Each run begins with `GET /v1/models` and `GET /health`, requires
+`supports_vision=true`, and records its request shapes, expected outcomes,
+streaming completion state, and cleanup rules in the JSON report.
+
+### Evidence paths
+
+The suite writes path-specific report artifacts to:
+
+- `.planning/cheetara-compat-evidence/m11/m7-dogfood-report.json`
+- `.planning/cheetara-compat-evidence/m11/m9-dogfood-report.json`
+
+Those report files are the authoritative evidence outputs for future M7 and M9
+dogfood runs. They include the preflight results, the four task results, the
+cleanup rules, and the path label (`m7-external` or `m9-local`).
+
+### Validation status
+
+- `VAL-M11-001` is satisfied by the suite definition, runner, tests, and
+  manifest commands.
+- `VAL-M11-002` through `VAL-M11-005` remain pending until the suite is
+  actually executed against the M7 and M9 services and the resulting reports
+  are compared.
+
+### Decision: DEFINED
+
+The M11 dogfood suite is now specified and ready for later path execution. The
+definition is intentionally narrow: no LM Studio integration, no GUI automation,
+and no `vmlx.app.asar` edits.
+
