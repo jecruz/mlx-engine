@@ -130,29 +130,41 @@ def probe_dflash_dependency() -> tuple[bool, tuple[str, ...]]:
     return len(missing_modules) == 0, missing_modules
 
 
-def _read_model_type(model_path: Path | None) -> str:
+def _read_model_metadata(model_path: Path | None) -> dict[str, Any]:
     if model_path is None or not model_path.exists():
-        return ""
+        return {}
     config_path = model_path / "config.json"
     if not config_path.exists():
-        return ""
+        return {}
     try:
         config = json.loads(config_path.read_text())
     except Exception:  # pragma: no cover - defensive probe
-        return ""
-    return str(config.get("model_type", ""))
+        return {}
+    return config if isinstance(config, dict) else {}
 
 
 def _classify_qwen_family(model_path: Path | None) -> str | None:
-    if model_path is None:
+    metadata = _read_model_metadata(model_path)
+    if not metadata:
         return None
-    corpus = " ".join(
-        [
-            model_path.name,
-            model_path.as_posix(),
-            _read_model_type(model_path),
-        ]
-    ).lower()
+
+    def _metadata_strings(value: Any) -> tuple[str, ...]:
+        if isinstance(value, str):
+            return (value,)
+        if isinstance(value, list):
+            return tuple(item for item in value if isinstance(item, str))
+        return ()
+
+    metadata_strings: list[str] = []
+    for key in ("model_type", "architectures"):
+        metadata_strings.extend(_metadata_strings(metadata.get(key)))
+    for nested_key in ("text_config", "vision_config"):
+        nested = metadata.get(nested_key)
+        if isinstance(nested, dict):
+            for key in ("model_type", "architectures"):
+                metadata_strings.extend(_metadata_strings(nested.get(key)))
+
+    corpus = " ".join(metadata_strings).lower()
     if not any(marker in corpus for marker in _SUPPORTED_MODEL_MARKERS):
         return None
     if any(marker in corpus for marker in _UNSUPPORTED_MODEL_MARKERS):

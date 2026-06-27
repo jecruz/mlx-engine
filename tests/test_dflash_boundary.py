@@ -103,11 +103,24 @@ class FakeSequentialKit:
         return None
 
 
-def _write_qwen_model_dir(base: Path, name: str, model_type: str) -> Path:
+def _write_qwen_model_dir(
+    base: Path,
+    name: str,
+    model_type: str,
+    *,
+    architectures: list[str] | None = None,
+    include_config: bool = True,
+    include_weights: bool = True,
+) -> Path:
     model_dir = base / name
     model_dir.mkdir()
-    (model_dir / "config.json").write_text(json.dumps({"model_type": model_type}))
-    (model_dir / "weights.safetensors").write_text("stub")
+    if include_config:
+        config: dict[str, object] = {"model_type": model_type}
+        if architectures is not None:
+            config["architectures"] = architectures
+        (model_dir / "config.json").write_text(json.dumps(config))
+    if include_weights:
+        (model_dir / "weights.safetensors").write_text("stub")
     return model_dir
 
 
@@ -224,6 +237,33 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
 
         self.assertEqual(report.target_family, "qwen")
         self.assertIsNone(report.drafter_family)
+        self.assertTrue(
+            any("Qwen-family" in blocker for blocker in report.blockers),
+            msg=f"expected Qwen-family blocker, got: {report.blockers}",
+        )
+
+    def test_probe_ignores_path_only_qwen_snapshot_without_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "qwen-snapshot",
+                "qwen3_5_text",
+                include_config=False,
+            )
+            drafter_dir = _write_qwen_model_dir(temp_dir, "drafter", "qwen3_5_text")
+
+            report = probe_dflash_readiness(
+                DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=target_dir,
+                    drafter_model_path=drafter_dir,
+                    max_draft_tokens=4,
+                )
+            )
+
+        self.assertIsNone(report.target_family)
+        self.assertEqual(report.drafter_family, "qwen")
         self.assertTrue(
             any("Qwen-family" in blocker for blocker in report.blockers),
             msg=f"expected Qwen-family blocker, got: {report.blockers}",

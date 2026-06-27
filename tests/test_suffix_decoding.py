@@ -307,7 +307,7 @@ class TestSuffixDecodingVerification(unittest.TestCase):
                 tokenizer=tokenizer,
                 prompt=[1],
                 prompt_cache=cache,
-                max_tokens=1,
+                max_tokens=2,
                 proposal_fn=lambda _history, **_kwargs: SuffixDecodingProposal(
                     source_start_index=0,
                     matched_suffix_length=1,
@@ -316,9 +316,8 @@ class TestSuffixDecodingVerification(unittest.TestCase):
             )
         )
 
-        self.assertEqual(len(responses), 1)
-        self.assertEqual(responses[0].token, 8)
-        self.assertTrue(responses[0].from_draft)
+        self.assertEqual([response.token for response in responses], [7, 8])
+        self.assertEqual([response.from_draft for response in responses], [False, True])
         self.assertEqual(model.calls, [[1], [7, 8]])
         self.assertEqual(cache[0].trim_calls, [])
 
@@ -343,13 +342,13 @@ class TestSuffixDecodingVerification(unittest.TestCase):
                 tokenizer=tokenizer,
                 prompt=[1],
                 prompt_cache=cache,
-                max_tokens=1,
+                max_tokens=2,
                 max_draft_tokens=2,
                 proposal_fn=fake_proposal,
             )
         )
 
-        self.assertEqual(len(responses), 1)
+        self.assertEqual([response.token for response in responses], [7, 8])
         self.assertEqual(captured["max_draft_tokens"], 2)
         self.assertEqual(captured["history"], [1, 7])
 
@@ -364,7 +363,7 @@ class TestSuffixDecodingVerification(unittest.TestCase):
                 tokenizer=tokenizer,
                 prompt=[1],
                 prompt_cache=cache,
-                max_tokens=1,
+                max_tokens=2,
                 proposal_fn=lambda _history, **_kwargs: SuffixDecodingProposal(
                     source_start_index=0,
                     matched_suffix_length=1,
@@ -373,9 +372,8 @@ class TestSuffixDecodingVerification(unittest.TestCase):
             )
         )
 
-        self.assertEqual(len(responses), 1)
-        self.assertEqual(responses[0].token, 9)
-        self.assertFalse(responses[0].from_draft)
+        self.assertEqual([response.token for response in responses], [7, 9])
+        self.assertEqual([response.from_draft for response in responses], [False, False])
         self.assertEqual(model.calls, [[1], [7, 8]])
         self.assertEqual(cache[0].trim_calls, [1])
 

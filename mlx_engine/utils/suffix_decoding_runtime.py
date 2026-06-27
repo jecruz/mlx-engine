@@ -256,6 +256,13 @@ def suffix_stream_generate(
         emitted_history = prompt_tokens.copy() + [y.item()]
         n = 0
         prompt_progress_emitted = False
+        if not prompt_progress_emitted:
+            prompt_progress_callback(total_prompt_tokens, total_prompt_tokens)
+            prompt_progress_emitted = True
+        yield y.item(), logprobs, False
+        n += 1
+        if n == max_tokens:
+            return
         while True:
             proposal = proposal_fn(
                 emitted_history,
