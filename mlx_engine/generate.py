@@ -851,7 +851,7 @@ def _sequential_generation(
         except StopPromptProcessing:
             yield construct_user_cancelled_result()
             return
-        if decode_draft_model is None:
+        if decode_draft_model is None and not suffix_decoding_options.enabled:
             # input embeddings not yet supported for speculative decoding in mlx-lm
             generate_args["input_embeddings"] = input_embeddings
 

@@ -255,6 +255,45 @@ class TestSuffixDecodingRouting(unittest.TestCase):
                     suffix_decoding_toggle=True,
                 )
 
+    def test_suffix_path_does_not_forward_input_embeddings(self):
+        kit = FakeSequentialKit()
+        response = SimpleNamespace(
+            text="ok",
+            token=7,
+            logprobs=mx.zeros((8,)),
+            from_draft=False,
+            finish_reason="length",
+        )
+        captured = {}
+
+        def fake_suffix_stream_generate(**kwargs):
+            captured.update(kwargs)
+            yield response
+
+        with (
+            patch(
+                "mlx_engine.generate.suffix_stream_generate",
+                side_effect=fake_suffix_stream_generate,
+            ),
+            patch(
+                "mlx_engine.generate.stream_generate",
+                side_effect=AssertionError("default stream path should stay disabled"),
+            ),
+        ):
+            results = list(
+                _sequential_generation(
+                    kit,
+                    [1],
+                    max_tokens=1,
+                    request_id="suffix-compat",
+                    suffix_decoding_toggle=True,
+                )
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].tokens[0].id, 7)
+        self.assertNotIn("input_embeddings", captured)
+
 
 class TestSuffixDecodingVerification(unittest.TestCase):
     def test_suffix_proposal_tokens_are_target_verified_before_emission(self):
@@ -269,7 +308,7 @@ class TestSuffixDecodingVerification(unittest.TestCase):
                 prompt=[1],
                 prompt_cache=cache,
                 max_tokens=1,
-                proposal_fn=lambda _history: SuffixDecodingProposal(
+                proposal_fn=lambda _history, **_kwargs: SuffixDecodingProposal(
                     source_start_index=0,
                     matched_suffix_length=1,
                     draft_tokens=(8,),
@@ -283,6 +322,37 @@ class TestSuffixDecodingVerification(unittest.TestCase):
         self.assertEqual(model.calls, [[1], [7, 8]])
         self.assertEqual(cache[0].trim_calls, [])
 
+    def test_suffix_proposal_receives_max_draft_tokens(self):
+        model = FakeSuffixModel(outputs_by_call=[[7], [8, 9]])
+        cache = [FakeCache()]
+        tokenizer = FakeTokenizer()
+        captured = {}
+
+        def fake_proposal(history, *, max_draft_tokens):
+            captured["history"] = list(history)
+            captured["max_draft_tokens"] = max_draft_tokens
+            return SuffixDecodingProposal(
+                source_start_index=0,
+                matched_suffix_length=1,
+                draft_tokens=(8,),
+            )
+
+        responses = list(
+            suffix_stream_generate(
+                model=model,
+                tokenizer=tokenizer,
+                prompt=[1],
+                prompt_cache=cache,
+                max_tokens=1,
+                max_draft_tokens=2,
+                proposal_fn=fake_proposal,
+            )
+        )
+
+        self.assertEqual(len(responses), 1)
+        self.assertEqual(captured["max_draft_tokens"], 2)
+        self.assertEqual(captured["history"], [1, 7])
+
     def test_suffix_proposal_falls_back_to_verified_target_token_on_mismatch(self):
         model = FakeSuffixModel(outputs_by_call=[[7], [9, 10]])
         cache = [FakeCache()]
@@ -295,7 +365,7 @@ class TestSuffixDecodingVerification(unittest.TestCase):
                 prompt=[1],
                 prompt_cache=cache,
                 max_tokens=1,
-                proposal_fn=lambda _history: SuffixDecodingProposal(
+                proposal_fn=lambda _history, **_kwargs: SuffixDecodingProposal(
                     source_start_index=0,
                     matched_suffix_length=1,
                     draft_tokens=(8,),

@@ -1197,3 +1197,16 @@ Mission inputs reviewed for this slice:
 - Unsupported surfaces are rejected closed before generation, and the default path keeps using the existing stream generation path.
 - Focused unit tests were added in `tests/test_suffix_decoding.py` to cover env resolution, routing, rejection, and verified-token semantics.
 
+### SuffixDecoding evidence update 2026-06-27
+
+- Harness flags for SuffixDecoding opt-in are now forwarded through `shared_bench.py` and `runners/mlx_engine_runner.py` without changing default runs.
+- A compatibility bug was fixed so the suffix path no longer forwards `input_embeddings`, and the suffix proposer now receives `max_draft_tokens` explicitly.
+- Final evidence used a reduced Qwen2.5-Coder-14B lane with `code_python_det` + `long_context_franklin_det`:
+  - Baseline: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260627T180420.785450Z-shared-bench.json`
+  - Candidate run 1: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260627T180515.815388Z-shared-bench.json`
+  - Compare run 1: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260627T180515.815388Z-quality-compare.json` (`status=pass`)
+  - Candidate run 2: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260627T180824.047907Z-shared-bench.json`
+  - Compare run 2: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260627T180824.047907Z-quality-compare.json` (`status=pass`)
+- Row-error check: all rows in baseline and both candidate reports have `error: null`.
+- Decision: **KEEP OPT-IN**. The suffix path is now directly invocable and stable on the focused Qwen code/long lane, but the repeated candidate runs did not show a repeatable latency win versus baseline, so it stays default-off rather than promoted.
+

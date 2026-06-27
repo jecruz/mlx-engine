@@ -257,7 +257,10 @@ def suffix_stream_generate(
         n = 0
         prompt_progress_emitted = False
         while True:
-            proposal = proposal_fn(emitted_history)
+            proposal = proposal_fn(
+                emitted_history,
+                max_draft_tokens=max_draft_tokens,
+            )
             num_draft = (
                 min(max_tokens - n, len(proposal.draft_tokens), max_draft_tokens)
                 if proposal is not None
