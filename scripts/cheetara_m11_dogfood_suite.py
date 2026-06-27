@@ -33,6 +33,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from string import Formatter
 from typing import Any, Optional
 
 TASK_SET_ID = "m11-mixed-text-vision-dogfood"
@@ -53,6 +54,23 @@ class TaskSpec:
 
     def render_prompt(self, prior_outputs: dict[str, str]) -> str:
         return self.prompt_template.format(**prior_outputs)
+
+    def required_prior_output_keys(self) -> tuple[str, ...]:
+        fields: list[str] = []
+        seen: set[str] = set()
+        for _, field_name, _, _ in Formatter().parse(self.prompt_template):
+            if not field_name:
+                continue
+            field = field_name.split(".", 1)[0].split("[", 1)[0]
+            if field and field not in seen:
+                seen.add(field)
+                fields.append(field)
+        return tuple(fields)
+
+    def missing_prior_output_keys(self, prior_outputs: dict[str, str]) -> tuple[str, ...]:
+        return tuple(
+            key for key in self.required_prior_output_keys() if key not in prior_outputs
+        )
 
 
 TASK_SET: tuple[TaskSpec, ...] = (
@@ -245,6 +263,16 @@ def _contains_any_groups(text: str, groups: tuple[tuple[str, ...], ...]) -> bool
     return True
 
 
+def _request_shape(*, max_tokens: int, has_image_url: bool) -> dict[str, Any]:
+    return {
+        "endpoint": "/v1/chat/completions",
+        "stream": True,
+        "message_shape": "multimodal" if has_image_url else "text",
+        "has_image_url": has_image_url,
+        "max_tokens": max_tokens,
+    }
+
+
 def _run_connect(base_url: str, model: str) -> dict[str, Any]:
     started = time.time()
     status, body, headers = _http_get_json(base_url, "/v1/models")
@@ -383,13 +411,6 @@ def _build_request_payload(
 ) -> dict[str, Any]:
     if image_data_url is None:
         messages = [{"role": "user", "content": prompt}]
-        request_shape = {
-            "endpoint": "/v1/chat/completions",
-            "stream": True,
-            "message_shape": "text",
-            "has_image_url": False,
-            "max_tokens": max_tokens,
-        }
     else:
         messages = [
             {
@@ -400,13 +421,6 @@ def _build_request_payload(
                 ],
             }
         ]
-        request_shape = {
-            "endpoint": "/v1/chat/completions",
-            "stream": True,
-            "message_shape": "multimodal",
-            "has_image_url": True,
-            "max_tokens": max_tokens,
-        }
     return {
         "payload": {
             "model": model,
@@ -416,7 +430,10 @@ def _build_request_payload(
             "temperature": 0.0,
             "top_p": 1.0,
         },
-        "request_shape": request_shape,
+        "request_shape": _request_shape(
+            max_tokens=max_tokens,
+            has_image_url=image_data_url is not None,
+        ),
     }
 
 
@@ -500,11 +517,59 @@ def _run_task(
     return result
 
 
+def _build_skipped_task_result(
+    spec: TaskSpec,
+    *,
+    image_data_url: Optional[str],
+    prompt_template: str,
+    prior_outputs: dict[str, str],
+    missing_prior_outputs: tuple[str, ...],
+) -> dict[str, Any]:
+    dependency_snapshot = {
+        key: prior_outputs.get(key, "") for key in spec.required_prior_output_keys()
+    }
+    available_prior_outputs = {
+        key: value for key, value in dependency_snapshot.items() if value
+    }
+    return {
+        "task_id": spec.task_id,
+        "kind": spec.kind,
+        "prompt": prompt_template,
+        "prompt_rendered": False,
+        "request_shape": _request_shape(
+            max_tokens=spec.max_tokens,
+            has_image_url=image_data_url is not None,
+        ),
+        "expected": {
+            "all_keywords": list(spec.expected_all_keywords),
+            "any_groups": [list(group) for group in spec.expected_any_groups],
+        },
+        "dependencies": dependency_snapshot,
+        "available_prerequisite_outputs": available_prior_outputs,
+        "missing_prerequisite_outputs": list(missing_prior_outputs),
+        "elapsed_s": 0.0,
+        "http_status": None,
+        "chunk_count": 0,
+        "finish_reasons": [],
+        "stream_done_seen": False,
+        "content_text": "",
+        "raw_excerpt": "",
+        "status": "skipped",
+        "reason": (
+            "missing prerequisite outputs: " + ", ".join(missing_prior_outputs)
+        ),
+    }
+
+
 def _aggregate(result_states: list[str]) -> dict[str, int]:
     total = len(result_states)
     passed = sum(1 for state in result_states if state == "pass")
-    failed = total - passed
-    return {"total": total, "passed": passed, "failed": failed}
+    skipped = sum(1 for state in result_states if state == "skipped")
+    failed = total - passed - skipped
+    summary: dict[str, int] = {"total": total, "passed": passed, "failed": failed}
+    if skipped:
+        summary["skipped"] = skipped
+    return summary
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -588,21 +653,32 @@ def main(argv: Optional[list[str]] = None) -> int:
     task_results: list[dict[str, Any]] = []
 
     for spec in TASK_SET:
-        prompt = spec.render_prompt(prior_outputs)
-        dependencies: dict[str, str] = {}
-        if spec.task_id == "mixed_followup":
-            dependencies = {
-                "text_status_update": prior_outputs.get("text_status_update", ""),
-                "image_qna": prior_outputs.get("image_qna", ""),
-            }
-        task_result = _run_task(
-            base_url,
-            args.model,
-            spec,
-            image_data_url=image_data_url if spec.kind == "image" else None,
-            prompt=prompt,
-            dependencies=dependencies,
-        )
+        missing_prior_outputs = spec.missing_prior_output_keys(prior_outputs)
+        image_for_task = image_data_url if spec.kind == "image" else None
+        if missing_prior_outputs:
+            task_result = _build_skipped_task_result(
+                spec,
+                image_data_url=image_for_task,
+                prompt_template=spec.prompt_template,
+                prior_outputs=prior_outputs,
+                missing_prior_outputs=missing_prior_outputs,
+            )
+        else:
+            prompt = spec.render_prompt(prior_outputs)
+            dependencies: dict[str, str] = {}
+            if spec.task_id == "mixed_followup":
+                dependencies = {
+                    "text_status_update": prior_outputs.get("text_status_update", ""),
+                    "image_qna": prior_outputs.get("image_qna", ""),
+                }
+            task_result = _run_task(
+                base_url,
+                args.model,
+                spec,
+                image_data_url=image_for_task,
+                prompt=prompt,
+                dependencies=dependencies,
+            )
         task_results.append(task_result)
         result_states.append(task_result["status"])
         if task_result["status"] == "pass":

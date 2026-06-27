@@ -285,3 +285,48 @@ def test_suite_fails_when_health_reports_no_vision_support() -> None:
     assert report["preflight"]["health"]["status"] == "fail"
     assert "supports_vision" in report["preflight"]["health"]["details"]["reason"]
     assert report["summary"]["failed"] >= 1
+
+
+def test_suite_records_skipped_mixed_followup_when_prereqs_missing(
+    monkeypatch: Any,
+) -> None:
+    image_path = _write_temp_image(b"\x89PNG\r\n\x1a\nfake-image-bytes")
+    output_path = Path(tempfile.mkdtemp()) / "m11-report.json"
+    original_response_for_prompt = _response_for_prompt
+
+    def _broken_response_for_prompt(prompt: str) -> str:
+        if "status update" in prompt.lower():
+            return "The session is pending."
+        return original_response_for_prompt(prompt)
+
+    monkeypatch.setattr(
+        sys.modules[__name__], "_response_for_prompt", _broken_response_for_prompt
+    )
+    with _FakeM11Server() as server:
+        captured = _capture_main(
+            [
+                "--base-url",
+                server.base_url,
+                "--model",
+                "cheetara-m7",
+                "--path-label",
+                "m7-external",
+                "--image-path",
+                str(image_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+
+    assert captured["exit_code"] == 1
+    report = json.loads(captured["stdout"])
+    assert report["summary"]["passed"] == 4
+    assert report["summary"]["failed"] == 1
+    assert report["summary"]["skipped"] == 1
+    mixed = report["tasks"][-1]
+    assert mixed["status"] == "skipped"
+    assert mixed["reason"] == "missing prerequisite outputs: text_status_update"
+    assert mixed["missing_prerequisite_outputs"] == ["text_status_update"]
+    assert mixed["dependencies"]["text_status_update"] == ""
+    assert "image_qna" in mixed["dependencies"]
+    assert output_path.exists()

@@ -1108,17 +1108,24 @@ dogfood evidence and records the daily-use readiness decision for cheetara plus
 - M9 streaming supplement:
   `.planning/cheetara-compat-evidence/local-streaming-smoke.json`
 
-### Cross-path comparison
+### Task-by-task comparison
 
-| Dimension | M7 external adapter | M9 local compatibility | Assessment |
-|---|---|---|---|
-| Task success | 6 / 6 passed | 6 / 6 passed | Both paths completed the full suite. |
-| Output quality | Text, image, and mixed follow-up outputs all matched expectations | Same | No quality gap observed, outputs are effectively identical on the four tasks. |
-| Streaming compatibility | Incremental SSE chunks plus terminal `[DONE]` on every task | Incremental SSE chunks plus terminal `[DONE]` on every task, plus typed `/v1/responses` events in the local streaming smoke | Streaming is compatible on both paths, M9 also proves the local Responses surface. |
-| Warnings | Benign transformers tokenizer cleanup warning | Benign tokenizer cleanup warnings and transient prompt-cache restore logs | Non-blocking on both paths. |
-| Latency / resource notes | Avg task elapsed about `0.129 s` across the four tasks | Avg task elapsed about `0.116 s` across the four tasks | M9 is slightly faster in this capture, but both are well within daily-use bounds. |
-| Cleanup | Adapter was stopped with the manifest stop command after capture | Local compatibility service was stopped with the manifest stop command after capture | Cleanup is clean on both paths. |
-| Path-specific gaps | None blocking, this path is intentionally adapter-only | None blocking, this path also validates `/v1/responses` and local metadata | Only expected route differences remain, no readiness blockers. |
+| Task | M7 external adapter | M9 local compatibility | Output-quality comparison | Streaming / protocol status | Warnings | Resource / cleanup notes |
+|---|---|---|---|---|---|---|
+| `text_status_update` | pass, `The cheetara path is now ready, and the adapter is responding.` | pass, same text | Identical meaning and keyword coverage (`ready`, `responding`). | Incremental SSE chunks plus terminal `[DONE]` on both paths. | Benign tokenizer cleanup warning only. | Runs were serialized, no concurrent Qwen or other MLX-heavy workloads, no memory or Metal contention observed, and the service was stopped with the manifest command after capture. |
+| `image_description` | pass, `A toucan with a rainbow colored beak is perched on a moss covered branch.` | pass, same text | Identical toucan description and image grounding. | Incremental SSE chunks plus terminal `[DONE]` on both paths. | Same benign warning profile. | Same serial execution, no concurrent Qwen/MLX-heavy workloads, no contention observed, clean stop after capture. |
+| `image_qna` | pass, `The bird is a toucan, easily recognized by its large, colorful beak.` | pass, same text | Identical bird ID and visible-feature answer, including the beak cue. | Incremental SSE chunks plus terminal `[DONE]` on both paths; M9 also validated typed `/v1/responses` events in the local streaming smoke. | Benign tokenizer cleanup warnings on both paths, plus transient prompt-cache restore logs on M9. | Same serial execution, no concurrent Qwen/MLX-heavy workloads, no memory or Metal contention notes, clean stop after capture. |
+| `mixed_followup` | pass, `The session is ready, and the bird is a toucan.` | pass, same text | Identical combined follow-up, preserving both `ready` and `toucan`. | Incremental SSE chunks plus terminal `[DONE]` on both paths. | Same benign warning profile. | Same serial execution, no concurrent Qwen/MLX-heavy workloads, no contention observed, service stopped with manifest command after capture. |
+
+### Shared observations
+
+- Task success: 6 / 6 passed on both paths.
+- Output quality: no gap observed, the four tasks are effectively identical across M7 and M9.
+- Streaming compatibility: M7 and M9 both returned incremental SSE chunks plus terminal `[DONE]` markers for every task. M9 additionally proved the local Responses surface with typed events in the supplemental smoke.
+- Resource observations: M7 and M9 were run serially, never concurrently, and no Qwen LLMDYNAMIX or other MLX-heavy workloads were active during dogfood capture.
+- Memory / Metal contention: none observed during either capture.
+- Cleanup state: both services were stopped with the matching manifest `stop` command after capture, and no temporary persistent-cache artifacts were introduced for this task.
+- Latency note: average task elapsed time was about `0.129 s` on M7 and `0.116 s` on M9 in this capture, which keeps both paths comfortably within daily-use bounds.
 
 ### Decision
 
