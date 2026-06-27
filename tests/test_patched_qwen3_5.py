@@ -11,6 +11,7 @@ from mlx_lm.models.cache import ArraysCache, BatchKVCache, KVCache, make_prompt_
 from mlx_lm.models.qwen3_5 import Model, ModelArgs
 import mlx_lm.models.qwen3_5 as qwen3_5_module
 from mlx_lm.models.qwen3_next import Qwen3NextAttention
+from mlx_vlm.models.base import LanguageModelOutput
 from mlx_vlm.models.qwen3_5 import language as vlm_qwen3_5_language
 from transformers import AutoTokenizer
 
@@ -775,6 +776,52 @@ def test_qwen3_5_text_only_batch_cache_matches_prompt_cache():
     assert mx.allclose(reference_logits, batch_logits, atol=1e-4).item(), (
         f"Text-only batch-cache logits mismatch (max diff {diff:.6f})."
     )
+
+
+def test_qwen3_5_text_hidden_capture_is_ordered_and_capture_safe():
+    """Target-layer hidden capture must be stable and keep logits unchanged."""
+    model = make_model(num_hidden_layers=4, full_attention_interval=2)
+    tokens = mx.array([[0, 1, 2, 3]])
+
+    baseline_cache = make_prompt_cache(model)
+    baseline_logits = model(tokens, cache=baseline_cache)
+    mx.eval(baseline_logits)
+
+    capture_ids = [3, 1]
+    capture_sink = []
+    captured = model(
+        tokens,
+        cache=make_prompt_cache(model),
+        capture_layer_ids=capture_ids,
+        hidden_sink=capture_sink,
+    )
+    mx.eval([baseline_logits, captured.logits, *capture_sink])
+
+    assert isinstance(captured, LanguageModelOutput)
+    assert captured.hidden_states is capture_sink
+    assert captured.gdn_states is None
+    assert len(captured.hidden_states) == len(capture_ids)
+    assert [state.shape for state in captured.hidden_states] == [
+        (1, tokens.shape[1], QWEN3_5_TEXT_CONFIG["hidden_size"])
+    ] * len(capture_ids)
+    assert mx.allclose(baseline_logits, captured.logits, atol=1e-4).item(), (
+        "Capture-enabled text logits must match the capture-off baseline."
+    )
+
+    ordered_sink = []
+    ordered_capture = model(
+        tokens,
+        cache=make_prompt_cache(model),
+        capture_layer_ids=sorted(capture_ids),
+        hidden_sink=ordered_sink,
+    )
+    mx.eval([ordered_capture.logits, *ordered_sink])
+
+    assert len(ordered_sink) == len(capture_sink)
+    for captured_state, ordered_state in zip(capture_sink, ordered_sink):
+        assert mx.allclose(captured_state, ordered_state, atol=1e-4).item(), (
+            "Hidden-state capture order must follow layer progression."
+        )
 
 
 @pytest.mark.parametrize("model_name", REAL_MODEL_CASES)

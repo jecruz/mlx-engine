@@ -1236,3 +1236,10 @@ Mission inputs reviewed for this slice:
 - Regression coverage now includes the skipped-token case, the `max_draft_tokens` propagation path, the mismatch fallback path, the no-proposal/empty-proposal duplicate-emission regression, and a path-only DFlash false-positive probe.
 - Validation completed: focused pytest on the touched tests, scoped ruff on the changed files, and the full `services.yaml` milestone pytest gate all passed.
 
+### M13 Qwen hidden-state hooks 2026-06-27
+
+- Added capture-safe hidden-state hooks to the patched Qwen3.5 sequential text path, threaded through the top-level Qwen model wrapper and the patched decoder body.
+- The new hook path accepts explicit `capture_layer_ids` and `hidden_sink` inputs, returns ordered intermediate hidden states for the requested layers, and keeps capture-off logits unchanged.
+- Focused coverage now proves capture order stability on a small synthetic Qwen3.5 model and verifies the capture-off logits match the baseline path.
+- Validation completed: focused Qwen3.5 patch tests, DFlash boundary tests, scoped ruff, and the full `services.yaml` milestone pytest gate all passed. No DFlash execution path was enabled or promoted.
+

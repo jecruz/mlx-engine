@@ -26,7 +26,9 @@ import mlx.nn as nn
 
 from mlx_lm.models.qwen3_5 import (
     DecoderLayer,
+    Model as Qwen3_5Model,
     Qwen3_5TextModel,
+    TextModel as Qwen3_5LanguageModel,
 )
 from mlx_lm.models.base import (
     create_attention_mask,
@@ -49,7 +51,10 @@ from mlx_vlm.models.qwen3_5.language import (
 # Stable aliases to the pristine mlx-lm classes captured before apply_patches()
 # mutates mlx_lm.models.qwen3_5 in place.
 OriginalDecoderLayer = DecoderLayer
+OriginalQwen3_5ModelCall = Qwen3_5Model.__call__
+OriginalQwen3_5LanguageModelCall = Qwen3_5LanguageModel.__call__
 OriginalQwen3_5TextModel = Qwen3_5TextModel
+OriginalQwen3_5TextModelCall = Qwen3_5TextModel.__call__
 OriginalVlmQwen3_5AttentionInit = VlmQwen3_5Attention.__init__
 OriginalVlmQwen3_5AttentionCall = VlmQwen3_5Attention.__call__
 OriginalVlmQwen3_5GatedDeltaNetCall = VlmQwen3_5GatedDeltaNet.__call__
@@ -634,7 +639,16 @@ class PatchedQwen3_5TextModel(Qwen3_5TextModel):
         inputs: mx.array,
         cache: Optional[Any] = None,
         input_embeddings: Optional[mx.array] = None,
+        capture_layer_ids: Optional[list[int]] = None,
+        hidden_sink: Optional[list] = None,
+        gdn_sink: Optional[list] = None,
     ) -> mx.array:
+        capture_requested = (
+            capture_layer_ids is not None or hidden_sink is not None or gdn_sink is not None
+        )
+        if capture_requested and hidden_sink is None:
+            hidden_sink = []
+
         if input_embeddings is not None:
             hidden_states = input_embeddings
         else:
@@ -647,12 +661,15 @@ class PatchedQwen3_5TextModel(Qwen3_5TextModel):
 
         fa_mask = create_attention_mask(hidden_states, cache[self.fa_idx])
         ssm_mask = create_ssm_mask(hidden_states, cache[self.ssm_idx])
+        capture_set = set(capture_layer_ids) if capture_layer_ids is not None else set()
 
-        for layer, layer_cache in zip(self.layers, cache):
+        for i, (layer, layer_cache) in enumerate(zip(self.layers, cache)):
             mask = ssm_mask if layer.is_linear else fa_mask
             hidden_states = layer(
                 hidden_states, mask=mask, cache=layer_cache, position_ids=position_ids
             )
+            if hidden_sink is not None and capture_layer_ids is not None and i in capture_set:
+                hidden_sink.append(hidden_states)
 
         return self.norm(hidden_states)
 
@@ -750,6 +767,60 @@ class PatchedQwen3_5TextModel(Qwen3_5TextModel):
 
         position_ids = mx.add(position_ids, delta)[None, ...]
         return mx.broadcast_to(position_ids, (3, batch_size, seq_length))
+
+
+def _patched_qwen3_5_language_model_call(
+    self,
+    inputs: mx.array,
+    cache: Optional[Any] = None,
+    input_embeddings: Optional[mx.array] = None,
+    capture_layer_ids: Optional[list[int]] = None,
+    hidden_sink: Optional[list] = None,
+    gdn_sink: Optional[list] = None,
+):
+    capture_requested = (
+        capture_layer_ids is not None or hidden_sink is not None or gdn_sink is not None
+    )
+    if capture_requested and hidden_sink is None:
+        hidden_sink = []
+
+    hidden_states = self.model(
+        inputs,
+        cache=cache,
+        input_embeddings=input_embeddings,
+        capture_layer_ids=capture_layer_ids,
+        hidden_sink=hidden_sink,
+        gdn_sink=gdn_sink,
+    )
+
+    if self.args.tie_word_embeddings:
+        logits = self.model.embed_tokens.as_linear(hidden_states)
+    else:
+        logits = self.lm_head(hidden_states)
+
+    if not capture_requested:
+        return logits
+
+    return LanguageModelOutput(
+        logits=logits,
+        hidden_states=hidden_sink,
+        gdn_states=gdn_sink,
+    )
+
+
+def _patched_qwen3_5_model_call(
+    self,
+    inputs: mx.array,
+    cache=None,
+    input_embeddings: Optional[mx.array] = None,
+    **kwargs,
+):
+    return self.language_model(
+        inputs,
+        cache=cache,
+        input_embeddings=input_embeddings,
+        **kwargs,
+    )
 
 
 def _patched_vlm_qwen3_5_attention_init(self, args):
@@ -952,6 +1023,8 @@ def apply_patches():
     import mlx_lm.models.qwen3_5
 
     mlx_lm.models.qwen3_5.DecoderLayer = PatchedDecoderLayer
+    mlx_lm.models.qwen3_5.TextModel.__call__ = _patched_qwen3_5_language_model_call
+    mlx_lm.models.qwen3_5.Model.__call__ = _patched_qwen3_5_model_call
     mlx_lm.models.qwen3_5.Qwen3_5TextModel = PatchedQwen3_5TextModel
 
     VlmQwen3_5Attention.__init__ = _patched_vlm_qwen3_5_attention_init
