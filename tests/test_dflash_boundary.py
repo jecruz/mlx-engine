@@ -12,6 +12,7 @@ from unittest.mock import patch
 import mlx.core as mx
 
 from mlx_engine.generate import create_generator
+from mlx_engine.utils.generation_result import GenerationResult
 from mlx_engine.utils.dflash_boundary import (
     DFlashBoundaryOptions,
     DFlashUnavailableError,
@@ -92,6 +93,9 @@ class FakeSequentialKit:
         self.tokenizer = FakeTokenizer()
         self.draft_model = None
         self.prefill_step_size = 8
+        self.cache_wrapper = SimpleNamespace(
+            cache=[SimpleNamespace(lengths=mx.array([1]))]
+        )
         self.pending_requests = {}
         self.generation_lock = threading.Lock()
         self._executor = _ImmediateExecutor()
@@ -103,7 +107,17 @@ class FakeSequentialKit:
     def is_shutdown(self):
         return False
 
-    def process_prompt(self, prompt_tokens, *_args, **_kwargs):
+    def process_prompt(
+        self,
+        prompt_tokens,
+        images_b64,
+        prompt_progress_reporter,
+        generate_args,
+        max_image_size,
+        speculative_decoding_toggle=None,
+        **_kwargs,
+    ):
+        generate_args["prompt_cache"] = self.cache_wrapper.cache
         return mx.array(prompt_tokens, dtype=mx.int32), None
 
     def is_cross_prompt_cache_active(self):
@@ -282,6 +296,24 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
                 "num_draft_tokens": None,
                 "draft_model": object(),
                 "needle": "draft_model",
+            },
+            {
+                "surface_label": "adapter",
+                "images_b64": None,
+                "specprefill_toggle": None,
+                "speculative_decoding_toggle": None,
+                "num_draft_tokens": None,
+                "draft_model": None,
+                "needle": "sequential text generation",
+            },
+            {
+                "surface_label": "sequential",
+                "images_b64": None,
+                "specprefill_toggle": None,
+                "speculative_decoding_toggle": None,
+                "num_draft_tokens": 2,
+                "draft_model": None,
+                "needle": "draft_model speculation",
             },
         ]
 
@@ -473,7 +505,7 @@ class TestDFlashRouting(unittest.TestCase):
             finish_reason="length",
         )
 
-        def fake_stream_generate(**_kwargs):
+        def fake_stream_generate(*_args, **_kwargs):
             yield stream_result
 
         with (
@@ -521,6 +553,50 @@ class TestDFlashRouting(unittest.TestCase):
                     dflash_target_model=str(target_dir),
                     dflash_drafter_model=str(drafter_dir),
                 )
+
+    def test_enabled_opt_in_routes_through_dflash_runtime(self):
+        kit = FakeSequentialKit()
+        stream_result = GenerationResult(
+            text="native-dflash",
+            tokens=[SimpleNamespace(id=17, text="17", logprob=0.0, from_draft=False)],
+            top_logprobs=[],
+            stop_condition=None,
+        )
+
+        def fake_dflash_stream_generate(*_args, **_kwargs):
+            yield stream_result
+
+        with (
+            patch(
+                "mlx_engine.generate.probe_dflash_readiness",
+                return_value=SimpleNamespace(
+                    enabled=True,
+                    dependency_available=True,
+                    target_family="qwen",
+                    drafter_family="qwen",
+                    blockers=(),
+                ),
+            ),
+            patch(
+                "mlx_engine.generate.dflash_stream_generate",
+                side_effect=fake_dflash_stream_generate,
+            ) as dflash_stream_generate,
+        ):
+            results = list(
+                create_generator(
+                    kit,
+                    [1],
+                    max_tokens=1,
+                    request_id="dflash-enabled",
+                    dflash_toggle=True,
+                    dflash_target_model="/tmp/qwen-target",
+                    dflash_drafter_model="/tmp/qwen-drafter",
+                )
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].tokens[0].id, 17)
+        dflash_stream_generate.assert_called_once()
 
 
 if __name__ == "__main__":

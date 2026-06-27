@@ -1243,3 +1243,11 @@ Mission inputs reviewed for this slice:
 - Focused coverage now proves capture order stability on a small synthetic Qwen3.5 model and verifies the capture-off logits match the baseline path.
 - Validation completed: focused Qwen3.5 patch tests, DFlash boundary tests, scoped ruff, and the full `services.yaml` milestone pytest gate all passed. No DFlash execution path was enabled or promoted.
 
+### M13 native DFlash scaffold 2026-06-27
+
+- Added `mlx_engine/utils/dflash_runtime.py` and wired `create_generator()` to route the explicit DFlash opt-in through a native draft/verify scaffold instead of the standard autoregressive draft-model path.
+- The scaffold stays default-off, keeps proposal tokens separate from verified tokens, records `from_draft` on emitted tokens, and rolls back target cache state after partial rejection.
+- Unsupported surfaces now fail closed for VLM, batched, distributed, adapter, SpecPrefill, and loaded-speculation combinations, while the default-off route continues through the existing sequential generator path unchanged.
+- Tests cover the default-off route, explicit DFlash routing, unsupported-surface blockers, and a direct fake-model smoke that asserts only verified tokens are emitted and proposal tokens never enter the live history before verification.
+- Validation completed: `ruff check mlx_engine/utils/dflash_runtime.py mlx_engine/utils/dflash_boundary.py mlx_engine/generate.py tests/test_dflash_boundary.py tests/test_dflash_runtime.py` and `pytest tests/test_dflash_boundary.py tests/test_dflash_runtime.py -q` both passed. A real smoke attempt against the local Qwen3.6-27B target path failed closed as VLM, which matches the new guardrails.
+

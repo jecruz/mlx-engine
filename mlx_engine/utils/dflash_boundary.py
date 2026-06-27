@@ -312,8 +312,4 @@ def validate_dflash_boundary(
                 surface_blockers=surface_blockers,
             )
         )
-
-    raise NotImplementedError(
-        "DFlash boundary is ready, but a sequential execution path is not "
-        "implemented yet"
-    )
+    return None

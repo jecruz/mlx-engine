@@ -8,7 +8,7 @@ from mlx_engine.model_kit.batched_model_kit import (
     BatchedModelKit,
 )
 from mlx_engine.model_kit.batched_model_kit_types import RequestCancelled
-from typing import Any, Iterator, List, Optional, TypeAlias
+from typing import Any, Callable, Iterator, List, Optional, TypeAlias
 import json
 import logging
 from pathlib import Path
@@ -56,6 +56,7 @@ from mlx_engine.utils.suffix_decoding_runtime import (
     validate_suffix_decoding_compatibility,
     suffix_stream_generate,
 )
+from mlx_engine.utils.dflash_runtime import dflash_stream_generate
 from mlx_engine.utils.specprefill import (
     DEFAULT_SPECPREFILL_KEEP_PCT,
     DEFAULT_SPECPREFILL_THRESHOLD,
@@ -144,10 +145,17 @@ def _load_batched_vision_model_kit():
 
 
 class _SequentialModelKitGenerator(Iterator[GenerationResult]):
-    def __init__(self, model_kit: ModelKit, prompt_tokens: List[int], kwargs: dict):
+    def __init__(
+        self,
+        model_kit: ModelKit,
+        prompt_tokens: List[int],
+        kwargs: dict,
+        generation_fn: Callable[..., Iterator[GenerationResult]] | None = None,
+    ):
         self._model_kit = model_kit
         self._prompt_tokens = prompt_tokens
         self._kwargs = kwargs
+        self._generation_fn = generation_fn or _sequential_generation
         self._request_id = kwargs.get("request_id")
         self._results: Queue[tuple[str, object]] = Queue()
         self._closed = threading.Event()
@@ -185,7 +193,7 @@ class _SequentialModelKitGenerator(Iterator[GenerationResult]):
     def _generate(self) -> None:
         stream = None
         try:
-            stream = _sequential_generation(
+            stream = self._generation_fn(
                 self._model_kit,
                 self._prompt_tokens,
                 **self._kwargs,
@@ -670,9 +678,25 @@ def create_generator(
                     surface_blockers=dflash_surface_blockers,
                 )
             )
-        raise NotImplementedError(
-            "DFlash boundary is ready, but a sequential execution path is not "
-            "implemented yet"
+        dflash_kwargs = dict(kwargs)
+        for key in (
+            "speculative_decoding_toggle",
+            "num_draft_tokens",
+            "suffix_decoding_toggle",
+            "suffix_decoding_max_draft_tokens",
+            "specprefill_toggle",
+            "specprefill_keep_pct",
+            "specprefill_threshold",
+            "specprefill_system_tokens",
+            "draft_model",
+        ):
+            dflash_kwargs.pop(key, None)
+        dflash_kwargs["dflash_options"] = dflash_options
+        return _SequentialModelKitGenerator(
+            model_kit,
+            prompt_tokens,
+            dflash_kwargs,
+            generation_fn=dflash_stream_generate,
         )
     if isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit)) or (
         isinstance(model_kit, DistributedModelKit)
