@@ -44,6 +44,11 @@ from mlx_engine.utils.speculative_decoding import (
     is_speculative_decoding_supported,
     SpeculativeDecodingNotSupportedError,
 )
+from mlx_engine.utils.suffix_decoding_runtime import (
+    resolve_suffix_decoding_options,
+    validate_suffix_decoding_compatibility,
+    suffix_stream_generate,
+)
 from mlx_engine.utils.specprefill import (
     DEFAULT_SPECPREFILL_KEEP_PCT,
     DEFAULT_SPECPREFILL_THRESHOLD,
@@ -622,10 +627,18 @@ def create_generator(
         ValueError: If top_logprobs exceeds MAX_TOP_LOGPROBS or if any parameters are invalid
     """
     BatchedVisionModelKit = _load_batched_vision_model_kit()
+    suffix_decoding_options = resolve_suffix_decoding_options(
+        kwargs.get("suffix_decoding_toggle"),
+        kwargs.get("suffix_decoding_max_draft_tokens"),
+    )
     if isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit)) or (
         isinstance(model_kit, DistributedModelKit)
         and model_kit.uses_distributed_batching()
     ):
+        if suffix_decoding_options.enabled:
+            raise ValueError(
+                "SuffixDecoding is only supported for sequential text generation"
+            )
         specprefill_keys = (
             "specprefill_toggle",
             "specprefill_keep_pct",
@@ -637,6 +650,8 @@ def create_generator(
         ):
             raise ValueError("SpecPrefill is only supported for sequential generation")
         batched_kwargs = dict(kwargs)
+        batched_kwargs.pop("suffix_decoding_toggle", None)
+        batched_kwargs.pop("suffix_decoding_max_draft_tokens", None)
         for key in specprefill_keys:
             batched_kwargs.pop(key, None)
         return _batched_generation(model_kit, prompt_tokens, **batched_kwargs)
@@ -724,6 +739,8 @@ def _sequential_generation(
     max_tokens: Optional[int] = 10000000,
     speculative_decoding_toggle: Optional[bool] = None,
     num_draft_tokens: Optional[int] = None,
+    suffix_decoding_toggle: Optional[bool] = None,
+    suffix_decoding_max_draft_tokens: Optional[int] = None,
     specprefill_toggle: Optional[bool] = None,
     specprefill_keep_pct: Optional[float] = None,
     specprefill_threshold: Optional[int] = None,
@@ -751,6 +768,19 @@ def _sequential_generation(
             value = getattr(model_kit, attr, None)
             if value is not None:
                 generate_args[attr] = value
+
+        suffix_decoding_options = resolve_suffix_decoding_options(
+            suffix_decoding_toggle,
+            suffix_decoding_max_draft_tokens,
+        )
+        validate_suffix_decoding_compatibility(
+            suffix_decoding_enabled=suffix_decoding_options.enabled,
+            model_kit=model_kit,
+            images_b64=images_b64,
+            speculative_decoding_toggle=speculative_decoding_toggle,
+            num_draft_tokens=num_draft_tokens,
+            specprefill_toggle=specprefill_toggle,
+        )
 
         # Set up speculative decoding and SpecPrefill.  SpecPrefill uses the
         # loaded draft model for prefill scoring only; it deliberately disables
@@ -894,17 +924,30 @@ def _sequential_generation(
                 details=generation_details,
             )
 
-            stream = stream_generate(
-                model=model_kit.model,
-                tokenizer=tokenizer,
-                draft_model=decode_draft_model,
-                prompt=input_tokens,
-                max_tokens=max_tokens,
-                logits_processors=logits_processors,
-                prompt_progress_callback=mlx_lm_callback,
-                prefill_step_size=model_kit.prefill_step_size,
-                **generate_args,
-            )
+            if suffix_decoding_options.enabled:
+                stream = suffix_stream_generate(
+                    model=model_kit.model,
+                    tokenizer=tokenizer,
+                    prompt=input_tokens,
+                    max_tokens=max_tokens,
+                    logits_processors=logits_processors,
+                    prompt_progress_callback=mlx_lm_callback,
+                    prefill_step_size=model_kit.prefill_step_size,
+                    max_draft_tokens=suffix_decoding_options.max_draft_tokens,
+                    **generate_args,
+                )
+            else:
+                stream = stream_generate(
+                    model=model_kit.model,
+                    tokenizer=tokenizer,
+                    draft_model=decode_draft_model,
+                    prompt=input_tokens,
+                    max_tokens=max_tokens,
+                    logits_processors=logits_processors,
+                    prompt_progress_callback=mlx_lm_callback,
+                    prefill_step_size=model_kit.prefill_step_size,
+                    **generate_args,
+                )
             log_mlx_stream_state(
                 reason="after-stream-generate-created",
                 request_id=request_id,

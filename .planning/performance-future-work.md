@@ -1191,3 +1191,9 @@ Mission inputs reviewed for this slice:
 - DFlash begins behind a guarded dependency boundary because its compatibility and drafter pairing requirements are stricter and not yet established in this repo.
 - No generation behavior changes are made by this planning pass.
 
+### Implementation update 2026-06-27
+
+- Sequential SuffixDecoding opt-in is now wired behind `MLX_ENGINE_SUFFIX_DECODING` (default off).
+- Unsupported surfaces are rejected closed before generation, and the default path keeps using the existing stream generation path.
+- Focused unit tests were added in `tests/test_suffix_decoding.py` to cover env resolution, routing, rejection, and verified-token semantics.
+
