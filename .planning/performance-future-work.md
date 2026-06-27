@@ -1049,9 +1049,10 @@ cleanup rules, and the path label (`m7-external` or `m9-local`).
 
 - `VAL-M11-001` is satisfied by the suite definition, runner, tests, and
   manifest commands.
-- `VAL-M11-002` through `VAL-M11-005` remain pending until the suite is
-  actually executed against the M7 and M9 services and the resulting reports
-  are compared.
+- `VAL-M11-002` remains satisfied by the recorded M7 execution.
+- `VAL-M11-003` is satisfied by the recorded M9 execution below.
+- `VAL-M11-004` and `VAL-M11-005` remain pending until the M7 and M9
+  results are compared and the readiness note is recorded.
 
 ### M7 external-adapter execution (2026-06-27)
 
@@ -1065,6 +1066,28 @@ cleanup rules, and the path label (`m7-external` or `m9-local`).
 - Cleanup: adapter was stopped with the manifest `stop` command after capture
 - Notes: startup emitted a benign transformers tokenizer cleanup warning; the
   warning did not affect task success
+
+### M9 local-compatibility execution (2026-06-27)
+
+- Command run: `smoke:localshim:streaming` followed by
+  `smoke:localshim:m11`
+- Report paths:
+  - `.planning/cheetara-compat-evidence/local-streaming-smoke.json`
+  - `.planning/cheetara-compat-evidence/m11/m9-dogfood-report.json`
+- Result: `summary.total=6`, `summary.passed=6`, `summary.failed=0`
+- Task coverage: text status update, image description, image Q&A, mixed
+  follow-up
+- Streaming surface evidence: `/v1/responses` returned canonical typed
+  Responses events with terminal `[DONE]`, and `/v1/chat/completions`
+  returned incremental SSE chunks plus terminal `[DONE]`
+- Metadata evidence: `/v1/models` and `/health` both reported
+  `served_model=cheetara-m9`, `supports_vision=true`, and consistent
+  local-compat runtime details
+- Cleanup: the local compatibility service was stopped with the manifest
+  `stop` command after capture
+- Notes: startup emitted benign tokenizer cleanup warnings and transient
+  prompt-cache restore logs, but the task outputs remained correct and
+  error-free
 
 ### Decision: DEFINED
 
