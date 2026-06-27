@@ -1214,9 +1214,11 @@ Mission inputs reviewed for this slice:
 
 - Added a guarded DFlash boundary module, `mlx_engine/utils/dflash_boundary.py`, plus create-generator plumbing that strips DFlash kwargs from the default path so baseline generation stays unchanged when the opt-in is absent.
 - The new boundary is default-off, requires explicit target/drafter model paths, accepts only Qwen-family pairings, and fails closed for SpecPrefill, loaded `draft_model` speculation, batched text, distributed, and VLM surfaces.
-- Local probe result: the optional DFlash dependency is importable in this environment, but there is no compatible local DFlash drafter snapshot under the known model root, so the first-slice DFlash prototype remains a no-go for now.
-- Test evidence: `tests/test_dflash_boundary.py` proves the disabled path still routes through the existing sequential generator path, while the enabled path raises an actionable no-go instead of changing baseline generation.
-- Decision: **NO-GO FOR NOW**. The guarded boundary is in place, but without compatible local drafter weights there is no credible sequential DFlash prototype to benchmark yet.
+- Local probe result: the optional DFlash dependency is importable in this environment, and the z-lab drafter snapshot is present at `/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824`.
+- Drafter config facts: `architectures=["DFlashDraftModel"]`, `model_type="qwen3"`, `dtype="bfloat16"`, `num_hidden_layers=6`, `dflash_config.block_size=16`, `dflash_config.mask_token_id=248077`, `dflash_config.target_layer_ids=[1,10,18,27,35,44,52,61]`, `vocab_size=248320`, and no tokenizer files are present in the snapshot tree.
+- Resolved target pairing: `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit` with tokenizer files in the same directory (`tokenizer.json`, `tokenizer_config.json`, `vocab.json`). Its config reports `model_type="qwen3_5"`, `architectures=["Qwen3_5ForConditionalGeneration"]`, `dtype="bfloat16"`, `num_hidden_layers=64`, and `vocab_size=248320`.
+- Test evidence: `tests/test_dflash_boundary.py` proves the disabled path still routes through the existing sequential generator path, while the enabled path raises an actionable no-go instead of changing baseline generation. The corrected readiness state now distinguishes drafter availability from native mlx-engine runtime support.
+- Decision: **READY FOR NATIVE FOUNDATION WORK, NOT A VALIDATED GENERATION CHANGE**. The local drafter and target assets now exist, so the stale M12 no-go is superseded in planning, but real DFlash validation still requires native mlx-engine foundation work and must remain default-off.
 
 ### M12 scrutiny follow-up 2026-06-27
 
