@@ -1053,6 +1053,19 @@ cleanup rules, and the path label (`m7-external` or `m9-local`).
   actually executed against the M7 and M9 services and the resulting reports
   are compared.
 
+### M7 external-adapter execution (2026-06-27)
+
+- Command run: `smoke:adapter:cheetara:m11`
+- Report path: `.planning/cheetara-compat-evidence/m11/m7-dogfood-report.json`
+- Result: `summary.total=6`, `summary.passed=6`, `summary.failed=0`
+- Task coverage: text status update, image description, image Q&A, mixed
+  follow-up
+- Stream evidence: every task returned SSE chunks plus a terminal `[DONE]`
+  marker, with zero request/protocol errors
+- Cleanup: adapter was stopped with the manifest `stop` command after capture
+- Notes: startup emitted a benign transformers tokenizer cleanup warning; the
+  warning did not affect task success
+
 ### Decision: DEFINED
 
 The M11 dogfood suite is now specified and ready for later path execution. The
