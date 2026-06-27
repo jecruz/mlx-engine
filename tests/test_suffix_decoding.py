@@ -7,7 +7,10 @@ from unittest.mock import patch
 import mlx.core as mx
 
 from mlx_engine.generate import _sequential_generation, create_generator
-from mlx_engine.utils.suffix_decoding import SuffixDecodingProposal
+from mlx_engine.utils.suffix_decoding import (
+    SuffixDecodingProposal,
+    propose_suffix_decoding_tokens,
+)
 from mlx_engine.utils.suffix_decoding_runtime import (
     resolve_suffix_decoding_options,
     suffix_stream_generate,
@@ -152,6 +155,97 @@ class TestSuffixDecodingOptions(unittest.TestCase):
 
         self.assertTrue(options.enabled)
         self.assertEqual(options.max_draft_tokens, 3)
+
+
+class TestSuffixDecodingHelper(unittest.TestCase):
+    def test_returns_none_when_no_reusable_suffix_exists(self):
+        proposal = propose_suffix_decoding_tokens(
+            [1, 2, 3, 4],
+            max_draft_tokens=4,
+        )
+
+        self.assertIsNone(proposal)
+
+    def test_prefers_the_longest_matching_suffix_ngram(self):
+        proposal = propose_suffix_decoding_tokens(
+            [1, 2, 3, 4, 5, 6, 1, 2, 3, 7, 8, 1, 2, 3],
+            max_draft_tokens=3,
+        )
+
+        self.assertEqual(
+            proposal,
+            SuffixDecodingProposal(
+                source_start_index=6,
+                matched_suffix_length=3,
+                draft_tokens=(7, 8, 1),
+            ),
+        )
+
+    def test_caps_proposed_draft_tokens(self):
+        proposal = propose_suffix_decoding_tokens(
+            [1, 2, 3, 4, 5, 6, 1, 2, 3, 7, 8, 1, 2, 3],
+            max_draft_tokens=2,
+        )
+
+        self.assertEqual(
+            proposal,
+            SuffixDecodingProposal(
+                source_start_index=6,
+                matched_suffix_length=3,
+                draft_tokens=(7, 8),
+            ),
+        )
+
+    def test_uses_non_overlapping_source_windows(self):
+        proposal = propose_suffix_decoding_tokens(
+            [4, 5, 6, 7, 8, 4, 5, 6, 9, 10, 4, 5, 6],
+            max_draft_tokens=2,
+        )
+
+        self.assertEqual(
+            proposal,
+            SuffixDecodingProposal(
+                source_start_index=5,
+                matched_suffix_length=3,
+                draft_tokens=(9, 10),
+            ),
+        )
+        self.assertLessEqual(
+            proposal.source_start_index + proposal.matched_suffix_length,
+            len([4, 5, 6, 7, 8, 4, 5, 6, 9, 10, 4, 5, 6])
+            - proposal.matched_suffix_length,
+        )
+
+    def test_truncates_before_stop_and_eos_boundaries(self):
+        scenarios = [
+            (
+                "stop",
+                {"stop_token_ids": [99]},
+                [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 99, 1, 2, 3],
+            ),
+            (
+                "eos",
+                {"eos_token_ids": [98]},
+                [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 98, 1, 2, 3],
+            ),
+        ]
+
+        for label, boundary_kwargs, history in scenarios:
+            with self.subTest(boundary=label):
+                proposal = propose_suffix_decoding_tokens(
+                    history,
+                    max_draft_tokens=4,
+                    **boundary_kwargs,
+                )
+
+                self.assertEqual(
+                    proposal,
+                    SuffixDecodingProposal(
+                        source_start_index=6,
+                        matched_suffix_length=3,
+                        draft_tokens=(4, 5),
+                    ),
+                )
 
 
 class TestSuffixDecodingRouting(unittest.TestCase):
