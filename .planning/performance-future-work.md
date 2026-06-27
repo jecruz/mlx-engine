@@ -1221,7 +1221,8 @@ Mission inputs reviewed for this slice:
 ### M12 scrutiny follow-up 2026-06-27
 
 - Fixed the suffix emission-order bug so `suffix_stream_generate()` yields the target model's first verified token before any suffix continuation tokens are considered.
+- Fixed the no-proposal / empty-proposal duplicate-emission bug in `suffix_stream_generate()` so every target-sampled token is emitted exactly once across the proposal, rejection, overlap, and fallback paths.
 - Tightened DFlash Qwen-family classification so config/model metadata drives the decision and path-only naming no longer marks a metadata-less snapshot as Qwen-ready.
-- Regression coverage now includes the skipped-token case, the `max_draft_tokens` propagation path, the mismatch fallback path, and a path-only DFlash false-positive probe.
+- Regression coverage now includes the skipped-token case, the `max_draft_tokens` propagation path, the mismatch fallback path, the no-proposal/empty-proposal duplicate-emission regression, and a path-only DFlash false-positive probe.
 - Validation completed: focused pytest on the touched tests, scoped ruff on the changed files, and the full `services.yaml` milestone pytest gate all passed.
 

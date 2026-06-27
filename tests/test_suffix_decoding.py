@@ -377,6 +377,51 @@ class TestSuffixDecodingVerification(unittest.TestCase):
         self.assertEqual(model.calls, [[1], [7, 8]])
         self.assertEqual(cache[0].trim_calls, [1])
 
+    def test_suffix_proposal_none_or_empty_does_not_duplicate_initial_target_token(self):
+        scenarios = [
+            ("none", None),
+            (
+                "empty",
+                SuffixDecodingProposal(
+                    source_start_index=0,
+                    matched_suffix_length=1,
+                    draft_tokens=(),
+                ),
+            ),
+        ]
+
+        for label, proposal in scenarios:
+            with self.subTest(proposal=label):
+                model = FakeSuffixModel(outputs_by_call=[[7], [8]])
+                cache = [FakeCache()]
+                tokenizer = FakeTokenizer()
+                proposal_calls = 0
+
+                def fake_proposal(history, *, max_draft_tokens):
+                    nonlocal proposal_calls
+                    proposal_calls += 1
+                    self.assertEqual(history, [1, 7])
+                    self.assertEqual(max_draft_tokens, 2)
+                    return proposal
+
+                responses = list(
+                    suffix_stream_generate(
+                        model=model,
+                        tokenizer=tokenizer,
+                        prompt=[1],
+                        prompt_cache=cache,
+                        max_tokens=2,
+                        max_draft_tokens=2,
+                        proposal_fn=fake_proposal,
+                    )
+                )
+
+                self.assertEqual(proposal_calls, 1)
+                self.assertEqual([response.token for response in responses], [7, 8])
+                self.assertEqual([response.from_draft for response in responses], [False, False])
+                self.assertEqual(model.calls, [[1], [7]])
+                self.assertEqual(cache[0].trim_calls, [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

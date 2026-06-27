@@ -321,9 +321,11 @@ def suffix_stream_generate(
                 mx.async_eval(next_y, next_logprobs)
             if n == max_tokens:
                 return
-            token = y.item()
+            token = next_y.item()
+            logprobs = next_logprobs
+            emitted_history.append(token)
             if not prompt_progress_emitted:
-                mx.eval(y)
+                mx.eval(next_y)
                 prompt_progress_callback(total_prompt_tokens, total_prompt_tokens)
                 prompt_progress_emitted = True
             yield token, logprobs, False
