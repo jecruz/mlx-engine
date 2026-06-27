@@ -38,6 +38,13 @@ from mlx_engine.utils.request_state import (
     request_id_is_empty,
 )
 from mlx_engine.utils.set_seed import set_seed
+from mlx_engine.utils.dflash_boundary import (
+    DFlashUnavailableError,
+    build_dflash_no_go_message,
+    probe_dflash_readiness,
+    resolve_dflash_options,
+    validate_dflash_surface_compatibility,
+)
 from mlx_engine.utils.speculative_decoding import (
     determine_draft_model_for_generation,
     configure_num_draft_tokens_in_generate_args,
@@ -627,10 +634,46 @@ def create_generator(
         ValueError: If top_logprobs exceeds MAX_TOP_LOGPROBS or if any parameters are invalid
     """
     BatchedVisionModelKit = _load_batched_vision_model_kit()
+    dflash_options = resolve_dflash_options(
+        kwargs.pop("dflash_toggle", None),
+        kwargs.pop("dflash_target_model", None),
+        kwargs.pop("dflash_drafter_model", None),
+        kwargs.pop("dflash_max_draft_tokens", None),
+    )
     suffix_decoding_options = resolve_suffix_decoding_options(
         kwargs.get("suffix_decoding_toggle"),
         kwargs.get("suffix_decoding_max_draft_tokens"),
     )
+    if dflash_options.enabled:
+        if isinstance(model_kit, DistributedModelKit):
+            dflash_surface_label = "distributed"
+        elif isinstance(model_kit, BatchedModelKit):
+            dflash_surface_label = "batched-text"
+        elif isinstance(model_kit, BatchedVisionModelKit):
+            dflash_surface_label = "vlm"
+        else:
+            dflash_surface_label = "sequential"
+        dflash_surface_blockers = validate_dflash_surface_compatibility(
+            enabled=True,
+            surface_label=dflash_surface_label,
+            images_b64=kwargs.get("images_b64"),
+            specprefill_toggle=kwargs.get("specprefill_toggle"),
+            speculative_decoding_toggle=kwargs.get("speculative_decoding_toggle"),
+            num_draft_tokens=kwargs.get("num_draft_tokens"),
+            draft_model=kwargs.get("draft_model"),
+        )
+        dflash_readiness = probe_dflash_readiness(dflash_options)
+        if dflash_surface_blockers or dflash_readiness.blockers:
+            raise DFlashUnavailableError(
+                build_dflash_no_go_message(
+                    dflash_readiness,
+                    surface_blockers=dflash_surface_blockers,
+                )
+            )
+        raise NotImplementedError(
+            "DFlash boundary is ready, but a sequential execution path is not "
+            "implemented yet"
+        )
     if isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit)) or (
         isinstance(model_kit, DistributedModelKit)
         and model_kit.uses_distributed_batching()

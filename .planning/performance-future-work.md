@@ -1210,3 +1210,11 @@ Mission inputs reviewed for this slice:
 - Row-error check: all rows in baseline and both candidate reports have `error: null`.
 - Decision: **KEEP OPT-IN**. The suffix path is now directly invocable and stable on the focused Qwen code/long lane, but the repeated candidate runs did not show a repeatable latency win versus baseline, so it stays default-off rather than promoted.
 
+### DFlash boundary spike update 2026-06-27
+
+- Added a guarded DFlash boundary module, `mlx_engine/utils/dflash_boundary.py`, plus create-generator plumbing that strips DFlash kwargs from the default path so baseline generation stays unchanged when the opt-in is absent.
+- The new boundary is default-off, requires explicit target/drafter model paths, accepts only Qwen-family pairings, and fails closed for SpecPrefill, loaded `draft_model` speculation, batched text, distributed, and VLM surfaces.
+- Local probe result: the optional DFlash dependency is importable in this environment, but there is no compatible local DFlash drafter snapshot under the known model root, so the first-slice DFlash prototype remains a no-go for now.
+- Test evidence: `tests/test_dflash_boundary.py` proves the disabled path still routes through the existing sequential generator path, while the enabled path raises an actionable no-go instead of changing baseline generation.
+- Decision: **NO-GO FOR NOW**. The guarded boundary is in place, but without compatible local drafter weights there is no credible sequential DFlash prototype to benchmark yet.
+
