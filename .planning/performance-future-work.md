@@ -1051,8 +1051,8 @@ cleanup rules, and the path label (`m7-external` or `m9-local`).
   manifest commands.
 - `VAL-M11-002` remains satisfied by the recorded M7 execution.
 - `VAL-M11-003` is satisfied by the recorded M9 execution below.
-- `VAL-M11-004` and `VAL-M11-005` remain pending until the M7 and M9
-  results are compared and the readiness note is recorded.
+- `VAL-M11-004` and `VAL-M11-005` are satisfied by the cross-path comparison
+  recorded below.
 
 ### M7 external-adapter execution (2026-06-27)
 
@@ -1094,4 +1094,38 @@ cleanup rules, and the path label (`m7-external` or `m9-local`).
 The M11 dogfood suite is now specified and ready for later path execution. The
 definition is intentionally narrow: no LM Studio integration, no GUI automation,
 and no `vmlx.app.asar` edits.
+
+## M11 cross-path readiness comparison (2026-06-27)
+
+Feature `m11-cross-path-readiness-report` compares the authoritative M7 and M9
+dogfood evidence and records the daily-use readiness decision for cheetara plus
+`mlx-engine`.
+
+### Evidence compared
+
+- M7 report: `.planning/cheetara-compat-evidence/m11/m7-dogfood-report.json`
+- M9 report: `.planning/cheetara-compat-evidence/m11/m9-dogfood-report.json`
+- M9 streaming supplement:
+  `.planning/cheetara-compat-evidence/local-streaming-smoke.json`
+
+### Cross-path comparison
+
+| Dimension | M7 external adapter | M9 local compatibility | Assessment |
+|---|---|---|---|
+| Task success | 6 / 6 passed | 6 / 6 passed | Both paths completed the full suite. |
+| Output quality | Text, image, and mixed follow-up outputs all matched expectations | Same | No quality gap observed, outputs are effectively identical on the four tasks. |
+| Streaming compatibility | Incremental SSE chunks plus terminal `[DONE]` on every task | Incremental SSE chunks plus terminal `[DONE]` on every task, plus typed `/v1/responses` events in the local streaming smoke | Streaming is compatible on both paths, M9 also proves the local Responses surface. |
+| Warnings | Benign transformers tokenizer cleanup warning | Benign tokenizer cleanup warnings and transient prompt-cache restore logs | Non-blocking on both paths. |
+| Latency / resource notes | Avg task elapsed about `0.129 s` across the four tasks | Avg task elapsed about `0.116 s` across the four tasks | M9 is slightly faster in this capture, but both are well within daily-use bounds. |
+| Cleanup | Adapter was stopped with the manifest stop command after capture | Local compatibility service was stopped with the manifest stop command after capture | Cleanup is clean on both paths. |
+| Path-specific gaps | None blocking, this path is intentionally adapter-only | None blocking, this path also validates `/v1/responses` and local metadata | Only expected route differences remain, no readiness blockers. |
+
+### Decision
+
+- Daily-use readiness: **READY**
+- `VAL-M11-004`: **passed**
+- `VAL-M11-005`: **passed**
+- LM Studio integration: remains deferred until this M11 proof passes, and a
+  future LM Studio integration investigation should proceed later as a
+  planning exercise, not implementation work.
 
