@@ -1136,3 +1136,58 @@ dogfood evidence and records the daily-use readiness decision for cheetara plus
   future LM Studio integration investigation should proceed later as a
   planning exercise, not implementation work.
 
+## M12 speculative decoding plan (2026-06-27)
+
+Mission inputs reviewed for this slice:
+
+- Research: `research/m12-speculative-decoding-research.md`
+- Engine internals plan: `research/m12-engine-internals-specdecode-plan.md`
+- Existing engine surfaces inspected for rollout constraints:
+  - `mlx_engine/generate.py`
+  - `mlx_engine/utils/speculative_decoding.py`
+  - `mlx_engine/utils/specprefill.py`
+  - `mlx_engine/cache_wrapper.py`
+  - `mlx_engine/model_kit/model_kit.py`
+  - `mlx_engine/model_kit/batched_model_kit.py`
+  - `mlx_engine/model_kit/batched_vision/model_kit.py`
+  - `mlx_engine/openai_adapter.py`
+
+### What the inspection established
+
+- The current speculative path is classic draft-model speculation in sequential text only.
+- SpecPrefill already conflicts with decode speculation in `generate.py`, so the first M12 slice must stay separate.
+- Distributed generation explicitly rejects speculative decoding.
+- Batched text and batched vision do not provide a first-slice M12 route.
+- The OpenAI adapter rejects `draft_model` and `num_draft_tokens`, so adapter exposure must stay out of the first slice.
+- The Qwen family remains the primary validation target, with dense/code lanes as the direct-harness proof path.
+
+### Safe rollout order
+
+1. Build a pure SuffixDecoding / N-gram token proposer helper.
+2. Wire it into sequential text only behind a default-off opt-in.
+3. Capture direct `shared_bench.py` + `quality_compare.py` evidence on Qwen dense/code lanes.
+4. Add a guarded DFlash dependency / proposal boundary with explicit Qwen target-drafter pairing rules.
+5. Attempt the smallest sequential DFlash prototype only if compatible dependencies and drafter weights are present, otherwise record a precise no-go.
+
+### Unsupported first-slice surfaces
+
+- SpecPrefill combinations
+- Existing loaded `draft_model` / `num_draft_tokens` speculation
+- Batched text
+- Distributed
+- VLM
+- Adapter exposure
+
+### Promotion gate
+
+- Use direct harness evidence only, not public benchmark claims.
+- Require zero row errors and `quality_compare.py status == pass`.
+- Require at least two quality-passing repeated candidate runs.
+- Require a real repeatable move in TTFT, decode TPS, total latency, or restore eval_ms.
+
+### Decision
+
+- SuffixDecoding is the first implementation slice because it is model-free, sequential-only, and easiest to keep reversible.
+- DFlash begins behind a guarded dependency boundary because its compatibility and drafter pairing requirements are stricter and not yet established in this repo.
+- No generation behavior changes are made by this planning pass.
+
