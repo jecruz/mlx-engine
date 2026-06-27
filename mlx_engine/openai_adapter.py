@@ -533,10 +533,14 @@ async def _validate_and_dispatch_responses(
         ) from exc
     # Translate ``max_output_tokens`` (Responses-style) into the
     # ``max_tokens`` field that the chat-completions validation helper
-    # consumes. We only add the alias when ``max_tokens`` is absent so a
-    # caller that sets both gets the documented Responses semantics
-    # (``max_output_tokens`` wins).
-    if raw_body.get("max_tokens") is None and raw_body.get("max_output_tokens") is not None:
+    # consumes. The Responses-native field always wins: when a caller
+    # sets both ``max_output_tokens`` and ``max_tokens`` on a Responses
+    # request, ``max_output_tokens`` is the authoritative Responses
+    # contract and ``max_tokens`` is treated as a deprecated chat-style
+    # alias that ``max_output_tokens`` overrides. This matches the
+    # documented Responses semantics so future workers and validators
+    # are not misled by stale precedence comments.
+    if raw_body.get("max_output_tokens") is not None:
         raw_body["max_tokens"] = raw_body["max_output_tokens"]
     try:
         _validate_sampling_fields(raw_body)
@@ -898,15 +902,18 @@ def _build_responses_chat_body(
 
     The Responses surface reuses the chat-completion generation
     backend, so we normalize ``input`` to ``messages`` and rename
-    ``max_output_tokens`` to ``max_tokens`` here. The returned dict is
-    the body the chat-completion helpers already understand; no other
-    helper needs to know whether the caller used /v1/responses or
-    /v1/chat/completions.
+    ``max_output_tokens`` to ``max_tokens`` here. As documented for
+    the Responses surface, the Responses-native ``max_output_tokens``
+    always wins over ``max_tokens`` when both are present, so we
+    unconditionally let ``max_output_tokens`` overwrite the chat-style
+    alias. The returned dict is the body the chat-completion helpers
+    already understand; no other helper needs to know whether the
+    caller used /v1/responses or /v1/chat/completions.
     """
     chat_body = dict(raw_body)
     chat_body.pop("input", None)
     chat_body["messages"] = _normalize_responses_input(raw_body.get("input"))
-    if raw_body.get("max_output_tokens") is not None and chat_body.get("max_tokens") is None:
+    if raw_body.get("max_output_tokens") is not None:
         chat_body["max_tokens"] = raw_body["max_output_tokens"]
     return chat_body
 

@@ -1294,6 +1294,55 @@ def test_responses_max_output_tokens_aliases_to_max_tokens(
     assert last_call["max_tokens"] == 12
 
 
+def test_responses_max_output_tokens_wins_over_max_tokens(
+    text_client: TestClient,
+    text_state: _AdapterState,
+) -> None:
+    """When both fields are set, the Responses-native ``max_output_tokens`` wins.
+
+    A caller that sends both ``max_output_tokens`` and the
+    chat-completion-style ``max_tokens`` on a Responses request gets
+    the documented Responses semantics: ``max_output_tokens`` is the
+    authoritative field and overrides ``max_tokens`` so the generator
+    sees the Responses-native cap, not the chat-style alias.
+    """
+    response = text_client.post(
+        "/v1/responses",
+        json={
+            "model": "cheetara-m7-text",
+            "input": "Reply with the single word ok.",
+            "max_tokens": 4,
+            "max_output_tokens": 12,
+        },
+    )
+    assert response.status_code == 200
+    last_call = text_state.model_kit.generator_calls[-1]
+    assert last_call["max_tokens"] == 12
+
+
+def test_responses_max_tokens_only_falls_through_when_max_output_tokens_absent(
+    text_client: TestClient,
+    text_state: _AdapterState,
+) -> None:
+    """``max_tokens`` (chat-style) passes through when ``max_output_tokens`` is absent.
+
+    This is the simple chat-completions-style call that does not
+    specify ``max_output_tokens``: the value of ``max_tokens`` must
+    reach the generator unchanged.
+    """
+    response = text_client.post(
+        "/v1/responses",
+        json={
+            "model": "cheetara-m7-text",
+            "input": "Reply with the single word ok.",
+            "max_tokens": 7,
+        },
+    )
+    assert response.status_code == 200
+    last_call = text_state.model_kit.generator_calls[-1]
+    assert last_call["max_tokens"] == 7
+
+
 # --- SSE typed-event helpers ----------------------------------------------
 
 
