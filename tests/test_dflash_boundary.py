@@ -19,6 +19,19 @@ from mlx_engine.utils.dflash_boundary import (
     resolve_dflash_options,
     validate_dflash_surface_compatibility,
 )
+from mlx_engine.utils.dflash_snapshot import (
+    DFlashSnapshotError,
+    DFlashSnapshotProfile,
+    DFLASH_EXPECTED_BLOCK_SIZE,
+    DFLASH_EXPECTED_DTYPE,
+    DFLASH_EXPECTED_LAYER_COUNT,
+    DFLASH_EXPECTED_MASK_TOKEN_ID,
+    DFLASH_EXPECTED_MODEL_TYPE,
+    DFLASH_EXPECTED_SAFETENSORS_FORMAT,
+    DFLASH_EXPECTED_TARGET_LAYER_IDS,
+    DFLASH_EXPECTED_VOCAB_SIZE,
+    load_dflash_snapshot_profile,
+)
 
 
 class FakeDetokenizer:
@@ -122,6 +135,74 @@ def _write_qwen_model_dir(
     if include_weights:
         (model_dir / "weights.safetensors").write_text("stub")
     return model_dir
+
+
+def _build_dflash_config(
+    *,
+    model_type: str = DFLASH_EXPECTED_MODEL_TYPE,
+    architectures: list[str] | None = None,
+    dtype: str = DFLASH_EXPECTED_DTYPE,
+    num_hidden_layers: int = DFLASH_EXPECTED_LAYER_COUNT,
+    vocab_size: int = DFLASH_EXPECTED_VOCAB_SIZE,
+    block_size: int = DFLASH_EXPECTED_BLOCK_SIZE,
+    mask_token_id: int = DFLASH_EXPECTED_MASK_TOKEN_ID,
+    target_layer_ids: list[int] | None = None,
+    dflash_config: dict[str, object] | None = None,
+) -> dict[str, object]:
+    config: dict[str, object] = {
+        "architectures": architectures or ["DFlashDraftModel"],
+        "model_type": model_type,
+        "dtype": dtype,
+        "num_hidden_layers": num_hidden_layers,
+        "vocab_size": vocab_size,
+        "dflash_config": {
+            "block_size": block_size,
+            "mask_token_id": mask_token_id,
+            "target_layer_ids": target_layer_ids
+            or [1, 10, 18, 27, 35, 44, 52, 61],
+        },
+    }
+    if dflash_config is not None:
+        config["dflash_config"] = {**config["dflash_config"], **dflash_config}
+    return config
+
+
+def _write_dflash_snapshot(
+    base: Path,
+    name: str,
+    *,
+    config_overrides: dict[str, object] | None = None,
+    tensor_dtype=mx.bfloat16,
+    layer_count: int = DFLASH_EXPECTED_LAYER_COUNT,
+    metadata_format: str = DFLASH_EXPECTED_SAFETENSORS_FORMAT,
+) -> Path:
+    snapshot_dir = base / name
+    snapshot_dir.mkdir()
+    config = _build_dflash_config()
+    if config_overrides:
+        dflash_config_overrides = config_overrides.get("dflash_config")
+        if isinstance(dflash_config_overrides, dict):
+            config["dflash_config"] = {
+                **config["dflash_config"],
+                **dflash_config_overrides,
+            }
+        for key, value in config_overrides.items():
+            if key != "dflash_config":
+                config[key] = value
+    (snapshot_dir / "config.json").write_text(json.dumps(config))
+
+    arrays = {
+        "fc.weight": mx.zeros((2, 2), dtype=tensor_dtype),
+        "hidden_norm.weight": mx.zeros((2,), dtype=tensor_dtype),
+        "norm.weight": mx.zeros((2,), dtype=tensor_dtype),
+    }
+    for layer_index in range(layer_count):
+        arrays[f"layers.{layer_index}.self_attn.q_proj.weight"] = mx.zeros(
+            (2, 2),
+            dtype=tensor_dtype,
+        )
+    mx.save_safetensors(snapshot_dir / "model.safetensors", arrays, {"format": metadata_format})
+    return snapshot_dir
 
 
 class TestDFlashOptions(unittest.TestCase):
@@ -242,6 +323,117 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
             msg=f"expected Qwen-family blocker, got: {report.blockers}",
         )
 
+
+class TestDFlashSnapshotLoader(unittest.TestCase):
+    def test_loads_valid_dflash_snapshot_profile(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            snapshot_dir = _write_dflash_snapshot(temp_dir, "valid-dflash")
+
+            profile = load_dflash_snapshot_profile(snapshot_dir)
+
+        self.assertIsInstance(profile, DFlashSnapshotProfile)
+        self.assertEqual(profile.architectures, ("DFlashDraftModel",))
+        self.assertEqual(profile.model_type, DFLASH_EXPECTED_MODEL_TYPE)
+        self.assertEqual(profile.dtype, DFLASH_EXPECTED_DTYPE)
+        self.assertEqual(profile.num_hidden_layers, DFLASH_EXPECTED_LAYER_COUNT)
+        self.assertEqual(profile.vocab_size, DFLASH_EXPECTED_VOCAB_SIZE)
+        self.assertEqual(profile.block_size, DFLASH_EXPECTED_BLOCK_SIZE)
+        self.assertEqual(profile.mask_token_id, DFLASH_EXPECTED_MASK_TOKEN_ID)
+        self.assertEqual(profile.target_layer_ids, DFLASH_EXPECTED_TARGET_LAYER_IDS)
+        self.assertEqual(profile.safetensors_formats, ("pt",))
+        self.assertEqual(profile.tensor_dtypes, ("bfloat16",))
+        self.assertEqual(profile.tensor_layer_count, DFLASH_EXPECTED_LAYER_COUNT)
+        self.assertEqual(profile.safetensors_paths, (snapshot_dir / "model.safetensors",))
+
+    def test_rejects_non_dflash_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            snapshot_dir = _write_dflash_snapshot(
+                temp_dir,
+                "non-dflash",
+                config_overrides={
+                    "architectures": ["Qwen3_5ForConditionalGeneration"],
+                    "model_type": "qwen3_5",
+                },
+            )
+
+            with self.assertRaisesRegex(
+                DFlashSnapshotError,
+                "DFlash config.architectures",
+            ):
+                load_dflash_snapshot_profile(snapshot_dir)
+
+    def test_rejects_invalid_safetensors_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            snapshot_dir = _write_dflash_snapshot(
+                temp_dir,
+                "invalid-safetensors",
+                tensor_dtype=mx.float32,
+                layer_count=5,
+            )
+
+            with self.assertRaisesRegex(
+                DFlashSnapshotError,
+                "DFlash weights must all use 'bfloat16' dtype",
+            ):
+                load_dflash_snapshot_profile(snapshot_dir)
+
+    def test_probe_accepts_valid_local_dflash_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            target_dir = _write_qwen_model_dir(temp_dir, "target", "qwen3_5_text")
+            drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
+
+            with patch(
+                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                return_value=(True, ()),
+            ):
+                report = probe_dflash_readiness(
+                    DFlashBoundaryOptions(
+                        enabled=True,
+                        target_model_path=target_dir,
+                        drafter_model_path=drafter_dir,
+                        max_draft_tokens=4,
+                    )
+                )
+
+        self.assertEqual(report.blockers, ())
+        self.assertEqual(report.target_family, "qwen")
+        self.assertEqual(report.drafter_family, "qwen")
+
+    def test_probe_rejects_invalid_local_dflash_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            target_dir = _write_qwen_model_dir(temp_dir, "target", "qwen3_5_text")
+            drafter_dir = _write_dflash_snapshot(
+                temp_dir,
+                "drafter",
+                config_overrides={
+                    "dtype": "float32",
+                    "dflash_config": {"block_size": 8},
+                },
+            )
+
+            with patch(
+                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                return_value=(True, ()),
+            ):
+                report = probe_dflash_readiness(
+                    DFlashBoundaryOptions(
+                        enabled=True,
+                        target_model_path=target_dir,
+                        drafter_model_path=drafter_dir,
+                        max_draft_tokens=4,
+                    )
+                )
+
+        self.assertTrue(
+            any("bfloat16" in blocker or "block_size" in blocker for blocker in report.blockers),
+            msg=f"expected validation blocker details, got: {report.blockers}",
+        )
+
     def test_probe_ignores_path_only_qwen_snapshot_without_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
@@ -313,12 +505,12 @@ class TestDFlashRouting(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
             target_dir = _write_qwen_model_dir(temp_dir, "target", "qwen3_5_text")
-            drafter_dir = _write_qwen_model_dir(temp_dir, "drafter", "qwen3_5_text")
-            (drafter_dir / "weights.safetensors").unlink()
+            drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
+            (drafter_dir / "model.safetensors").unlink()
 
             with self.assertRaisesRegex(
                 DFlashUnavailableError,
-                "No local DFlash drafter weights found",
+                "No safetensors weights found",
             ):
                 create_generator(
                     kit,

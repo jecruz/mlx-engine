@@ -1220,6 +1220,14 @@ Mission inputs reviewed for this slice:
 - Test evidence: `tests/test_dflash_boundary.py` proves the disabled path still routes through the existing sequential generator path, while the enabled path raises an actionable no-go instead of changing baseline generation. The corrected readiness state now distinguishes drafter availability from native mlx-engine runtime support.
 - Decision: **READY FOR NATIVE FOUNDATION WORK, NOT A VALIDATED GENERATION CHANGE**. The local drafter and target assets now exist, so the stale M12 no-go is superseded in planning, but real DFlash validation still requires native mlx-engine foundation work and must remain default-off.
 
+### Native DFlash loader foundation 2026-06-27
+
+- Added `mlx_engine/utils/dflash_snapshot.py` to parse local drafter `config.json` plus safetensors headers and validate the DFlash snapshot contract before any execution path is considered.
+- The loader now rejects invalid or non-DFlash snapshots with clear blockers for `architectures`, `model_type`, `target_layer_ids`, `block_size`, `mask_token_id`, `vocab_size`, safetensors format, tensor dtype, and layer-count mismatches.
+- `probe_dflash_readiness()` now uses the native snapshot loader so the enabled DFlash path fails closed on malformed local snapshots while the disabled/default-off path remains unchanged.
+- Validation passed on the real local z-lab DFlash snapshot at `/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824`.
+- Focused pytest and the full milestone pytest gate passed after the change; no promotion/default-on decision was made.
+
 ### M12 scrutiny follow-up 2026-06-27
 
 - Fixed the suffix emission-order bug so `suffix_stream_generate()` yields the target model's first verified token before any suffix continuation tokens are considered.

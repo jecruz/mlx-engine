@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+from mlx_engine.utils.dflash_snapshot import DFlashSnapshotError, load_dflash_snapshot_profile
+
 
 DFLASH_ENV = "MLX_ENGINE_DFLASH"
 DFLASH_TARGET_MODEL_ENV = "MLX_ENGINE_DFLASH_TARGET_MODEL"
@@ -172,12 +174,6 @@ def _classify_qwen_family(model_path: Path | None) -> str | None:
     return "qwen"
 
 
-def _has_local_weights(model_path: Path | None) -> bool:
-    if model_path is None or not model_path.exists():
-        return False
-    return any(model_path.glob("*.safetensors"))
-
-
 def probe_dflash_readiness(
     options: DFlashBoundaryOptions,
 ) -> DFlashReadinessReport:
@@ -221,12 +217,11 @@ def probe_dflash_readiness(
             + ", ".join(missing_modules)
         )
 
-    if options.drafter_model_path is not None and not _has_local_weights(
-        options.drafter_model_path
-    ):
-        blockers.append(
-            f"No local DFlash drafter weights found at {options.drafter_model_path}"
-        )
+    if options.drafter_model_path is not None:
+        try:
+            load_dflash_snapshot_profile(options.drafter_model_path)
+        except DFlashSnapshotError as exc:
+            blockers.extend(exc.blockers)
 
     return DFlashReadinessReport(
         enabled=True,
