@@ -102,6 +102,21 @@ Write a quick sort algorithm in C++<|im_end|>
 "
 ```
 
+Classic speculative decoding with `--draft-model` is the standard
+autoregressive draft-model path.
+
+SuffixDecoding/N-gram speculation is an experimental sequential-text opt-in.
+It is default-off because repeated Qwen benchmark samples passed quality checks
+but did not prove a repeatable latency win.
+
+Native DFlash is also a default-off, fail-closed foundation for Qwen-family
+sequential text only. It wires local `DFlashDraftModel` drafter
+metadata/readiness, hidden-state hooks, a draft/verify scaffold, and KV/GDN
+rollback safety tests, but it is not a default runtime path or promotion-ready
+feature. DFlash is separate from standard autoregressive draft models and is
+not supported for VLM, batched, distributed, adapter, SpecPrefill, loaded
+`draft_model`, or unsupported cache-mode paths in this foundation stage.
+
 ## Development Setup
 
 ### Pre-commit Hooks
