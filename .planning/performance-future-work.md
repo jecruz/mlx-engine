@@ -1251,3 +1251,9 @@ Mission inputs reviewed for this slice:
 - Tests cover the default-off route, explicit DFlash routing, unsupported-surface blockers, and a direct fake-model smoke that asserts only verified tokens are emitted and proposal tokens never enter the live history before verification.
 - Validation completed: `ruff check mlx_engine/utils/dflash_runtime.py mlx_engine/utils/dflash_boundary.py mlx_engine/generate.py tests/test_dflash_boundary.py tests/test_dflash_runtime.py` and `pytest tests/test_dflash_boundary.py tests/test_dflash_runtime.py -q` both passed. A real smoke attempt against the local Qwen3.6-27B target path failed closed as VLM, which matches the new guardrails.
 
+### M13 KV/GDN rollback foundation 2026-06-27
+
+- Added focused rollback regression coverage in `tests/test_dflash_runtime.py` for all-accepted, first-token rejection, middle rejection, and tail rejection cases.
+- The rollback test now proves rejected DFlash tokens never remain in emitted history and that each prompt-cache layer is trimmed back to accepted length after partial rejection.
+- Validation completed: `pytest tests/test_dflash_runtime.py tests/test_dflash_boundary.py -q`, scoped `ruff check tests/test_dflash_runtime.py`, and the full milestone pytest gate all passed.
+
