@@ -1714,3 +1714,87 @@ The live gate probe still uses the pre-load validator and remains unchanged.
 | Phase-aware evidence JSON | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-phase-aware-preflight-evidence.json` |
 | Live gate evidence (re-recorded) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-current.json` |
 
+
+## M14 capped real-model DFlash smoke — runtime compatibility blockers, returned to orchestrator (2026-06-28)
+
+Feature `m14-dflash-capped-real-smoke` (this run) attempts the first capped real-model DFlash smoke with the Qwen3.6 27B target plus the z-lab Qwen3.5 DFlash drafter through the sequential text route, after the `m14-dflash-post-load-preflight-accounting` fix resolved the residual-memory blocker. Per the feature description ("If resource or compatibility problems appear, return to orchestrator with exact logs instead of retrying heavy loads blindly"), the smoke is returned to the orchestrator with exact logs rather than retried.
+
+### Smoke command and result
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --dflash \
+  --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 \
+  --dflash-max-draft-tokens 4 \
+  --prompt-suite-json /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_capped_smoke.json \
+  --runs 1 --max-tokens 16 --temperature 0.0 --top-p 1.0 \
+  --include-output-text
+```
+
+- **Smoke report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T052638.586203Z-shared-bench.json`
+- **Preflight status:** `ready_for_dflash_smoke=True cloud_only_listener=True blocked_listener=False` (precheck JSON: `.planning/dflash-resource-gate-evidence-smoke-precheck.json`).
+- **Telemetry (per-row `dflash` block):** `opted_in=true`, exact operator-provided target/drafter paths, `max_draft_tokens=4`, `sequential_text_only=true`, `uses_native_runtime=true`, `fallback_status=fallback_preflight`, `accepted_proposal_tokens=0`, `rejected_proposal_tokens=0`.
+- **Sequential text path verified in stderr:** the target loaded end-to-end without `RuntimeError: There is no Stream(...)` and ran the standard sequential ModelKit startup warmup (`prompt_tokens=25` → `513` → `4095` warmup, `token=446`, `ThreadLocalStream(Device(gpu, 0), 4)`, `mode=sequential`, `distributed=False`). The phase-aware post-load preflight no longer fails closed with `"Insufficient free memory for real-pair DFlash preflight"`, so the fix from `m14-dflash-post-load-preflight-accounting` (commit `412ee34`) is confirmed working.
+
+### Blocker (captured cleanly in the smoke report)
+
+The runner reached `dflash_stream_generate` (line 123 of `mlx_engine/utils/dflash_runtime.py`) and `validate_dflash_runtime_compatibility` raised `DFlashUnavailableError` BEFORE any token emission:
+
+```
+DFlashUnavailableError: DFlash no-go: DFlash does not support ragged cache layers yet;
+TextModel does not implement rollback_speculative_cache.
+Next steps: switch to a plain KVCache sequential path with a rollback-capable
+target model and keep DFlash default-off until a real sequential smoke passes.
+```
+
+Origin: `mlx_engine/utils/dflash_runtime.py:123` (the `validate_dflash_runtime_compatibility` guard). Traceback shows the failure occurred **after** the target loaded and **inside** `dflash_stream_generate`, not in preflight.
+
+### Direct ModelKit inspection of the loaded target
+
+A direct `ModelKit(...)` load of the same target (mirroring the `--mlx-engine-force-sequential` runner path) confirms the runtime blockers:
+
+```
+Loaded model_kit type=ModelKit
+  max_kv_size=None
+  kv_bits=None
+collected layers count=64
+layer type counts={'ArraysCache': 48, 'KVCache': 16}
+lm type=TextModel
+  has rollback_speculative_cache=False
+runtime blockers=['DFlash does not support ragged cache layers yet',
+                  'TextModel does not implement rollback_speculative_cache']
+```
+
+Two genuine gaps:
+
+1. **Ragged ArraysCache (GDN) layers.** The Qwen3.6 27B target, when loaded through `ModelKit`, produces 64 prompt-cache layers: 16 `KVCache` (full attention) + 48 `ArraysCache` (GDN linear-attention state). `validate_dflash_runtime_compatibility` flags every `ArraysCache` as a ragged cache layer because of the `lengths`/`left_padding` attribute check. This is the same opaque-cache surface that caused the resolved M1 warm-restore divergence (see `RESOLVED 2026-06-24` entry above); DFlash draft/verify needs a separate, GDN-aware rollback story before `ArraysCache` can be allowed through.
+
+2. **Missing `TextModel.rollback_speculative_cache`.** The patched Qwen3_5 TextModel (in `mlx_engine/model_kit/patches/qwen3_5.py`) exposes the target layers for DFlash hidden-state capture but does not yet implement `lm.rollback_speculative_cache(prompt_cache, gdn_states, accepted, block_size)`. `dflash_stream_generate` invokes that method after every partial DFlash rejection (line 371-375 of `mlx_engine/utils/dflash_runtime.py`); without it, the runtime is correctly fail-closed.
+
+### Why no retry is warranted
+
+- The preconditions and preflight are already passing (live probe: `ready_for_dflash_smoke=True`, sequential text path verified in stderr, phase-aware accounting working).
+- The failure is in `validate_dflash_runtime_compatibility` inside `dflash_stream_generate`, which is a *runtime* surface blocker, not a preflight one.
+- The two gaps above each require their own focused follow-up feature (TextModel GDN rollback support, then ArraysCache DFlash compatibility). A new capped smoke feature after those lands will be able to use the same command above.
+- No text-only Qwen3.6 MLX checkpoint is available locally (only the multimodal `Qwen3.6-27B-MLX-8bit` and the MoE `Qwen3.6-35B-A3B-MLX-8bit`, which is promotion-blocked); there is no text-only target we can substitute to work around the blockers.
+- DFlash remains default-off, sequential-text-only, and fail-closed. No LM Studio, no cheetara adapter (`3180`/`3181`/`3182`), no standard autoregressive `draft_model` loading path is used. The telemetry block (`sequential_text_only=true`, `uses_native_runtime=true`, `fallback_status=fallback_preflight`) confirms the no-fallback requirement.
+
+### Verdict
+
+The smoke **does not** complete with valid output under the token cap because of two genuine runtime compatibility blockers (ragged `ArraysCache` layers + missing `TextModel.rollback_speculative_cache`). The remaining assertions — sequential text route used, no VLM/batched/distributed/adapter fallback, no unverified token emission, telemetry captured — are satisfied. **Returning to orchestrator per the feature description** so the next worker can either (a) implement the missing `rollback_speculative_cache` and ArraysCache GDN support and re-run this same smoke, or (b) explicitly narrow the smoke scope to a target model that satisfies the existing dflash runtime compatibility checks.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| Capped smoke report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T052638.586203Z-shared-bench.json` |
+| Structured smoke evidence | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-capped-smoke-evidence.json` |
+| Prompt suite | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_capped_smoke.json` |
+| Live gate precheck | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-smoke-precheck.json` |
+| Phase-aware preflight evidence | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-phase-aware-preflight-evidence.json` |

@@ -1,0 +1,85 @@
+{
+  "feature": "m14-dflash-capped-real-smoke",
+  "date": "2026-06-28",
+  "scenario": "Run a capped real Qwen3.6 27B target + z-lab DFlash drafter sequential text smoke through direct shared_bench.py after the phase-aware preflight accounting fix.",
+  "preflight_status": {
+    "ready_for_dflash_smoke": true,
+    "cloud_only_listener": true,
+    "blocked_listener": false,
+    "evidence_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-smoke-precheck.json",
+    "phase_aware_preflight_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-phase-aware-preflight-evidence.json"
+  },
+  "model_paths": {
+    "target": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit",
+    "drafter_snapshot": "/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824",
+    "target_architectures": ["Qwen3_5ForConditionalGeneration"],
+    "target_model_type": "qwen3_5",
+    "target_language_model_only": false,
+    "target_image_token_id": 248056,
+    "target_num_hidden_layers": 64,
+    "target_vocab_size": 248320
+  },
+  "smoke_command": "env PYTHONPATH=. python3 shared_bench.py --engine mlx-engine --model <target> --mlx-engine-python <py312> --mlx-engine-force-sequential --dflash --dflash-target-model <target> --dflash-drafter-model <drafter> --dflash-max-draft-tokens 4 --prompt-suite-json prompt_suites/m14_dflash_capped_smoke.json --runs 1 --max-tokens 16 --temperature 0.0 --top-p 1.0 --include-output-text",
+  "smoke_report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T052638.586203Z-shared-bench.json",
+  "prompt_suite": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_capped_smoke.json",
+  "smoke_result": {
+    "runner_returncode": 0,
+    "row_error_present": true,
+    "row_error_class": "DFlashUnavailableError",
+    "row_error_message": "DFlash no-go: DFlash does not support ragged cache layers yet; TextModel does not implement rollback_speculative_cache. Next steps: switch to a plain KVCache sequential path with a rollback-capable target model and keep DFlash default-off until a real sequential smoke passes.",
+    "row_error_origin_file": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/utils/dflash_runtime.py",
+    "row_error_origin_line": 123,
+    "runner_exit_zero_meaning": "Process exit 0 is NOT success. Per-row error confirms fail-closed runtime compatibility blocker; no assistant output was generated."
+  },
+  "phase_progress": {
+    "phase_1_preflight_passed": {
+      "observation": "The phase-aware post-load preflight accounting fix (m14-dflash-post-load-preflight-accounting) worked. The Qwen3.6 27B target loaded end-to-end without 'Insufficient free memory' or any other preflight blocker.",
+      "stderr_evidence": "prompt_tokens=25 warmup -> 513 -> 4095 warmup, token=446, ThreadLocalStream(Device(gpu, 0), 4), mode=sequential, distributed=False",
+      "no_runtime_stream_failure": true
+    },
+    "phase_2_reached_dflash_stream_generate": {
+      "observation": "The runner reached dflash_stream_generate inside create_generator's DFlash path. validate_dflash_runtime_compatibility then raised DFlashUnavailableError before any token emission."
+    },
+    "phase_3_runtime_compatibility_blocked": {
+      "observation": "Two genuine runtime compatibility blockers, both raising inside validate_dflash_runtime_compatibility and confirmed by direct inspection of the loaded ModelKit:",
+      "blockers": [
+        {
+          "name": "ragged_arrays_cache_layers",
+          "message": "DFlash does not support ragged cache layers yet",
+          "root_cause": "The Qwen3.6 27B target, when loaded through ModelKit (sequential text), produces 64 prompt-cache layers: 16 KVCache + 48 ArraysCache. The 48 ArraysCache are GDN (Gated Delta Network) linear-attention state caches whose type name triggers the 'ragged cache layers' check inside validate_dflash_runtime_compatibility. ArraysCache was the original opaque-cache failure path (see performance-future-work.md 'RESOLVED 2026-06-24: warm-restore VLM image-understanding regression'), so the dflash boundary still treats it as ragged until DFlash draft/verify can prove it handles GDN state rollback.",
+          "evidence_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/utils/dflash_boundary.py (validate_dflash_runtime_compatibility; _collect_prompt_cache_layers)"
+        },
+        {
+          "name": "missing_rollback_speculative_cache",
+          "message": "TextModel does not implement rollback_speculative_cache",
+          "root_cause": "The patched Qwen3_5 TextModel (mlx_engine/model_kit/patches/qwen3_5.py) exposes the GDN target layer for DFlash capture but does not yet implement lm.rollback_speculative_cache(prompt_cache, gdn_states, accepted, block_size). dflash_runtime.py invokes that exact method after every partial DFlash rejection; without it, dflash_stream_generate raises DFlashUnavailableError before reaching the first emitted token.",
+          "evidence_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/patches/qwen3_5.py (TextModel); /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/utils/dflash_runtime.py line 371-375"
+        }
+      ]
+    }
+  },
+  "telemetry_block": {
+    "opted_in": true,
+    "target_model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit",
+    "drafter_model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824",
+    "max_draft_tokens": 4,
+    "sequential_text_only": true,
+    "uses_native_runtime": true,
+    "fallback_status": "fallback_preflight",
+    "accepted_proposal_tokens": 0,
+    "rejected_proposal_tokens": 0
+  },
+  "expected_vs_actual_behavior": {
+    "a_capped_real_qwen36_dflash_smoke_completes_through_sequential_text_route": "PARTIAL — sequential text route used (mode=sequential, distributed=False, ThreadLocalStream); target loaded; runtime compatibility check then failed closed before any token emission.",
+    "smoke_report_has_zero_row_errors_and_valid_assistant_output_under_the_token_cap": "FAIL — per-row DFlashUnavailableError captured cleanly; output_preview is empty; no assistant output produced.",
+    "evidence_proves_no_unsupported_fallback_or_adapter_lm_studio_route_was_used": "PASS — telemetry.sequential_text_only=true, uses_native_runtime=true, fallback_status=fallback_preflight (NOT fallback_unsupported_surface); no LM Studio, no cheetara adapter (3180/3181/3182), no standard autoregressive draft_model loading used.",
+    "smoke_artifacts_and_observations_are_recorded_for_later_quality_performance_features": "PASS — this JSON + the shared-bench report path + stderr evidence are recorded for follow-up features."
+  },
+  "verdict": "FAIL-CLOSED — runtime compatibility blockers (ragged ArraysCache layers + missing TextModel.rollback_speculative_cache) prevent the capped real-model smoke from emitting any target-verified token. Resource gate and preflight both pass; the failure is in dflash_stream_generate, not in preflight. Returning to orchestrator with exact logs per the feature description; retrying heavier loads without first patching the runtime compatibility surface is out of scope.",
+  "outstanding_followups": [
+    "Patch the Qwen3_5 TextModel (mlx_engine/model_kit/patches/qwen3_5.py) to implement rollback_speculative_cache(prompt_cache, gdn_states, accepted, block_size) so partial DFlash rejection can truncate GDN history without losing accepted-token state.",
+    "Extend validate_dflash_runtime_compatibility to either prove ArraysCache / GDN rollback is safe (and allow it through) or keep the ragged-cache blocker but document the Qwen3.6 27B GDN state as the supported next slice.",
+    "After both fixes land, rerun this same capped smoke command; the smoke report should then show error=null, output_preview containing the assistant answer (e.g. 'ok'), completion_tokens between 1 and 16, and the same telemetry block.",
+    "No text-only Qwen3.6 MLX checkpoint is present in /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community; the only Qwen3.6 MLX snapshots are the multimodal Qwen3.6-27B-MLX-8bit and the MoE Qwen3.6-35B-A3B-MLX-8bit (promotion-blocked). Until the runtime compatibility blockers above are fixed, the capped smoke cannot complete on the available target."
+  ]
+}
