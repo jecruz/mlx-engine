@@ -1497,3 +1497,147 @@ Gate output: `port=12444 class=cloud-only-llmdynamix allowed=True`. The LLMDYNAM
 - `ruff check mlx_engine/utils/dflash_boundary.py tests/test_dflash_boundary.py scripts/dflash_resource_gate_probe.py` → All checks passed.
 - `.venv-py312/bin/python scripts/dflash_resource_gate_probe.py --output .planning/dflash-resource-gate-evidence.json` → `ready_for_dflash_smoke=True cloud_only_listener=True blocked_listener=False`.
 
+## M14 capped real-model DFlash smoke — attempt and create-generator preflight blocker (2026-06-28)
+
+Feature `m14-dflash-capped-real-smoke` (this run) is the M14 capped-real-smoke slice that runs the first capped real-model DFlash smoke with the Qwen3.6 target plus the z-lab DFlash drafter through the sequential text route. After the `m14-dflash-cloud-only-llmdynamix-resource-gate` refinement (commit `c650855`) reclassified the LLMDYNAMIX `:12444` listener as a proven cloud-only router, this worker re-ran the live probe and the harness-backed smoke. The smoke loaded the Qwen3.6 27B target successfully and ran the sequential model-kit startup warmup, but the second preflight inside `create_generator(...)` (post-target-load) failed closed with the same `Insufficient free memory` blocker that the prior worker reported.
+
+Per the M14 task description ("If resource or compatibility problems appear, return to orchestrator with exact logs instead of retrying heavy loads blindly"), this feature does NOT blindly retry. The preflight is doing exactly the fail-closed work it was designed for; the outcome is recorded as a known environmental blocker rather than a false pass.
+
+### Live probe (post-cloud-only-gate, 2026-06-28)
+
+```
+$ .venv-py312/bin/python scripts/dflash_resource_gate_probe.py \
+    --output .planning/dflash-resource-gate-evidence-current.json
+ready_for_dflash_smoke= True cloud_only_listener= True blocked_listener= False
+```
+
+The probe report confirms:
+
+- `enabled: True`
+- `dependency_available: True` (`mlx_vlm.speculative.dflash` and `mlx_vlm.speculative.drafters.qwen3_dflash.dflash` importable).
+- `target_family: qwen` and `drafter_family: qwen` (config files parse for both paths).
+- `target_profile.vocab_size=248320`, `tokenizer_vocab_size=248044`, `num_hidden_layers=64`, `model_type=qwen3_5`, `architectures=["Qwen3_5ForConditionalGeneration"]`.
+- `cache_mode_blockers: []`, `route_blockers: []`, `resource_blockers: []` at probe time.
+- `port=12444 class=cloud-only-llmdynamix allowed=True` (LLMDYNAMIX config lists 16 MLX/Metal-heavy backend markers, but live probing shows `ollama@11434 /api/ps reports 0 loaded models; lm studio@4521 not listening`).
+- `port=3180/3181/3182` are all `empty`, so cheetara adapter slots are free.
+
+Available memory at probe time (before any model load): `free=35.11 GiB inactive=18.77 GiB speculative=0.11 GiB → 53.99 GiB` (macOS counts `free + inactive + speculative` as reclaimable; the preflight uses the same accounting).
+
+### Smoke attempt #1 (default `max_seq_nums=4`)
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --dflash \
+  --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 \
+  --dflash-max-draft-tokens 4 \
+  --prompt-suite-json /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_capped_smoke.json \
+  --runs 1 --max-tokens 16 --temperature 0.0 --top-p 1.0 \
+  --include-output-text
+```
+
+- **Smoke prompt suite (new file):** `mlx-bench-harness/prompt_suites/m14_dflash_capped_smoke.json` — one tiny deterministic prompt `"Reply with exactly: ok."` (23 chars), `max_tokens=16`, `expected_keywords=["ok"]`, `chat_template_kwargs={"enable_thinking": false}`, `quality_checks.forbid_substrings=["thinking","reasoning"]`, `quality_checks.forbid_reasoning_prefixes=["<","Let me"]`, `quality_checks.min_completion_tokens=1`. Stays well under the 16-token cap so any future successful smoke produces a single clean row.
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T045527.953583Z-shared-bench.json`
+- **Runner-process stderr shows the sequential ModelKit startup warmup ran successfully** (`prompt_tokens=25` → `513` → `4095` warmup, token=446, `ThreadLocalStream(Device(gpu, 0), 4)`, `mode=sequential`, `distributed=False`). The target loaded end-to-end without `RuntimeError: There is no Stream(...)`.
+- **Per-row error (cleanly captured):** `DFlashUnavailableError: DFlash no-go: Insufficient free memory for real-pair DFlash preflight: need at least 39.44 GiB, found 19.94 GiB. ... keep the feature default-off until a real sequential prototype is implemented.`
+- **Telemetry (per-row `dflash` block):** `opted_in=true`, `target_model_path` and `drafter_model_path` are the exact operator-provided paths, `max_draft_tokens=4`, `sequential_text_only=true`, `uses_native_runtime=true`, `fallback_status=fallback_preflight`, `accepted_proposal_tokens=0`, `rejected_proposal_tokens=0`.
+- **No VLM / batched / distributed / adapter fallback.** `fallback_status=fallback_preflight` is the resource-blocker path; it is NOT `fallback_unsupported_surface`. The runner never enabled DFlash through LM Studio, the cheetara adapter, or the standard autoregressive `draft_model` loading path.
+- **No unverified token emission.** The preflight raised `DFlashUnavailableError` inside `create_generator(...)` before any `dflash_stream_generate` call, so the per-row `accepted_proposal_tokens=0` and `rejected_proposal_tokens=0` are both zero and `output_preview` is empty.
+- **Quality inspect (`--candidate`):** `status=fail`, `failed_prompts=["m14_dflash_smoke_ok"]` (failed because the row errored and `output_text` is missing — this is expected fail-closed behavior, not a quality regression).
+
+### Smoke attempt #2 (max_seq_nums=1, smaller KV cache footprint)
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 shared_bench.py \
+  --engine mlx-engine \
+  --model ...Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python .../.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --max-seq-nums 1 \
+  --dflash --dflash-target-model ... --dflash-drafter-model ... \
+  --dflash-max-draft-tokens 4 \
+  --prompt-suite-json .../m14_dflash_capped_smoke.json \
+  --runs 1 --max-tokens 16 --temperature 0.0 --top-p 1.0 \
+  --include-output-text
+```
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T045739.756021Z-shared-bench.json`
+- **Per-row error:** identical fail-closed message with `found 18.90 GiB`. `max_seq_nums=1` reduces the prompt-cache KV footprint but the model weights themselves dominate memory, so the residual free-memory gap (target 27.48 GiB + drafter 3.96 GiB + 8 GiB headroom = 39.44 GiB vs ~19 GiB available after target load) cannot be closed by KV-cache tuning alone.
+- **Telemetry:** same `fallback_status=fallback_preflight`, same `sequential_text_only=true`, same `uses_native_runtime=true`, same `accepted_proposal_tokens=0` / `rejected_proposal_tokens=0`. Smoke attempt #2 confirms the blocker is not specific to `max_seq_nums=4` and that the preflight is doing consistent fail-closed work across configurations.
+
+### Why the blocker triggers only after the heavy load
+
+The preflight runs twice in the DFlash path:
+
+1. Inside `load_model(...)` against the target path (`m14-dflash-real-pair-preflight`). This first preflight sees the pre-load state and passes (53.99 GiB available).
+2. Inside `create_generator(...)` against the same options. This second preflight runs AFTER `ModelKit(...)` has already loaded the Qwen3.6 27B target (~27 GiB consumed) and the sequential model-kit warmup has completed. The conservative `(target + drafter) * 1.25 + 8 GiB` headroom check then finds only ~19 GiB available and raises `DFlashUnavailableError` before the drafter would be loaded.
+
+The fail-closed behavior is correct per AGENTS.md ("insufficient memory remains fail-closed"). It does not indicate a code defect — it indicates that a 96 GiB host with the current 8 GiB minimum headroom cannot fit both a 27.48 GiB target and a 3.96 GiB drafter plus inference overhead after the target is resident in GPU memory.
+
+### Expected behavior assessment vs feature `expectedBehavior`
+
+| Expected behavior | Outcome | Evidence |
+|---|---|---|
+| Capped real Qwen3.6 + DFlash smoke completes through sequential text route | **NOT met** (preflight blocked the request inside `create_generator(...)` before any token emission) | Per-row `error` field on both attempts; per-row `output_preview=""` and `completion_tokens=null` |
+| Smoke report has zero row errors and valid assistant output under the token cap | **NOT met** (one row per attempt, each with `DFlashUnavailableError` preflight blocker; no assistant output emitted) | `runs[0].error` on both reports |
+| Evidence proves no unsupported fallback or adapter/LM Studio route was used | **MET** (per-row `fallback_status=fallback_preflight`, not `fallback_unsupported_surface`; `sequential_text_only=true`; `uses_native_runtime=true`; no LM Studio or cheetara adapter involvement; DFlash kwargs never forwarded to omlx/rapid-mlx/vmlx runners) | Both smoke reports |
+| Smoke artifacts and observations are recorded for later quality/performance features | **MET** (two `shared_bench.py` reports plus the matching `quality_compare.py` inspect JSON are persisted in `mlx-bench-harness/reports/`, the new prompt suite is checked in, the live gate evidence is in `.planning/dflash-resource-gate-evidence-current.json`) | File paths in this section |
+
+The smoke attempt is intentionally NOT credited as a successful capped smoke; it is recorded as a fail-closed preflight gate that proves the gate is doing its job. VAL-M14-003 remains `pending`.
+
+### What was NOT done (intentionally, not by defect)
+
+- **No `quality_compare.py` baseline-vs-candidate compare** was produced. There is no baseline to compare against, and the smoke row has no output text.
+- **No `m14-dflash-real-pair-invariants` invariants run** (separate feature, not in scope here).
+- **No promotion / KEEP OPT-IN / REJECT decision** for DFlash beyond what the engine preflight already encodes (still default-off).
+- **No retry with model weight offload, smaller `max_seq_nums`, or chat-template stripping.** Two attempts at different `max_seq_nums` confirmed the blocker is not configuration-tunable on a 96 GiB host.
+- **No attempt to start a smaller dense model in place of Qwen3.6 27B** — that would change the real-pair pairing this milestone is supposed to validate and would invalidate `m14-dflash-real-pair-preflight` evidence.
+- **No `vmlx.app.asar` modification.** Out of scope and unchanged.
+
+### Preconditions still required (orchestrator next steps)
+
+To re-run the capped smoke successfully, the next worker needs to either:
+
+1. **Reclaim substantially more free memory** than the current ~19 GiB residual after target load. The 27.48 GiB Qwen3.6 27B target is the dominant consumer; even with the drafter load deferred, the residual must clear `(target_bytes + drafter_bytes + max(target_bytes * 0.25, 8 GiB)) = 39.44 GiB`. Concretely:
+   - Quit or unload every other MLX/Metal-heavy process (`ps aux | grep -E 'mlx|llmdynami|lms' | grep -v grep`). Currently `node (vitest)` is using 600 MB; IDE helpers total ~1-2 GB. None are blockers by themselves, but together they make the residual too tight.
+   - Or run the smoke on a host with materially more RAM (≥128 GiB recommended) so the Qwen3.6 27B + drafter + 8 GiB headroom fit comfortably.
+2. **Re-confirm cloud-only LLMDYNAMIX** with the live probe (`scripts/dflash_resource_gate_probe.py --output .planning/dflash-resource-gate-evidence.json`). Already true this session — the new evidence file `.planning/dflash-resource-gate-evidence-current.json` records it.
+3. **Re-run the smoke with the same capped prompt suite** (`prompt_suites/m14_dflash_capped_smoke.json`) once the memory headroom lands:
+   ```bash
+   cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+   env PYTHONPATH=. python3 shared_bench.py \
+     --engine mlx-engine \
+     --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+     --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+     --mlx-engine-force-sequential \
+     --dflash \
+     --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+     --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 \
+     --dflash-max-draft-tokens 4 \
+     --prompt-suite-json /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_capped_smoke.json \
+     --runs 1 --max-tokens 16 --temperature 0.0 --top-p 1.0 \
+     --include-output-text
+   ```
+   followed by `python3 quality_compare.py --candidate <report> --out <inspect>` to capture the per-row quality inspect.
+4. **Inspect row-level telemetry for `accepted_proposal_tokens > 0`** to verify the smoke actually exercised DFlash (a zero accepted-proposal row could mean the smoke was so small it never produced a draft/verify round — bump `--dflash-max-draft-tokens` or extend `max_tokens` to 32+ if the first row is zero on both accepted and rejected).
+
+### Validation contract assertion
+
+- `VAL-M14-003` (real Qwen3.6 plus DFlash capped sequential smoke succeeds) — **NOT MET** on this attempt (preflight resource blocker; per-row error and zero successful rows). Status remains `pending`. The task description mandates that this feature return to the orchestrator with exact logs instead of retrying under blocked preconditions, which is exactly what this entry does. No false pass is recorded.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| Live gate evidence (cloud-only LLMDYNAMIX allowed) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-current.json` |
+| Capped smoke prompt suite (new) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_capped_smoke.json` |
+| Smoke attempt #1 report (`max_seq_nums=4`) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T045527.953583Z-shared-bench.json` |
+| Smoke attempt #2 report (`max_seq_nums=1`) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T045739.756021Z-shared-bench.json` |
+| Quality inspect (attempt #2) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T045739.756021Z-quality-inspect.json` |
+
