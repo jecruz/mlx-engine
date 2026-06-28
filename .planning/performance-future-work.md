@@ -1363,3 +1363,87 @@ Mission inputs reviewed for this slice:
 - Added focused coverage for the exact M13 target layer list `[1,10,18,27,35,44,52,61]` through a native sequential smoke, plus fail-closed regression tests for the unsupported cache modes.
 - Validation completed: focused DFlash pytest, scoped `ruff check` on the touched engine/test files, and the full `services.yaml` milestone pytest gate all passed.
 
+## M14 capped real-model DFlash smoke — precondition not met, returned to orchestrator (2026-06-28)
+
+Feature `m14-dflash-capped-real-smoke` is the M14 capped-real-smoke slice that runs the first capped real-model DFlash smoke with the Qwen3.6 target plus the z-lab DFlash drafter through the sequential text route. This entry records **why the smoke was deferred and returned to the orchestrator** rather than retried blindly: the precondition "No concurrent MLX/Metal-heavy service is running" is **not met** on this machine, and the live preflight correctly fails closed on resource and port-reservation blockers.
+
+### Precondition check (exact preflight output, current machine state)
+
+The preflight was re-run on 2026-06-28 under `.venv-py312/bin/python` against the real Qwen3.6 target and the real z-lab DFlash drafter snapshot via `mlx_engine.utils.dflash_boundary.probe_dflash_readiness(...)`. Output:
+
+```
+=== M14 DFlash preflight (current state) ===
+enabled: True
+dependency_available: True
+target_family: qwen
+drafter_family: qwen
+target_profile: vocab_size=248320 num_hidden_layers=64 dtype=bfloat16 model_type=qwen3_5
+route_blockers: ()
+cache_mode_blockers: ()
+resource_blockers: ('Insufficient free memory for real-pair DFlash preflight: need at least 39.44 GiB, found 39.38 GiB', 'Reserved DFlash resource port 127.0.0.1:12444 is already in use')
+blockers: ('Insufficient free memory for real-pair DFlash preflight: need at least 39.44 GiB, found 39.38 GiB', 'Reserved DFlash resource port 127.0.0.1:12444 is already in use')
+```
+
+The preflight correctly parses both exact paths (`Qwen3.6-27B-MLX-8bit` and `models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824`), classifies both as Qwen-family, matches vocab_size (248320) and target layer IDs (1, 10, 18, 27, 35, 44, 52, 61 against the target's `num_hidden_layers=64`), and reports `dependency_available=True` for `mlx_vlm.speculative.dflash` + `mlx_vlm.speculative.drafters.qwen3_dflash.dflash`. No `route_blockers` or `cache_mode_blockers` are raised — the blockers are entirely resource / port-reservation blockers.
+
+### Why the smoke was returned to orchestrator instead of retried
+
+Two blockers violate the "No concurrent MLX/Metal-heavy service is running" precondition and the M14 safe-load guidance in AGENTS.md:
+
+1. **Reserved DFlash resource port `127.0.0.1:12444` is already in use.** `lsof -i :12444` shows the LLMDYNAMIX engine process (`llmdynamix-engine -config /Users/jeffreycruz/.llmdynamix/merged-config.yaml`, PID 3157) is actively listening. `curl -fsS http://127.0.0.1:12444/v1/models` returns an OpenAI-compatible model list containing multiple Qwen3.6-27B quantizations (`qwen3.6-27b@q4_k_m`, `qwen3.6-27b@q4_k_s`, `qwen3.6-27b-mlx`, `qwen3.6-27b-ud-mlx`, `qwen3.6-27b-optiq`, etc.) plus the `mlx-community/qwen3.6-27b` and `lmstudio-community/qwen3.6-27b` entries, alongside Gemma-4, Nemotron, GLM, Kimi, MiniMax, and a number of Ollama / ocelot / anthropic / openai / CMD / google entries. The service is currently active and serving real inference traffic (an ESTABLISHED connection from the current droid session to localhost:12444 is visible in `lsof` output). Per AGENTS.md, the M14 DFlash real-model validation must run only one MLX/Metal-heavy workload at a time, and Qwen CLI validation is the only sanctioned user of `:12444` (M10 scope). A concurrent M14 DFlash load would either steal the reserved port or contend with the live LLMDYNAMIX model for Metal and memory.
+
+2. **Insufficient free memory for the real-pair DFlash preflight: need at least 39.44 GiB, found 39.38 GiB.** `vm_stat` reports `Pages free: 1302403`, `Pages inactive: 1229542`, `Pages speculative: 108120` with `page size 16384 bytes`, summing to roughly `(1302403 + 1229542 + 108120) * 16384 / 1024^3 = 40.15 GiB` available. The preflight subtracts the target + drafter safetensors byte footprint plus a 25% headroom (minimum 8 GiB), and the math lands the machine only 60 MB above the resource blocker cutoff. Loading two heavyweight MLX models in this state has no safety margin and would either OOM or trigger Metal thrashing.
+
+Per the M14 task description ("If resource or compatibility problems appear, return to orchestrator with exact logs instead of retrying heavy loads blindly") and the AGENTS.md "M14 DFlash real-model validation may load a 4.7 GB drafter plus a Qwen3.6 27B target, so validators must require resource preflight and run only one real-model smoke or benchmark at a time", this feature does NOT retry the smoke. It returns to the orchestrator with the exact preflight blockers captured above.
+
+### What was NOT done (intentionally, not by defect)
+
+- **No `shared_bench.py` capped-smoke invocation was attempted.** The harness is wired and the `--dflash*` flags plus `quality_compare.py` inspect mode are already in place from the prior `m14-dflash-harness-flags-telemetry` feature; this feature chose to NOT consume Metal by starting a real Qwen3.6 + DFlash load against the active LLMDYNAMIX service and the 39.38 GiB free memory floor.
+- **No `quality_compare.py --candidate` inspect was produced.** A smoke report is required first.
+- **No promotion / KEEP OPT-IN / REJECT decision was recorded.** VAL-M14-003 cannot be satisfied without a smoke report, and the active machine state forbids producing one safely.
+- **No `vmlx.app.asar` modification.** Out of scope and unchanged.
+
+### Preconditions still required (orchestrator next steps)
+
+To make this feature completable on a future session, the orchestrator must arrange the following before retrying the smoke:
+
+1. **Stop / unload the LLMDYNAMIX model serving on `:12444`** so the reserved M14 resource port is free. Either unload the active Qwen model from the LLMDYNAMIX engine process (PID 3157) or stop the LLMDYNAMIX engine process entirely between worker sessions, per the AGENTS.md "MLX-heavy workloads run sequentially" rule.
+2. **Reclaim at least ~2 GiB of free memory** so the preflight's `(target_bytes + drafter_bytes) * 1.25 + 8 GiB` budget lands cleanly above the cutoff with safety margin. The preflight currently reports 39.38 GiB free vs 39.44 GiB required; the gap is ~60 MB but a full smoke load will push the machine into Metal page-in territory and needs more headroom than that.
+3. **Confirm no other MLX/Metal-heavy service is running** (`lsof -i :12444`, `lsof -i :3180`, `lsof -i :3181`, `lsof -i :3182`, and `ps aux | grep -E 'mlx|llmdynami|lms'` should be clean except for the worker under test).
+
+Once those preconditions hold, a future worker can re-run the capped smoke with:
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --force-sequential \
+  --dflash \
+  --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 \
+  --dflash-max-draft-tokens 4 \
+  --prompt-suite-json <capped_text_suite> \
+  --runs 1 --max-tokens 16 --temperature 0.0 --top-p 1.0 \
+  --include-output-text \
+  --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+```
+
+followed by `python3 quality_compare.py --candidate <report> --out <inspect>` to capture the inspect-mode status the M14 row-error / zero-error / no-fallback assertion requires. The capped text suite must be a tiny deterministic single-prompt JSON (e.g. `{"id":"m14_dflash_smoke","user":"Reply with exactly: ok.","max_tokens":16}` or the existing `task_diverse_deterministic_quality.json` reduced to one prompt), so the smoke stays well under the 16-token cap and produces a single row for evidence inspection.
+
+### Validation contract assertion
+
+- `VAL-M14-003` (real Qwen3.6 plus DFlash capped sequential smoke succeeds) — **DEFERRED** (status remains `pending` in `validation-state.json`). The M14 task description mandates that this feature return to the orchestrator with exact logs instead of retrying under blocked preconditions, which is exactly what this entry does. No false pass is recorded. The assertion will be re-evaluated by the next worker once the orchestrator resolves the LLMDYNAMIX conflict and the memory headroom.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| Preflight run command (this feature) | `.venv-py312/bin/python -c "from pathlib import Path; from mlx_engine.utils.dflash_boundary import DFlashBoundaryOptions, probe_dflash_readiness; ..."` (verbatim above) |
+| Preflight blocker record | `mlx_engine.utils.dflash_boundary.DFlashReadinessReport.resource_blockers` (verbatim above) |
+| LLMDYNAMIX port-conflict record | `lsof -i :12444` shows `llmdynamix-engine` PID 3157 LISTEN with ESTABLISHED connections from droid |
+| Memory state record | `vm_stat` (above) — `(1302403 + 1229542 + 108120) * 16384 / 1024^3 = 40.15 GiB` raw, ~39.38 GiB after preflight headroom subtraction |
+| Target path | `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit` (verified, 6 safetensors, vocab 248320, num_hidden_layers 64) |
+| Drafter path | `/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824` (verified, `architectures=["DFlashDraftModel"]`, `model_type=qwen3`, target_layer_ids `[1,10,18,27,35,44,52,61]`, vocab 248320, 6 layers) |
+
