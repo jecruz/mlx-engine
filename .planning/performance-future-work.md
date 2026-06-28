@@ -64,12 +64,59 @@ Feature `m1-warm-restore-image-fidelity` fixes the warm-restore divergence on th
 
 ## M14 real-pair DFlash preflight check (2026-06-27)
 
-Feature `m14-dflash-real-pair-preflight` added a fail-fast DFlash readiness gate before heavyweight model loading. The live probe below used the exact target/drafter pair requested by the mission and failed closed before any heavyweight load because a reserved resource port was already occupied.
+Feature `m14-dflash-real-pair-preflight` added a fail-fast DFlash readiness gate before heavyweight model loading. The preflight runs inside `load_model(...)` and inside `create_generator(...)` so it triggers before any DFlash-bearing request reaches the model kit. The gate validates the real Qwen3.6 target plus the z-lab DFlash drafter snapshot end-to-end and fails closed when compatibility, cache mode, route, memory headroom, or port-reservation constraints are violated.
+
+### Target and drafter paths
 
 - **Target path:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit`
 - **Drafter path:** `/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824`
-- **Live probe result:** `DFlash no-go: Reserved DFlash resource port 127.0.0.1:12444 is already in use.`
-- **Meaning:** the new preflight stops the pair before heavyweight model load when resource isolation is unsafe.
+
+### Preflight checks (fail-fast before heavyweight load)
+
+1. **Path existence** — both target and drafter snapshot paths must exist and be readable directories.
+2. **Tokenizer / config files** — target must expose `config.json`, `tokenizer.json`, `tokenizer_config.json`, and `vocab.json`; drafter must expose `config.json` and at least one safetensors file.
+3. **Vocab size compatibility** — `vocab_size` parsed from target `config.json` must match the drafter `vocab_size` and remain within tolerance of the target `vocab.json` tokenizer vocab.
+4. **Target layer IDs** — drafter `dflash_config.target_layer_ids` (`[1,10,18,27,35,44,52,61]`) must all be within `num_hidden_layers` of the target (Qwen3.6 27B has `num_hidden_layers=64`).
+5. **DFlash config** — drafter must declare `architectures=["DFlashDraftModel"]`, `model_type=qwen3`, BF16 dtype, `block_size=16`, `mask_token_id=248077`, and the expected target layer IDs.
+6. **Qwen-family metadata** — both target and drafter must classify as Qwen-family via `model_type` + `architectures` (with path-only matches explicitly rejected when metadata is absent).
+7. **Optional dependency availability** — `mlx_vlm.speculative.dflash` and `mlx_vlm.speculative.drafters.qwen3_dflash.dflash` must be importable.
+8. **Cache mode compatibility** — rejects `kv_bits`, `kv_group_size`, `quantized_kv_start`, bounded/rotating cache layers, ragged cache layers (`ArraysCache` / `BatchKVCache`), and non-rollback-safe cache layers.
+9. **Route compatibility** — rejects `is_vlm_route=True`, `vocab_only=True`, `distributed=True`, `max_seq_nums > 1`, `specprefill=True`, `num_draft_tokens`, already-loaded `model_kit.draft_model`, persistent VLM prompt-cache root, and persistent VLM prompt-cache admission tokens.
+10. **Resource isolation** — checks the reserved mission ports (`127.0.0.1:3180`, `3181`, `3182`, `12444`) for occupancy and estimates free memory against target + drafter safetensors byte footprint with a 25% headroom (minimum 8 GiB) before allowing the pair to load.
+
+### Live probe result (current machine state)
+
+```
+Target exists: True
+Drafter exists: True
+=== Live probe result ===
+enabled: True
+dependency_available: True
+target_family: qwen
+drafter_family: qwen
+target_profile is not None: True
+  vocab_size: 248320
+  tokenizer_vocab_size: 248044
+  num_hidden_layers: 64
+  model_type: qwen3_5
+route_blockers: ()
+cache_mode_blockers: ()
+resource_blockers: ('Insufficient free memory for real-pair DFlash preflight: need at least 39.44 GiB, found 37.64 GiB',
+                   'Reserved DFlash resource port 127.0.0.1:12444 is already in use')
+```
+
+### Behavior: fails closed without heavyweight load
+
+The probe correctly identifies the real pair, parses both Qwen-family metadata, matches vocab and layer ID compatibility, and then fails closed because the active machine does not yet have enough free memory (target+drafter need ≥39.44 GiB; only 37.64 GiB free) and the Qwen LLMDYNAMIX route on `127.0.0.1:12444` is currently bound. No safetensors load or model kit construction begins under these blockers; the preflight raises `DFlashUnavailableError` before `ModelKit(...)` is constructed.
+
+### Verification
+
+- `.venv-py312/bin/python -m pytest tests/test_dflash_boundary.py -q` → **18 passed / 13 subtests passed / 0 failed** under `.venv-py312`.
+- `test_real_pair_preflight_accepts_target_and_drafter_metadata` exercises both exact mission paths and asserts vocab_size, tokenizer_vocab_size, Qwen-family classification, and target layer ID coverage when memory and ports are unblocked.
+- `test_load_model_fails_fast_before_heavy_model_creation` proves the preflight runs before `ModelKit(...)` and raises `DFlashUnavailableError` instead of constructing a model kit.
+- `test_preload_compatibility_rejects_incompatible_route_and_cache_mode` proves every unsupported route and cache mode (VLM, `vocab_only`, distributed, `max_seq_nums>1`, `kv_bits`, `kv_group_size`, `quantized_kv_start`, persistent VLM prompt-cache) is rejected.
+- Full mission pytest gate (`services.yaml` `commands.test`) → **257 passed / 16 skipped / 0 failed** after the M14 preflight work.
+- `ruff check mlx_engine/utils/dflash_boundary.py mlx_engine/generate.py tests/test_dflash_boundary.py` → clean.
 
 ## Remaining experiments worth trying
 
