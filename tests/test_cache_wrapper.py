@@ -295,18 +295,17 @@ class TestCacheWrapper(unittest.TestCase):
         with (
             patch("mlx_engine.cache_wrapper.mx.stream", side_effect=_no_op_stream),
             patch("mlx_engine.cache_wrapper.mx.eval"),
-            patch("mlx_engine.cache_wrapper.mx.clear_cache") as clear_cache,
-            patch("mlx_engine.cache_wrapper.mx.synchronize"),
+            patch.object(session, "_clear_cache_now") as clear_cache_now,
         ):
             session.update_cache(prompt_tokens=prompt, reporter=RecordingReporter())
-            self.assertEqual(clear_cache.call_count, 0)
+            self.assertEqual(clear_cache_now.call_count, 0)
 
             for _ in range(DEFERRED_CLEAR_DELAY_STEPS - 1):
                 session.record_generated_token(99)
-            self.assertEqual(clear_cache.call_count, 0)
+            self.assertEqual(clear_cache_now.call_count, 0)
 
             session.record_generated_token(100)
-            self.assertEqual(clear_cache.call_count, 1)
+            self.assertEqual(clear_cache_now.call_count, 1)
 
     def test_store_snapshot_clones_cache_entries(self):
         model = FakeModel()
