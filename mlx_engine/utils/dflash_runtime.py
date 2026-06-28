@@ -21,6 +21,8 @@ from mlx_engine.model_kit.model_kit import ModelKit
 from mlx_engine.utils.dflash_boundary import (
     DFlashBoundaryOptions,
     DFlashUnavailableError,
+    build_dflash_runtime_no_go_message,
+    validate_dflash_runtime_compatibility,
 )
 from mlx_engine.utils.generation_helpers import (
     create_stop_string_processor,
@@ -116,6 +118,12 @@ def dflash_stream_generate(
     if prompt_progress_reporter is None:
         prompt_progress_reporter = LoggerReporter()
 
+    runtime_blockers = validate_dflash_runtime_compatibility(model_kit)
+    if runtime_blockers:
+        raise DFlashUnavailableError(
+            build_dflash_runtime_no_go_message(runtime_blockers)
+        )
+
     set_seed(seed)
 
     generate_args: dict[str, Any] = {}
@@ -149,11 +157,14 @@ def dflash_stream_generate(
     if prompt_cache is None:
         prompt_cache = _copy_prompt_cache(model_kit)
 
+    target_model = getattr(model_kit, "model", model_kit)
+    lm = target_model.language_model if hasattr(target_model, "language_model") else target_model
+
     draft_model = (
         dflash_draft_model
         if dflash_draft_model is not None
         else load_dflash_drafter_model(
-            getattr(model_kit, "model", model_kit),
+            target_model,
             dflash_options.drafter_model_path,
         )
     )
@@ -289,13 +300,6 @@ def dflash_stream_generate(
             return
 
         hidden = mx.concatenate(verify_out.hidden_states, axis=-1)
-        target_model = getattr(model_kit, "model", model_kit)
-        lm = target_model.language_model if hasattr(target_model, "language_model") else target_model
-        if not hasattr(lm, "rollback_speculative_cache"):
-            raise DFlashUnavailableError(
-                f"{type(lm).__name__} does not implement rollback_speculative_cache"
-            )
-
         emitted = len(emitted_history)
         while emitted < max_tokens:
             block_total = _dflash_block_total(draft_model, dflash_options.max_draft_tokens)

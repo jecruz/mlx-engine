@@ -241,6 +241,7 @@ def validate_dflash_surface_compatibility(
     speculative_decoding_toggle: Optional[bool],
     num_draft_tokens: Optional[int],
     draft_model: Any | None,
+    model_kit_draft_model: Any | None = None,
 ) -> tuple[str, ...]:
     """Fail closed for unsupported DFlash surfaces."""
 
@@ -254,13 +255,99 @@ def validate_dflash_surface_compatibility(
         blockers.append("DFlash is not enabled for VLM/image surfaces yet")
     if specprefill_toggle is True:
         blockers.append("DFlash cannot be combined with SpecPrefill yet")
-    if speculative_decoding_toggle is True or num_draft_tokens is not None:
-        blockers.append(
-            "DFlash cannot be combined with loaded draft_model speculation yet"
-        )
+    if speculative_decoding_toggle is True:
+        blockers.append("DFlash cannot be combined with speculative decoding yet")
+    if num_draft_tokens is not None:
+        blockers.append("DFlash cannot be combined with num_draft_tokens yet")
     if draft_model is not None:
-        blockers.append("DFlash cannot be combined with a loaded draft_model yet")
+        blockers.append("DFlash cannot be combined with a draft_model kwarg yet")
+    if model_kit_draft_model is not None:
+        blockers.append(
+            "DFlash cannot be combined with an already loaded draft_model yet"
+        )
     return tuple(blockers)
+
+
+def _collect_prompt_cache_layers(model_kit: Any) -> tuple[Any, ...]:
+    prompt_cache = getattr(getattr(model_kit, "cache_wrapper", None), "cache", None)
+    if prompt_cache is None:
+        prompt_cache = getattr(model_kit, "prompt_cache", None)
+    if prompt_cache is None:
+        return ()
+    if isinstance(prompt_cache, tuple):
+        return prompt_cache
+    if isinstance(prompt_cache, list):
+        return tuple(prompt_cache)
+    try:
+        return tuple(prompt_cache)
+    except TypeError:
+        return (prompt_cache,)
+
+
+def _dedupe_blockers(blockers: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for blocker in blockers:
+        if blocker in seen:
+            continue
+        seen.add(blocker)
+        deduped.append(blocker)
+    return tuple(deduped)
+
+
+def validate_dflash_runtime_compatibility(model_kit: Any) -> tuple[str, ...]:
+    """Fail closed before DFlash mutates prompt caches or live history."""
+
+    blockers: list[str] = []
+    if getattr(model_kit, "draft_model", None) is not None:
+        blockers.append(
+            "DFlash cannot be combined with an already loaded draft_model yet"
+        )
+    for attr_name, label in (
+        ("max_kv_size", "max_kv_size"),
+        ("kv_bits", "kv_bits"),
+        ("kv_group_size", "kv_group_size"),
+        ("quantized_kv_start", "quantized_kv_start"),
+    ):
+        if getattr(model_kit, attr_name, None) is not None:
+            blockers.append(f"DFlash does not support {label} cache mode yet")
+
+    prompt_cache_layers = _collect_prompt_cache_layers(model_kit)
+    if not prompt_cache_layers:
+        blockers.append("DFlash requires a prompt cache before runtime execution")
+    else:
+        for cache in prompt_cache_layers:
+            cache_type_name = type(cache).__name__
+            if cache_type_name == "KVCache":
+                continue
+            if cache_type_name == "RotatingKVCache" or (
+                getattr(cache, "max_size", None) is not None
+                and getattr(cache, "keep", None) is not None
+            ):
+                blockers.append("DFlash does not support bounded/rotating cache layers yet")
+                continue
+            if cache_type_name in {"ArraysCache", "BatchKVCache"} or (
+                getattr(cache, "lengths", None) is not None
+                or getattr(cache, "left_padding", None) is not None
+            ):
+                blockers.append("DFlash does not support ragged cache layers yet")
+                continue
+            blockers.append(
+                f"DFlash does not support non-rollback-safe cache layer {cache_type_name} yet"
+            )
+
+    target_model = getattr(model_kit, "model", model_kit)
+    lm = (
+        target_model.language_model
+        if hasattr(target_model, "language_model")
+        else target_model
+    )
+    if not hasattr(lm, "rollback_speculative_cache"):
+        blockers.append(
+            f"{type(lm).__name__} does not implement rollback_speculative_cache"
+        )
+
+    return _dedupe_blockers(blockers)
 
 
 def build_dflash_no_go_message(
@@ -276,6 +363,18 @@ def build_dflash_no_go_message(
         "Next steps: install the optional DFlash dependency, stage a local "
         "Qwen-family target/drafter pair, and keep the feature default-off "
         "until a real sequential prototype is implemented."
+    )
+    return "DFlash no-go: " + "; ".join(blockers) + ". " + next_steps
+
+
+def build_dflash_runtime_no_go_message(blockers: tuple[str, ...]) -> str:
+    if not blockers:
+        return "DFlash boundary is wired, but no execution path exists yet"
+
+    next_steps = (
+        "Next steps: switch to a plain KVCache sequential path with a "
+        "rollback-capable target model and keep DFlash default-off until a "
+        "real sequential smoke passes."
     )
     return "DFlash no-go: " + "; ".join(blockers) + ". " + next_steps
 

@@ -1257,3 +1257,10 @@ Mission inputs reviewed for this slice:
 - The rollback test now proves rejected DFlash tokens never remain in emitted history and that each prompt-cache layer is trimmed back to accepted length after partial rejection.
 - Validation completed: `pytest tests/test_dflash_runtime.py tests/test_dflash_boundary.py -q`, scoped `ruff check tests/test_dflash_runtime.py`, and the full milestone pytest gate all passed.
 
+### M13 DFlash fail-closed safety 2026-06-27
+
+- Tightened DFlash surface validation so an already-loaded `model_kit.draft_model`, a `draft_model` kwarg, or `num_draft_tokens` all fail closed before DFlash execution begins.
+- Added a runtime preflight that rejects rollback-unsafe cache modes before any prompt processing, including `max_kv_size`, `kv_bits`, `kv_group_size`, `quantized_kv_start`, rotating caches, ragged caches, and missing rollback capability.
+- Added focused coverage for the exact M13 target layer list `[1,10,18,27,35,44,52,61]` through a native sequential smoke, plus fail-closed regression tests for the unsupported cache modes.
+- Validation completed: focused DFlash pytest, scoped `ruff check` on the touched engine/test files, and the full `services.yaml` milestone pytest gate all passed.
+

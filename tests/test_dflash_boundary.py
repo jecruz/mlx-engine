@@ -16,6 +16,7 @@ from mlx_engine.utils.generation_result import GenerationResult
 from mlx_engine.utils.dflash_boundary import (
     DFlashBoundaryOptions,
     DFlashUnavailableError,
+    validate_dflash_runtime_compatibility,
     probe_dflash_readiness,
     resolve_dflash_options,
     validate_dflash_surface_compatibility,
@@ -128,6 +129,49 @@ class FakeSequentialKit:
 
     def cleanup_specprefill(self):
         return None
+
+
+class KVCache:
+    def __init__(self):
+        self.history: list[int] = []
+
+
+class RotatingKVCache:
+    def __init__(self):
+        self.max_size = 8
+        self.keep = 0
+        self.history: list[int] = []
+
+
+class ArraysCache:
+    def __init__(self):
+        self.lengths = mx.array([1], dtype=mx.int32)
+        self.left_padding = mx.array([0], dtype=mx.int32)
+        self.history: list[int] = []
+
+
+class BatchKVCache:
+    def __init__(self):
+        self.left_padding = mx.array([0], dtype=mx.int32)
+        self.offset = mx.array([0], dtype=mx.int32)
+
+
+def _runtime_model_kit(prompt_cache, **attrs):
+    rollback_capable_model = SimpleNamespace(
+        language_model=SimpleNamespace(
+            rollback_speculative_cache=lambda *_args, **_kwargs: None
+        )
+    )
+    return SimpleNamespace(
+        model=rollback_capable_model,
+        cache_wrapper=SimpleNamespace(cache=prompt_cache),
+        prompt_cache=prompt_cache,
+        draft_model=attrs.get("draft_model"),
+        max_kv_size=attrs.get("max_kv_size"),
+        kv_bits=attrs.get("kv_bits"),
+        kv_group_size=attrs.get("kv_group_size"),
+        quantized_kv_start=attrs.get("quantized_kv_start"),
+    )
 
 
 def _write_qwen_model_dir(
@@ -295,7 +339,7 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
                 "speculative_decoding_toggle": True,
                 "num_draft_tokens": None,
                 "draft_model": object(),
-                "needle": "draft_model",
+                "needle": "speculative decoding",
             },
             {
                 "surface_label": "adapter",
@@ -313,7 +357,7 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
                 "speculative_decoding_toggle": None,
                 "num_draft_tokens": 2,
                 "draft_model": None,
-                "needle": "draft_model speculation",
+                "needle": "num_draft_tokens",
             },
         ]
 
@@ -332,6 +376,35 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
                     any(case["needle"] in blocker for blocker in blockers),
                     msg=f"expected {case['needle']!r} in blockers: {blockers}",
                 )
+
+    def test_rejects_loaded_standard_draft_model_inputs(self):
+        blockers = validate_dflash_surface_compatibility(
+            enabled=True,
+            surface_label="sequential",
+            images_b64=None,
+            specprefill_toggle=None,
+            speculative_decoding_toggle=True,
+            num_draft_tokens=4,
+            draft_model=object(),
+            model_kit_draft_model=object(),
+        )
+
+        self.assertTrue(
+            any("speculative decoding" in blocker for blocker in blockers),
+            msg=f"expected speculative decoding blocker, got: {blockers}",
+        )
+        self.assertTrue(
+            any("num_draft_tokens" in blocker for blocker in blockers),
+            msg=f"expected num_draft_tokens blocker, got: {blockers}",
+        )
+        self.assertTrue(
+            any("draft_model kwarg" in blocker for blocker in blockers),
+            msg=f"expected draft_model kwarg blocker, got: {blockers}",
+        )
+        self.assertTrue(
+            any("already loaded draft_model" in blocker for blocker in blockers),
+            msg=f"expected loaded draft_model blocker, got: {blockers}",
+        )
 
     def test_probe_requires_qwen_family_pairing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -492,6 +565,55 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
             any("Qwen-family" in blocker for blocker in report.blockers),
             msg=f"expected Qwen-family blocker, got: {report.blockers}",
         )
+
+    def test_runtime_validation_rejects_rollback_unsafe_cache_modes(self):
+        cases = [
+            (
+                {"max_kv_size": 16},
+                [KVCache()],
+                "max_kv_size",
+            ),
+            (
+                {"kv_bits": 4},
+                [KVCache()],
+                "kv_bits",
+            ),
+            (
+                {"kv_group_size": 32},
+                [KVCache()],
+                "kv_group_size",
+            ),
+            (
+                {"quantized_kv_start": 8},
+                [KVCache()],
+                "quantized_kv_start",
+            ),
+            (
+                {},
+                [RotatingKVCache()],
+                "bounded/rotating",
+            ),
+            (
+                {},
+                [ArraysCache()],
+                "ragged",
+            ),
+            (
+                {},
+                [BatchKVCache()],
+                "ragged",
+            ),
+        ]
+
+        for attrs, prompt_cache, needle in cases:
+            with self.subTest(case=needle):
+                blockers = validate_dflash_runtime_compatibility(
+                    _runtime_model_kit(prompt_cache, **attrs)
+                )
+                self.assertTrue(
+                    any(needle in blocker for blocker in blockers),
+                    msg=f"expected {needle!r} blocker, got: {blockers}",
+                )
 
 
 class TestDFlashRouting(unittest.TestCase):

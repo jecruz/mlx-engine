@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import mlx.core as mx
 
 from mlx_engine.utils.dflash_boundary import DFlashBoundaryOptions
+from mlx_engine.utils.dflash_boundary import DFlashUnavailableError
 from mlx_engine.utils.dflash_runtime import dflash_stream_generate
 
 
@@ -20,18 +21,24 @@ class FakeTokenizer:
         return "".join(str(value) for value in token)
 
 
-class FakePromptCacheLayer:
+class KVCache:
     def __init__(self, layer_id: int):
         self.layer_id = layer_id
         self.history: list[int] = []
-        self.lengths = mx.array([0], dtype=mx.int32)
 
 
 class FakeDraftModel:
-    def __init__(self, draft_tokens: list[int], layer_count: int = 2):
+    def __init__(
+        self,
+        draft_tokens: list[int],
+        layer_count: int = 2,
+        target_layer_ids: list[int] | None = None,
+    ):
         self._draft_tokens = tuple(draft_tokens)
+        if target_layer_ids is None:
+            target_layer_ids = list(range(layer_count))
         self.config = SimpleNamespace(
-            target_layer_ids=list(range(layer_count)),
+            target_layer_ids=list(target_layer_ids),
             block_size=len(draft_tokens) + 1,
         )
         self.reset_calls = []
@@ -111,11 +118,24 @@ class FakeTargetModel:
 
 
 class FakeKit:
-    def __init__(self, draft_tokens: list[int], spec_input_tokens: list[int], spec_output_tokens: list[int]):
-        self.model = FakeTargetModel([1], spec_input_tokens, spec_output_tokens)
+    def __init__(
+        self,
+        draft_tokens: list[int],
+        spec_input_tokens: list[int],
+        spec_output_tokens: list[int],
+        *,
+        cache_layers: list[object] | None = None,
+        rollback_supported: bool = True,
+    ):
+        if rollback_supported:
+            self.model = FakeTargetModel([1], spec_input_tokens, spec_output_tokens)
+        else:
+            self.model = SimpleNamespace(language_model=SimpleNamespace())
         self.tokenizer = FakeTokenizer()
         self.cache_wrapper = SimpleNamespace(
-            cache=[FakePromptCacheLayer(layer_id) for layer_id in range(2)]
+            cache=cache_layers
+            if cache_layers is not None
+            else [KVCache(layer_id) for layer_id in range(2)]
         )
         self.pending_requests = {}
         self.max_kv_size = None
@@ -125,6 +145,7 @@ class FakeKit:
         self.received_cache_tokens = []
         self._prompt_tokens = [1]
         self._draft_tokens = draft_tokens
+        self.process_prompt_calls = 0
 
     def process_prompt(
         self,
@@ -135,6 +156,7 @@ class FakeKit:
         max_image_size,
         **_kwargs,
     ):
+        self.process_prompt_calls += 1
         generate_args["prompt_cache"] = self.cache_wrapper.cache
         return mx.array(self._prompt_tokens, dtype=mx.int32), None
 
@@ -254,6 +276,107 @@ class TestDFlashRuntime(unittest.TestCase):
                     for rejected_token in rejected_tokens:
                         self.assertNotIn(rejected_token, layer.history)
                 self.assertEqual(kit.received_cache_tokens, [])
+
+    def test_rejects_rollback_unsafe_runtime_before_prompt_processing(self):
+        cases = [
+            ("already loaded draft_model", {"draft_model": object()}),
+            ("max_kv_size", {"max_kv_size": 16}),
+            ("kv_bits", {"kv_bits": 4}),
+            ("kv_group_size", {"kv_group_size": 32}),
+            ("quantized_kv_start", {"quantized_kv_start": 8}),
+        ]
+
+        for needle, attrs in cases:
+            with self.subTest(case=needle):
+                kit = FakeKit(
+                    [12, 13],
+                    [11],
+                    [12, 13, 99],
+                    cache_layers=[KVCache(0)],
+                    rollback_supported=True,
+                )
+                for attr_name, value in attrs.items():
+                    setattr(kit, attr_name, value)
+
+                with self.assertRaisesRegex(DFlashUnavailableError, needle):
+                    list(
+                        dflash_stream_generate(
+                            kit,
+                            [1],
+                            request_id=f"dflash-runtime-{needle}",
+                            max_tokens=2,
+                            dflash_options=DFlashBoundaryOptions(
+                                enabled=True,
+                                target_model_path=Path("/tmp/target"),
+                                drafter_model_path=Path("/tmp/drafter"),
+                                max_draft_tokens=3,
+                            ),
+                            dflash_draft_model=FakeDraftModel([12, 13]),
+                        )
+                    )
+
+                self.assertEqual(kit.process_prompt_calls, 0)
+
+    def test_rejects_missing_rollback_capability_before_prompt_processing(self):
+        kit = FakeKit(
+            [12, 13],
+            [11],
+            [12, 13, 99],
+            cache_layers=[KVCache(0)],
+            rollback_supported=False,
+        )
+
+        with self.assertRaisesRegex(DFlashUnavailableError, "rollback_speculative_cache"):
+            list(
+                dflash_stream_generate(
+                    kit,
+                    [1],
+                    request_id="dflash-runtime-no-rollback",
+                    max_tokens=2,
+                    dflash_options=DFlashBoundaryOptions(
+                        enabled=True,
+                        target_model_path=Path("/tmp/target"),
+                        drafter_model_path=Path("/tmp/drafter"),
+                        max_draft_tokens=3,
+                    ),
+                    dflash_draft_model=FakeDraftModel([12, 13]),
+                )
+            )
+
+        self.assertEqual(kit.process_prompt_calls, 0)
+
+    def test_uses_exact_m13_target_layer_ids(self):
+        target_layer_ids = [1, 10, 18, 27, 35, 44, 52, 61]
+        kit = FakeKit(
+            [12, 13, 14],
+            [11, 12, 13, 14],
+            [12, 21, 99, 98],
+            cache_layers=[KVCache(0)],
+        )
+        draft_model = FakeDraftModel([12, 13, 14], target_layer_ids=target_layer_ids)
+
+        results = list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-runtime-target-layer-ids",
+                max_tokens=3,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=4,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        emitted_ids = [token.id for result in results for token in result.tokens]
+        self.assertEqual(emitted_ids, [11, 12, 21])
+        self.assertEqual(
+            kit.model.calls[0][1]["capture_layer_ids"],
+            target_layer_ids,
+        )
 
 
 if __name__ == "__main__":

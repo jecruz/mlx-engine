@@ -669,6 +669,7 @@ def create_generator(
             speculative_decoding_toggle=kwargs.get("speculative_decoding_toggle"),
             num_draft_tokens=kwargs.get("num_draft_tokens"),
             draft_model=kwargs.get("draft_model"),
+            model_kit_draft_model=getattr(model_kit, "draft_model", None),
         )
         dflash_readiness = probe_dflash_readiness(dflash_options)
         if dflash_surface_blockers or dflash_readiness.blockers:
