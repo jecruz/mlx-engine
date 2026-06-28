@@ -2260,3 +2260,77 @@ The next implementation worker (or the bench-worker promotion evidence feature) 
 2. Per the feature description ("Never bypass target verification or emit unverified drafter tokens"), the only behavior change required is to make the existing target-verify call site succeed; no semantic change to DFlash target verification itself.
 
 If the smoke re-run shows the first `target_verify=True` call now succeeds and a subsequent blocker surfaces (e.g., another keyword mismatch, a captured-state mismatch, or a quality issue), that blocker should be filed as a follow-up M14 feature in its own right.
+
+
+## M14 capped real-model DFlash smoke — RUNTIME-PATH GO (2026-06-28, engine HEAD `f00a083`)
+
+Feature `m14-dflash-capped-real-smoke` (this run) is the M14 capped-real-smoke slice that runs the first capped real-model DFlash smoke with the Qwen3.6 27B target plus the z-lab DFlash drafter through the sequential text route. After the `m14-qwen35-target-verify-forwarding` fix (commits `239465c` + `f00a083`) closed the prior `TypeError: _patched_qwen3_5_language_model_call() got an unexpected keyword argument 'target_verify'` runtime-path blocker, this worker re-ran the same capped smoke command. **The smoke succeeded end-to-end on the first try:**
+
+### Smoke command
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --dflash --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 \
+  --dflash-max-draft-tokens 4 \
+  --prompt-suite-json prompt_suites/m14_dflash_capped_smoke.json \
+  --runs 1 --max-tokens 16 --temperature 0.0 --top-p 1.0 --include-output-text
+```
+
+### Row-level outcomes (capped smoke report `20260628T074326.158545Z-shared-bench.json`)
+
+- `engine = mlx-engine`, prompt = `m14_dflash_smoke_ok`, runs = 1.
+- `error = null` (zero row errors; the previous TypeError is gone).
+- `output_preview = "ok.\nuser\n\nuser\n"` — contains the expected `ok` keyword; no `thinking` / `reasoning` / `Let me` substring; `min_completion_tokens=1` satisfied (`completion_tokens = 16`).
+- `ttft_s = 1.218`, `decode_s = 1.097`, `decode_tps = 14.589`, `total_s = 2.315`.
+- Telemetry: `opted_in = true`, `fallback_status = default_off` (**not** `fallback_unsupported_surface` and **not** `fallback_preflight`), `sequential_text_only = true`, `uses_native_runtime = true`, `accepted_proposal_tokens = 1`, `rejected_proposal_tokens = 14`, `max_draft_tokens = 4`.
+- `runner_process.returncode = 0` and `runner_process.stderr` confirms the sequential `mode=sequential distributed=False ThreadLocalStream(Device(gpu, 0), 4)` path with the standard `prompt_tokens=25 -> 513 -> 4095` ModelKit warmup running before the smoke prompt (no `RuntimeError: There is no Stream(...)`, no preflight blocker).
+
+### Quality inspect
+
+```
+$ env PYTHONPATH=. python3 quality_compare.py --candidate reports/20260628T074326.158545Z-shared-bench.json --out reports/20260628T074326.158545Z-quality-inspect.json
+status=pass
+prompt=m14_dflash_smoke_ok status=pass
+```
+
+`reports/20260628T074326.158545Z-quality-inspect.json` reports `status=pass`, `failed_prompts=[]`, `global_findings=[]`, and the per-row check shows `keyword_hits.ok=true`, `max_repeated_5gram=2`, `repeated_line_ratio=0.0`, no findings.
+
+### Resource classification
+
+- Ports 3180 / 3181 / 3182 are empty (no listeners).
+- Port 12444 holds an LLMDYNAMIX cloud-router listener. The merged config at `/Users/jeffreycruz/.llmdynamix/merged-config.yaml` declares Ollama (`127.0.0.1:11434`), LM Studio (`127.0.0.1:4521`), and ocelot puma.cpp (`127.0.0.1:12435`) backends. Live probing: Ollama `/api/ps` reports `{"models":[]}` (no loaded models), LM Studio 4521 is not listening, ocelot (puma.cpp) is CPU-only and not in `_LLMDYNAMIX_LOCAL_HEAVY_BACKEND_MARKERS`. Cloud-only classification holds: not a DFlash local-resource blocker.
+- Residual free memory ~38 GiB (`vm_stat`: 2494027 free pages × 16384 bytes). The pre-load + phase-aware post-load preflight (`m14-dflash-post-load-preflight-accounting`) cleared cleanly.
+
+### Boundary vs runtime-path attribution
+
+- **Boundary check:** PASS. Pre-load `probe_dflash_readiness` (cloud-only listener allowed, sufficient memory), the phase-aware post-load `validate_dflash_postload_compatibility`, and the shape-strict `validate_dflash_runtime_compatibility` (16 KVCache + 48 ArraysCache) all passed for the real Qwen3.6 27B target.
+- **Runtime path:** PASS. After `239465c`, `_patched_qwen3_5_language_model_call` declares `target_verify: bool = False` and forwards it to the inner `self.model(...)` call. The inner `PatchedQwen3_5TextModel.__call__` accepts the kwarg, and the patched mlx-vlm `Qwen3_5Attention` / `Qwen3_5GatedDeltaNet` layers honor `target_verify` on their target-verify / gdn-sink / left-padded-decode branches. `dflash_stream_generate` completed the first target-verify call with zero TypeError and emitted real DFlash telemetry (`accepted=1`, `rejected=14`).
+- **Classification:** runtime-path GO.
+
+### Validation contract assertion
+
+- `VAL-M14-003` (real Qwen3.6 plus DFlash capped sequential smoke succeeds) — **MET** for this single sample. Row-level evidence: zero row errors, valid assistant output under the 16-token cap, `fallback_status=default_off` (no VLM/batched/distributed/adapter fallback), no unverified token emission (`target_verify=True` accepted and routed through the patched wrapper chain), and real draft/verify/rollback exercised (`accepted=1`, `rejected=14`). Quality inspect status=`pass`.
+- **Promotion / keep-opt-in / reject decision is NOT made here.** VAL-M14-005 (quality gate vs baseline) and VAL-M14-006 (repeated-sample performance evidence) are separate bench-worker features; this capped smoke provides only the prerequisite runtime evidence. DFlash remains default-off and sequential-text-only per the mission guardrails.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| Capped smoke report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T074326.158545Z-shared-bench.json` |
+| Quality inspect | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T074326.158545Z-quality-inspect.json` |
+| Structured smoke evidence | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-capped-smoke-evidence-20260628T074326Z.json` |
+| Focused target_verify forwarding tests | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_patched_qwen3_5_target_verify_forwarding.py` (11 passed) |
+| Prompt suite | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_capped_smoke.json` |
+| Live gate precheck | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-precheck.json` |
+| Phase-aware preflight evidence | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-phase-aware-preflight-evidence.json` |
+
+### Next features unblocked
+
+- `m14-dflash-real-pair-invariants` — target-only verified-token emission, rejected-token cleanup, safe KV/GDN rollback on real target cache.
+- `m14-dflash-quality-perf-evidence` — repeated-sample `quality_compare.py` pass + repeatable latency win before any promote decision.
