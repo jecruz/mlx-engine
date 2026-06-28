@@ -118,6 +118,49 @@ The probe correctly identifies the real pair, parses both Qwen-family metadata, 
 - Full mission pytest gate (`services.yaml` `commands.test`) → **257 passed / 16 skipped / 0 failed** after the M14 preflight work.
 - `ruff check mlx_engine/utils/dflash_boundary.py mlx_engine/generate.py tests/test_dflash_boundary.py` → clean.
 
+## M14 direct-harness DFlash candidate flags + telemetry (2026-06-27)
+
+Feature `m14-dflash-harness-flags-telemetry` wires explicit DFlash candidate run support into the direct `shared_bench.py` harness so the M14 real-pair work can invoke DFlash with exact target/drafter paths and capture auditable telemetry in the report JSON. DFlash stays default-off: no DFlash kwargs are forwarded to the mlx-engine runner unless the operator explicitly opts in, and DFlash kwargs are never forwarded to omlx / rapid-mlx / vmlx runners (so the harness never enables DFlash through LM Studio or non-mlx-engine surfaces).
+
+### Added CLI flags (default-off)
+
+- `--dflash` (action=store_true) — explicit DFlash opt-in for the mlx-engine runner.
+- `--dflash-target-model` — exact target model directory (e.g. `Qwen3.6-27B-MLX-8bit`). Required when `--dflash` is set; forwarded verbatim to the engine preflight with no auto-discovery or path mutation.
+- `--dflash-drafter-model` — exact drafter snapshot directory (e.g. `models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824`). Required when `--dflash` is set; the standard autoregressive `draft_model` loading path is never used for DFlash.
+- `--dflash-max-draft-tokens` (int, default 4) — maximum DFlash draft tokens; falls back to the engine default when omitted.
+
+The existing `--mlx-engine-force-sequential` flag forces the mlx-engine runner onto the sequential text ModelKit path, which is the only first-slice surface DFlash supports. Sequential text only is recorded as `sequential_text_only: true` in the telemetry block.
+
+### Config + telemetry in the report JSON
+
+The harness combined report's `config` block now carries `dflash`, `dflash_target_model`, `dflash_drafter_model`, `dflash_max_draft_tokens`. The mlx-engine runner report carries a top-level `dflash` metadata block and a per-row `dflash` metadata block with:
+
+- `opted_in` — `true` only when `--dflash` was set.
+- `target_model_path` / `drafter_model_path` — verbatim paths from the CLI args (when opted in).
+- `max_draft_tokens` — max draft token budget forwarded to the engine.
+- `sequential_text_only: true` — first-slice DFlash route restriction.
+- `uses_native_runtime: true` — confirms DFlash runs through the native mlx-engine scaffold (no standard autoregressive `draft_model` loading path).
+- `fallback_status` — `default_off` when not opted in; `fallback_unsupported_surface` when an opt-in error mentions VLM / batched / distributed / incompatible / rejected / unsupported; `fallback_preflight` for other DFlash opt-in errors.
+- `accepted_proposal_tokens` — count of emitted tokens whose `Token.from_draft` flag is `true` (target-verified emissions of drafter proposals).
+- `rejected_proposal_tokens` — `max(0, token_count - 1 - accepted)` for the current row when DFlash is opted in.
+
+### Default-off preservation
+
+Without `--dflash` the harness command does not contain any `--dflash*` flag and the runner report's `dflash` block shows `opted_in: false`, `target_model_path: null`, `drafter_model_path: null`, `fallback_status: default_off`. Existing harness and engine tests assert this default-off behavior at the `build_runner_cmd`, `load_model_compat`, `create_generator_compat`, and `error_row` layers.
+
+### No use of LM Studio / adapter routes / standard `draft_model`
+
+- The runner never forwards DFlash kwargs to omlx / rapid-mlx / vmlx runners.
+- The engine preflight (`m14-dflash-real-pair-preflight`) and the M13 native DFlash loader (`mlx_engine.utils.dflash_snapshot`) remain authoritative for DFlash drafter validation. The harness only forwards the exact operator-provided path; it does not parse or transform the snapshot.
+- `dflash_drafter_model` is forwarded as `dflash_drafter_model` to `load_model` and `create_generator`, never as the standard autoregressive `draft_model` kwarg. The engine rejects loaded `model_kit.draft_model` / `draft_model` / `num_draft_tokens` in `validate_dflash_preload_compatibility` and `validate_dflash_surface_compatibility` before any token emission.
+
+### Verification
+
+- Harness tests: `env PYTHONPATH=. python3 -m pytest tests -q` → **69 passed / 0 failed** after the harness flag + telemetry wiring.
+- Engine DFlash tests: `.venv-py312/bin/python -m pytest tests/test_dflash_boundary.py tests/test_dflash_runtime.py -q` → **22 passed / 0 failed** (still pass with no engine source change).
+- `ruff check runners/mlx_engine_runner.py shared_bench.py tests/test_mlx_engine_runner.py tests/test_shared_bench.py` → clean (the only pre-existing `F841` is the unrelated `tests/test_vmlx_runner.py:122` `json_str` from M5 long-text baseline, which AGENTS.md flags as out of scope).
+- Harness commit: `fccfcc8` on `main` of `mlx-bench-harness` with `[#1190]` prefix and explicit default-off / native-runtime / no-LM-Studio wording.
+
 ## Remaining experiments worth trying
 
 1. Persistent VLM record layout
