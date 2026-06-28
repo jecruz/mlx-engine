@@ -2722,3 +2722,85 @@ The feature description is explicit: "rerun the gate conservatively with `--dfla
 | Candidate (DFlash on, max_draft=1, post-loop-fix) report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T090154.745033Z-shared-bench.json` |
 | Quality compare (fail) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T090154.745033Z-quality-compare.json` |
 | Resource gate precheck | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-20260628Tquality-gate.json` |
+
+## M14 DFlash real-model performance/promotion decision — REJECT (2026-06-28)
+
+Feature `m14-dflash-performance-decision` is the final M14 closeout gate. The lane description is explicit: "If the quality gate passed, run at least two quality-passing repeated candidate samples with matching baseline context, inspect row errors, compare latency metrics, and record whether any move in TTFT, decode TPS, or total latency is repeatable. If the quality gate failed, do not run more heavyweight repeated samples; record KEEP OPT-IN or REJECT from the failed quality evidence with explicit no-promotion rationale. Do not promote DFlash beyond opt-in unless quality passes and at least two repeated samples show a real repeatable latency win." Because the upstream `m14-dflash-real-quality-gate` lane failed three consecutive times (`max_draft_tokens=4`, `max_draft_tokens=1` pre-loop-fix, `max_draft_tokens=1` post-loop-fix) and the most recent run is the post-loop-fix evidence above with `status=fail` on every prompt, **no additional heavyweight repeated samples are run for this lane**. This entry records the performance/promotion decision against the existing failed quality evidence, cites the row-error inspection, records the latency deltas, and locks in a final **REJECT** outcome for the M14 performance evaluation.
+
+### Row-error inspection (mandatory before accepting the gate)
+
+- **Baseline (DFlash off) report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T090101.820031Z-shared-bench.json` — all 10 rows (5 prompts × 2 runs) have `error: null`, no `RuntimeError`, no cross-thread stream failure, no row-level error.
+- **Candidate (DFlash on, `--dflash-max-draft-tokens 1`) report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T090154.745033Z-shared-bench.json` — all 10 rows have `error: null`, every row carries `dflash.fallback_status=default_off` (no preflight, surface, or runtime fallback), `dflash.uses_native_runtime=true`, `dflash.sequential_text_only=true`, `dflash.opted_in=true`. Per-row `dflash.accepted_proposal_tokens` / `rejected_proposal_tokens` counts reflect the live draft/verify round outcomes.
+- **Row-level keyword retention (candidate):** every expected keyword hits on every run (`ok: True`, `capital: True`, `add: True, return: True`, `38.9: True`, `risk: True, mitigation: True, owner: True`). No `forbid_reasoning_prefixes` leak, no `forbid_substrings` violation, no `completion_tokens below threshold` failure, no missing-keyword failure on the candidate.
+- **Row-level JSON defect (candidate):** `m14_dflash_json_output` rows 1 and 2 both flag `invalid exact JSON object: Extra data` because DFlash appended non-JSON tokens after the JSON object. This is the only candidate-side output-quality defect surfaced by the gate.
+- **`global_findings=[]`** on the compare JSON. There is no shared finding between baseline and candidate rows; every regression below is candidate-side.
+
+### Latency deltas (candidate vs baseline, post-loop-fix `max_draft_tokens=1`)
+
+The candidate is **strictly slower on every metric** on every prompt. There is no TTFT win, no decode TPS win, and no total-latency win to compensate for the failed quality gate.
+
+| Prompt | TTFT Δ (avg) | Warm TTFT Δ (p50) | Decode TPS Δ | Total Δ (avg) | Warm total Δ (p50) |
+| --- | ---:| ---:| ---:| ---:| ---:|
+| `m14_dflash_short_factual` | **+97.117%** | +73.099% | **−27.023%** | **+181.759%** | +190.547% |
+| `m14_dflash_brief_summary` | **+49.572%** | +65.232% | −10.654% | **+114.706%** | +130.128% |
+| `m14_dflash_code_function` | **+50.707%** | +74.032% | −8.953% | **+109.814%** | +115.511% |
+| `m14_dflash_math_calc` | **+50.444%** | +67.742% | −7.168% | **+15.970%** | +17.080% |
+| `m14_dflash_json_output` | **+50.293%** | +68.150% | −8.010% | **+59.016%** | +61.382% |
+
+Threshold breaches per prompt (all five fail at least one threshold):
+
+- `m14_dflash_short_factual`: total latency regression 181.759% (>5%), warm TTFT median 73.099% (>5%), warm total median 190.547% (>5%), decode TPS −27.023% (>20%).
+- `m14_dflash_brief_summary`: total 114.706% (>5%), warm TTFT 65.232% (>5%), warm total 130.128% (>5%).
+- `m14_dflash_code_function`: total 109.814% (>5%), warm TTFT 74.032% (>5%), warm total 115.511% (>5%).
+- `m14_dflash_math_calc`: total 15.970% (>5%), warm TTFT 67.742% (>5%), warm total 17.080% (>5%).
+- `m14_dflash_json_output`: total 59.016% (>5%), warm TTFT 68.150% (>5%), warm total 61.382% (>5%) + candidate row 1/2 `invalid exact JSON object: Extra data`.
+
+The candidate's decode TPS is uniformly negative (−7% to −27%) and the warm TTFT median is uniformly +65% to +74% — both are well outside the promotion threshold. There is no metric in which DFlash moves positively, let alone repeatably across two quality-passing samples.
+
+### Why no repeatable latency win is possible from this evidence
+
+The DFlash runtime path executes a full target forward pass for verification on every emitted token at `max_draft_tokens=1`. Vanilla autoregressive decoding already amortizes the prompt prefill and runs exactly one forward pass per token; adding a target verify round trip per emission strictly increases per-token cost. The `max_draft_tokens=4` lane failed every prompt on broken-JSON / math / repeated-token regressions before any speed win could materialize; the `max_draft_tokens=1` lane (post-loop-fix) eliminates the output-quality defects but exposes the underlying target-verify round-trip overhead as a coarse latency regression on every prompt. Neither configuration produces a speed win, and the lane description prohibits a `max_draft_tokens=2` retry unless `1` passes quality, which it does not.
+
+### Decision: **REJECT** — no promotion, no default-on, no further heavyweight samples for M14
+
+The performance/promotion evaluation lane ends in **REJECT**. The decision cites the upstream `m14-dflash-real-quality-gate` evidence above as the authoritative gate: `quality_compare.py status=fail` on all five prompts, no row errors, but every targeted latency metric strictly regressed. There is no measurable TTFT/decode TPS/total-latency move in any direction that would compensate for the failed quality gate, and the bench-worker promotion rule requires a real, repeatable move in at least one of those metrics with at least two quality-passing repeated-sample runs. None of those conditions are met.
+
+**Explicit no-promotion rationale (per lane description):**
+
+1. **Quality gate did not pass.** `quality_compare.py status=fail` on every prompt in the deterministic M14 quality suite. This is the third consecutive real-model quality-gate failure and the lane description explicitly forbids `max_draft_tokens=2` retries under the existing quality gate.
+2. **Zero row errors, but every metric regresses.** All ten baseline rows and all ten candidate rows have `error: null` and all expected keywords hit, but TTFT averages +49% to +97%, warm TTFT p50 +65% to +74%, decode TPS −7% to −27%, total latency +15% to +181%, warm total p50 +17% to +191%. There is no metric in which DFlash wins, so there is nothing repeatable to cite as the promotion threshold.
+3. **The DFlash scheduling problem is not solved by retrying the existing quality gate.** The post-loop-fix evidence shows the runtime path now produces valid multi-token output, but the per-emission target verify cost dominates the small per-token decode gain at the only allowed `max_draft_tokens` values. A future lane would need to redesign DFlash scheduling (per-emission target cost below the baseline) before re-entering this evaluation, not simply retry the same flags.
+4. **AGENTS.md and lane description both support REJECT closure.** AGENTS.md says "M14 should close as KEEP OPT-IN/REJECT unless the user explicitly creates a new DFlash scheduling optimization feature; do not force a pass, do not retry max_draft_tokens=2 under the existing quality gate, and do not promote DFlash." The lane description says "Do not promote DFlash beyond opt-in unless quality passes and at least two repeated samples show a real repeatable latency win." Neither condition is met, so the lane closes as REJECT for the M14 performance evaluation.
+5. **No heavyweight repeated samples were run for this lane.** Per the lane description, when the quality gate fails, no additional heavyweight samples are run. The post-loop-fix `max_draft_tokens=1` evidence above is the authoritative candidate run; it is **not** a quality-passing run, so it does not satisfy the "at least two quality-passing repeated samples" requirement. Promotion is therefore impossible from this evidence regardless of which metric movement is reported.
+
+**Operational outcome of REJECT:**
+
+- DFlash stays default-off and opt-in. No flag is flipped, no default-on change is made, no promotion lane is opened.
+- The native M13 DFlash foundation (loader, hidden-state hooks, draft/verify scaffold, KV/GDN rollback, Qwen3.5 wrapper hook, `target_verify` forwarding, runtime loop continuation) remains on the branch as opt-in infrastructure. Those are correctness primitives, not promotion evidence.
+- The `VAL-M14-004` real-pair invariant tests remain the only passing M14 evidence alongside the capped smoke `VAL-M14-003`. `VAL-M14-005` (quality gate passes against baseline) is **NOT MET** for the third consecutive attempt. `VAL-M14-006` (≥2 quality-passing repeated samples with repeatable latency win) is **NOT MET** because no quality-passing run exists.
+- A future `m14-dflash-scheduling-optimization` lane may revisit the per-emission target verify overhead, but only if the user explicitly creates that feature; this lane does not open it.
+
+### Evidence chain (cite order for any future M14 review)
+
+| Artifact | Path | Status |
+| --- | --- | --- |
+| Preflight + live probe result | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/performance-future-work.md` (M14 preflight section, 2026-06-27) | passed for path/tokenizer/vocab/route/cache; **failed** on resource headroom + `12444` listener at probe time |
+| Capped real-model DFlash smoke (RUNTIME-PATH GO) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-capped-smoke-evidence-20260628T074326Z.json` | passed; `accepted_proposal_tokens=1`, `rejected_proposal_tokens=14`, `fallback_status=default_off` |
+| Real-pair invariant tests (`VAL-M14-004`) | `tests/test_dflash_real_pair_invariants.py` (37 tests + 4 subtests) | passed |
+| Baseline (DFlash off) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T090101.820031Z-shared-bench.json` | 10 rows, all `error: null` |
+| Candidate (DFlash on, max_draft=1, post-loop-fix) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T090154.745033Z-shared-bench.json` | 10 rows, all `error: null`, all keywords hit |
+| Quality compare (fail) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T090154.745033Z-quality-compare.json` | `status=fail` on all 5 prompts |
+| Resource gate precheck | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-20260628Tquality-gate.json` | passed |
+
+### M14 closeout summary
+
+- **Quality gate (`VAL-M14-005`):** NOT MET (three consecutive `status=fail` runs; final `max_draft_tokens=1` run is the authoritative evidence).
+- **Performance gate (`VAL-M14-006`):** NOT MET (no quality-passing run exists, so the "≥2 quality-passing repeated samples" requirement cannot be satisfied; every targeted latency metric regresses in the existing failed run).
+- **Preflight (`VAL-M14-001`):** MET (path/tokenizer/vocab/route/cache checks pass; live probe result documented).
+- **Harness flags + telemetry (`VAL-M14-002`):** MET (`--dflash`, `--dflash-target-model`, `--dflash-drafter-model`, `--dflash-max-draft-tokens` wired; report carries `dflash` block with `target_model_path`, `drafter_model_path`, `fallback_status`, `accepted_proposal_tokens`, `rejected_proposal_tokens`).
+- **Capped smoke (`VAL-M14-003`):** MET (zero row errors, valid assistant output, no VLM/batched/distributed/adapter fallback, capped output).
+- **Real-pair invariants (`VAL-M14-004`):** MET (37 tests + 4 subtests pass; target-only verified-token emission, rollback semantics, rejected-token cleanup, KV/GDN rollback on the proven 16 KVCache + 48 ArraysCache layout).
+- **Resource gate (`VAL-M14-007`):** MET (cloud-only LLMDYNAMIX allowed; local Qwen/LLMDYNAMIX model loads, MLX/Metal-heavy services, and insufficient memory remain fail-closed; phase-aware accounting prevents double-counting the resident target).
+- **Performance/promotion decision (`VAL-M14-006`):** **REJECT** — recorded above; no promotion, no default-on, no further heavyweight samples for this evaluation.
+
+DFlash closes M14 as REJECT on the performance/promotion evaluation. The runtime path is functionally correct (smoke + invariants + harness telemetry + capped smoke all pass), but the quality gate never passes at any allowed `max_draft_tokens` setting and the per-emission target verify overhead makes the candidate strictly slower on every metric. There is no path to promotion from this evidence; a future lane would need a fundamentally different draft/verify scheduling design, not a retry of the existing flags.
