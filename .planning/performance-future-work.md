@@ -2375,3 +2375,110 @@ The hybrid test plan combines real-pair evidence from the capped smoke (accepted
 | Capped smoke structured evidence | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-capped-smoke-evidence-20260628T074326Z.json` |
 | Capped smoke quality inspect | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-capped-smoke-quality-inspect-20260628T074326Z.json` |
 | Mission services file | `/Users/jeffreycruz/.factory/missions/dbaf7c9f-269e-49f0-993a-ded7115a0792/services.yaml` (`commands.test` now includes the new test file) |
+
+## M14 real-model DFlash quality gate against matching baseline (2026-06-28)
+
+Feature `m14-dflash-real-quality-gate` runs the real-model DFlash quality validation against a matching mlx-engine Qwen3.6 27B baseline through the direct `shared_bench.py` harness and the `quality_compare.py` gate. The run uses the deterministic M14 quality suite `prompt_suites/m14_dflash_quality_gate.json` (`temp=0.0`, `top_p=1.0`, `runs=2`, `max_tokens=96`, `enable_thinking=false`, `--include-output-text`) on the same `Qwen3.6-27B-MLX-8bit` model with the same `--mlx-engine-force-sequential` route and the same five-prompt deterministic suite. The only difference is the `--dflash` opt-in for the candidate run.
+
+- **Quality gate suite:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_quality_gate.json` (5 deterministic prompts: short_factual, brief_summary, code_function, math_calc, json_output; `enable_thinking: false`; `forbid_substrings: ["Thinking Process","Analyze the Request","thinking","reasoning"]`; `forbid_reasoning_prefixes: ["<","Let me","thinking process","analyze the request","reasoning:"]`; `min_completion_tokens` 1/4/8/4/16; `json_exact_keys` for the JSON prompt).
+- **Baseline (DFlash off) report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T081709.285321Z-shared-bench.json`
+- **Candidate (DFlash on) report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T081821.970273Z-shared-bench.json`
+- **Quality compare:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T081821.970273Z-quality-compare.json`
+
+### Baseline invocation (DFlash OFF — exact verbatim)
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --prompt-suite-json prompt_suites/m14_dflash_quality_gate.json \
+  --runs 2 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text \
+  --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+```
+
+### Candidate invocation (DFlash ON — exact verbatim)
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --dflash \
+  --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 \
+  --dflash-max-draft-tokens 4 \
+  --prompt-suite-json prompt_suites/m14_dflash_quality_gate.json \
+  --runs 2 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text \
+  --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+```
+
+### Row-error inspection (every relevant row, both reports)
+
+| Report | prompt_id | run_index | error | completion_tokens | ttft_s | decode_tps | total_s | dflash.fallback_status |
+| --- | --- | ---:| --- | ---:| ---:| ---:| --- | --- |
+| Baseline | m14_dflash_short_factual | 1 | null | 3 | 0.651 | 30.470 | 0.749 | (DFlash off) |
+| Baseline | m14_dflash_short_factual | 2 | null | 3 | 0.354 | 31.629 | 0.449 | (DFlash off) |
+| Baseline | m14_dflash_brief_summary | 1 | null | 13 | 0.609 | 24.686 | 1.136 | (DFlash off) |
+| Baseline | m14_dflash_brief_summary | 2 | null | 13 | 0.356 | 24.682 | 0.883 | (DFlash off) |
+| Baseline | m14_dflash_code_function | 1 | null | 47 | 0.605 | 23.529 | 2.603 | (DFlash off) |
+| Baseline | m14_dflash_code_function | 2 | null | 47 | 0.357 | 23.522 | 2.355 | (DFlash off) |
+| Baseline | m14_dflash_math_calc | 1 | null | 48 | 0.607 | 23.491 | 2.651 | (DFlash off) |
+| Baseline | m14_dflash_math_calc | 2 | null | 48 | 0.357 | 23.454 | 2.404 | (DFlash off) |
+| Baseline | m14_dflash_json_output | 1 | null | 65 | 0.607 | 23.402 | 3.385 | (DFlash off) |
+| Baseline | m14_dflash_json_output | 2 | null | 65 | 0.361 | 23.407 | 3.138 | (DFlash off) |
+| Candidate | m14_dflash_short_factual | 1 | null | 16 | 1.331 | 14.633 | 2.425 | default_off |
+| Candidate | m14_dflash_short_factual | 2 | null | 16 | 0.619 | 15.134 | 1.676 | default_off |
+| Candidate | m14_dflash_brief_summary | 1 | null | 32 | 0.820 | 29.282 | 1.913 | default_off |
+| Candidate | m14_dflash_brief_summary | 2 | null | 32 | 0.587 | 23.595 | 1.943 | default_off |
+| Candidate | m14_dflash_code_function | 1 | null | 96 | 0.826 | 31.016 | 3.921 | default_off |
+| Candidate | m14_dflash_code_function | 2 | null | 96 | 0.593 | 24.726 | 4.476 | default_off |
+| Candidate | m14_dflash_math_calc | 1 | null | 48 | 0.839 | 19.362 | 3.318 | default_off |
+| Candidate | m14_dflash_math_calc | 2 | null | 48 | 0.589 | 10.658 | 5.093 | default_off |
+| Candidate | m14_dflash_json_output | 1 | null | 96 | 0.833 | 11.676 | 9.055 | default_off |
+| Candidate | m14_dflash_json_output | 2 | null | 96 | 0.585 | 13.645 | 7.620 | default_off |
+
+Every baseline row has `error: null` and every candidate row has `error: null`. The candidate `dflash.fallback_status` is `default_off` on every row (no VLM/batched/distributed/adapter fallback, no preflight fallback, no runtime fallback). The candidate `dflash.uses_native_runtime` is `true` on every row, and `dflash.sequential_text_only` is `true` on every row. The DFlash path was exercised end-to-end on every candidate row (accepted/rejected proposal counts varied per prompt but the runtime path was reached).
+
+### Quality compare status and findings
+
+`quality_compare.py --baseline <20260628T081709…> --candidate <20260628T081821…>` returned **`status=fail`**, `failed_prompts=m14_dflash_brief_summary,m14_dflash_code_function,m14_dflash_json_output,m14_dflash_math_calc,m14_dflash_short_factual` (all five prompts failed). The compare JSON records:
+
+- `m14_dflash_short_factual`: total latency regression +242.259% (threshold 5%), warm TTFT median +74.838%, warm total median +273.517%. Row-level quality passed (ok keyword hit, no reasoning leak), but the latency regression alone is a hard gate fail.
+- `m14_dflash_brief_summary`: row 1 repeated line ratio 0.769 (≥0.500 threshold), row 2 missing `capital` keyword + repeated 5-gram count 11 (threshold 3); total +91.072%, warm TTFT median +97.753%, warm total median +118.482%.
+- `m14_dflash_code_function`: row 1 missing `add` and `return` keywords + repeated 5-gram count 42 (threshold 3); total +69.385%, warm TTFT median +99.001%, warm total median +78.301%.
+- `m14_dflash_json_output`: both rows missing `risk`, `mitigation`, `owner` keywords and failing `json_exact_keys` (`Expecting ':' delimiter`); decode TPS regression -45.906% (threshold 20%), total +155.643%, warm TTFT median +96.325%, warm total median +165.698%.
+- `m14_dflash_math_calc`: both rows missing `38.9` keyword; decode TPS regression -36.050% (threshold 20%), total +66.397%, warm TTFT median +99.916%, warm total median +74.948%.
+
+There is no visible-thinking leak (no `Thinking Process` / `Analyze the Request` / `thinking` / `reasoning` substring and no `<` / `Let me` prefix in any candidate row), so the `enable_thinking=false` route is working as intended. The failure modes are visible output quality drift on the structured / math / JSON prompts and severe latency regressions across the board.
+
+### Decision: **KEEP OPT-IN** — quality gate did NOT pass, latency is regressed, no path to PROMOTE from this evidence
+
+The real-model DFlash candidate does NOT pass `quality_compare.py status=pass`. Quality-compare returned `status=fail` on every one of the five deterministic prompts. The failures span:
+
+- Quality regressions: missing expected keywords (`38.9`, `add`, `return`, `capital`, `risk`, `mitigation`, `owner`), broken JSON structure (`Expecting ':' delimiter`), repeated 5-gram counts up to 42 (threshold 3), and repeated line ratio up to 0.769 (threshold 0.500).
+- Severe latency regressions: total latency +66.4% to +242.3% (threshold +5%), warm TTFT median +74.8% to +99.9% (threshold +5%), warm total median +74.9% to +273.5% (threshold +5%), decode TPS -36.1% to -52.1% (threshold -20%).
+
+DFlash is clearly **not promotable** from this evidence: the quality gate fails, and there is no latency win to compensate (the candidate is strictly slower and lower-quality on every metric). DFlash remains default-off and KEEP OPT-IN. The candidate run proves the runtime path works (accepted/rejected telemetry, no fallback, sequential text only, native runtime, target verified emission only) but the speculative drafts are too aggressive for the Qwen3.5 27B drafter + Qwen3.6 27B target pairing at the current `max_draft_tokens=4` setting — most proposals are rejected, the target correction diverges to repeated tokens, and the verification overhead plus bonus sampling cost dominate.
+
+Promotion requirements under `VAL-M14-005` and `VAL-M14-006` are still unmet:
+
+- `VAL-M14-005` requires `quality_compare.py status=pass`. The current run is `status=fail`; this assertion cannot be marked passed without a new candidate run that fixes both the quality regressions and the latency regressions.
+- `VAL-M14-006` requires at least two quality-passing repeated candidate samples with a repeatable latency win. There is no quality-passing sample yet.
+
+### Recommended follow-up (recorded for the orchestrator)
+
+- Treat this run as the **first** real-pair DFlash quality evidence; rerun with a stricter proposal-acceptance policy, a smaller `max_draft_tokens`, and tighter rollback semantics before the orchestrator records another `m14-dflash-real-quality-gate` lane. The next lane should not silently retry with the same flags.
+- `m14-dflash-performance-decision` cannot be promoted from this evidence either; it remains `pending`.
+- The mission-wide decision remains: DFlash is default-off, KEEP OPT-IN, with `m14-dflash-real-pair-invariants` (`VAL-M14-004`) passing the invariant contract and `m14-dflash-quality-perf-evidence` still pending a real speed win before any promotion lane is considered.
+
+| Artifact | Path |
+| --- | --- |
+| Quality gate suite | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_quality_gate.json` |
+| Baseline (DFlash off) report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T081709.285321Z-shared-bench.json` |
+| Candidate (DFlash on) report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T081821.970273Z-shared-bench.json` |
+| Quality compare (fail) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T081821.970273Z-quality-compare.json` |
