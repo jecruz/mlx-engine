@@ -2571,3 +2571,61 @@ The decode_tps regression shown by the gate (`+342917%` to `+791636%`) is **not*
 | Baseline (DFlash off) report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T083211.141558Z-shared-bench.json` |
 | Candidate (DFlash on, max_draft=1) report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T083305.726128Z-shared-bench.json` |
 | Quality compare (fail) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T083305.726128Z-quality-compare.json` |
+
+## M14 DFlash runtime loop continuation fix (2026-06-28)
+
+Feature `m14-dflash-runtime-loop-continuation` closes the single-token termination bug surfaced by the prior `max_draft_tokens=1` quality-gate retry (see "M14 DFlash quality gate (max_draft_tokens=1) retry" above). The retry produced `completion_tokens=1` and `finish_reason=null` on every prompt with `accepted_proposal_tokens=0` and `rejected_proposal_tokens=0`, with no row-level error — the generator terminated after the first token before the quality gate could evaluate anything useful. The previous `if bs <= 1: break` guard in `dflash_stream_generate` fired on every iteration when `max_draft_tokens=1` because the runtime's per-round block size collapses to 1 in that configuration, so the loop exited after the initial prompt-processing bonus sample.
+
+### Code change
+
+- `mlx_engine/utils/dflash_runtime.py` — replaced the unconditional `if bs <= 1: break` guard with a `if bs < 1: break` exit followed by a dedicated `if bs == 1` branch that runs a **target-only round** without invoking the drafter:
+  - Build `verify_input = [[emitted_history[-1]]]` (length 1) and call the target model with `target_verify=True` (so every emitted bonus token is still target-verified; no unverified drafter tokens ever reach the emission path).
+  - Sample the next bonus token from `logprobs[:, -1, :]` and append it to `emitted_history`.
+  - Record the round via `_record_speculative_round(draft_model, 0, 0)` so the runtime keeps consistent per-round `accept_lens` / `draft_lens` bookkeeping (zero drafts proposed, zero drafts accepted).
+  - Yield the new bonus through `_emit_token` with `from_draft=False`, then `continue` to the next iteration. The loop continues until `emitted >= max_tokens`, EOS, stop string, or another normal stop criterion.
+  - No rollback is invoked in the target-only path because no drafts were proposed. The cache advances by exactly one token per round (the bonus just sampled is appended by the next round's verify call).
+- Behavior change summary:
+  - `max_draft_tokens >= 2` rounds unchanged. The original draft + verify + speculative walk + rollback path still runs as before; existing rollback invariants and fail-closed checks are untouched.
+  - `max_draft_tokens == 1` rounds now bypass the drafter (`draft_block` is not called) but still route every emission through target verification with `target_verify=True`. The drafter's bookkeeping records `(accepted=0, draft_count=0)` per round so the existing telemetry contract is preserved.
+
+### Tests added
+
+`tests/test_dflash_runtime.py` — new test class `TestMaxDraftTokensOneContinuation` (8 focused tests, all passing):
+
+- `test_emits_multiple_target_verified_tokens_across_rounds` — drives the runtime with `max_tokens=6` and `max_draft_tokens=1`, asserts 6 tokens are emitted (1 prompt-processing bonus + 5 target-only bonus rounds), and every emitted token has `from_draft=False`.
+- `test_loop_terminates_at_eos_without_emitting_unverified_drafter_tokens` — drives the runtime past the target sequence into a filler EOS path and asserts every emitted token has `from_draft=False`.
+- `test_loop_terminates_at_max_tokens` — drives the runtime with a long target sequence and a small `max_tokens` cap; asserts exactly `max_tokens` emissions and no drafter proposals.
+- `test_drafter_is_bypassed_for_max_draft_tokens_one` — uses a `_TrackingDraftModel` whose `draft_block` raises `AssertionError` on call; the runtime never invokes it. Asserts `accept_lens == [0, 0]` and `draft_lens == [0, 0]` (one record per round).
+- `test_rollback_is_not_invoked_for_max_draft_tokens_one` — asserts `kit.model.rollback_calls == []` because no drafts exist to reject.
+- `test_every_target_verify_call_uses_target_verify_true` — asserts every per-round target call (including the bs=1 target-only rounds) carries `target_verify=True`, so the patched Qwen3.5 wrapper routes through the target-verification path end-to-end.
+- `test_cache_advances_one_token_per_round` — asserts the KVCache layer histories record `prompt + max_tokens - 1` entries (the final emitted token is appended by the next round, which the loop does not enter because `emitted >= max_tokens`).
+- `test_proposal_observer_is_not_called_for_max_draft_tokens_one` — asserts the proposal observer never fires because no drafts are proposed.
+
+Plus the supporting fakes:
+
+- `_TargetOnlySequenceModel` — fake target whose argmax at position `-1` returns the next entry from a configured token sequence on every call. Supports arbitrary input shapes (initial prompt processing call + any number of bs=1 rounds) and records every call so tests can inspect the runtime's per-round `target_verify` flag.
+- `_TrackingDraftModel` — fake drafter whose `draft_block` raises `AssertionError` to fail any test that accidentally invokes the drafter in the target-only path.
+- `_TargetOnlyKit` — model kit stub that wires the target-only fake to the proven 16 KVCache + 48 ArraysCache layout so the invariant tests exercise the production layout.
+
+### Validation results
+
+- New test class (`TestMaxDraftTokensOneContinuation`) — **8 passed, 0 failed**.
+- Focused `tests/test_dflash_runtime.py` — **12 passed, 0 failed, 9 subtests passed** (4 pre-existing subtests + 8 new max_draft_tokens=1 tests).
+- Full M14 promotion pytest gate (`services.yaml` `commands.test`) — **363 passed, 16 skipped, 0 failed, 52 subtests passed**. The 16 skips are pre-existing environment-driven skips unrelated to this change.
+- Broader mlx-engine test suite (excluding model-loaded tests that need actual local checkpoints) — **543 passed, 16 skipped, 0 failed, 58 subtests passed**.
+- Lint: `ruff check mlx_engine/utils/dflash_runtime.py tests/test_dflash_runtime.py` — clean.
+- Lint: `ruff check --exclude .worktrees .` (full repo) — clean.
+
+### Why this is not a promotion
+
+- The fix is a **runtime-path correctness** change. It restores the multi-round generator behavior that the conservative `max_draft_tokens=1` retry needed to produce valid output, but it does not change quality outcomes on the real model. The bench-worker promotion gate (`m14-dflash-real-quality-gate` → `m14-dflash-performance-decision`) still owns the decision to keep DFlash at opt-in, promote it, or reject it.
+- Existing rollback invariants and fail-closed surfaces (`m14-dflash-real-pair-invariants`, `m14-dflash-runtime` boundary checks) remain unchanged. The 37 invariant tests + 4 subtests in `test_dflash_real_pair_invariants.py` plus the 4 dflash boundary / runtime tests still pass without modification.
+- DFlash remains default-off. No promotion / KEEP OPT-IN / REJECT decision is recorded by this feature.
+
+### Artifacts
+
+| Artifact | Path |
+| --- | --- |
+| Runtime fix | `mlx_engine/utils/dflash_runtime.py` (target-only bs=1 branch) |
+| New tests | `tests/test_dflash_runtime.py::TestMaxDraftTokensOneContinuation` (8 new tests) |
+| M14 gate report | full pytest run: 363 passed / 16 skipped / 0 failed |
