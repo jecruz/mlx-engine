@@ -2210,3 +2210,53 @@ After the `m14-qwen35-wrapper-textmodel-rollback-hook` commit (62adb12) exposed 
 - `.planning/dflash-resource-gate-evidence-precheck.json` (live precheck proving the resource gate is ready).
 
 **Per the feature description ("If resource or compatibility problems appear, attribute the row error to boundary-check versus runtime-path no-go where possible, then return to orchestrator with exact logs instead of retrying heavy loads blindly"), the smoke is returned to the orchestrator with the exact logs above rather than retried.** Promoting or changing behavior is out of scope; the next implementation worker must add `target_verify` to `_patched_qwen3_5_language_model_call` (and forward it to `self.model(...)`) plus a focused pytest asserting the kwarg is accepted and forwarded, then re-run this same smoke command.
+
+## M14 Qwen3.5 `target_verify` forwarding (2026-06-28)
+
+Feature `m14-qwen35-target-verify-forwarding` closes the runtime-path `target_verify=True` blocker surfaced by the latest capped DFlash smoke (the `TypeError: _patched_qwen3_5_language_model_call() got an unexpected keyword argument 'target_verify'` at `mlx_engine/model_kit/patches/qwen3_5.py:1185` recorded in the `Capped real-model smoke re-run (2026-06-28)` entry above).
+
+### Code change
+
+- `mlx_engine/model_kit/patches/qwen3_5.py`
+  - `_patched_qwen3_5_language_model_call` — patched wrapper for the outer `mlx_lm.models.qwen3_5.TextModel.__call__`. Adds `target_verify: bool = False` to the signature and forwards it explicitly to the inner `self.model(...)` call. Docstring documents the DFlash default-off behavior: ordinary text generation calls pass `target_verify=False` (the default) and the wrapper behaves exactly like the unpatched `TextModel.__call__`.
+  - `PatchedQwen3_5TextModel.__call__` — patched inner class. Adds `target_verify: bool = False` to the signature so the forwarded call from the outer wrapper does not raise `TypeError` at the inner boundary. The parameter is accepted for signature compatibility; the kwarg is consumed at the attention / GDN layer level (see `_patched_vlm_qwen3_5_attention_call` and `_patched_vlm_qwen3_5_gated_delta_net_call`), so the inner forward does not need to use it directly.
+  - `_patched_qwen3_5_model_call` — outer `mlx_lm.models.qwen3_5.Model.__call__` wrapper. Already uses `**kwargs`, so the new `target_verify` kwarg flows through unchanged from `dflash_stream_generate`'s `model_kit.model(...)` call site down to `_patched_qwen3_5_language_model_call`.
+
+### Tests added
+
+`tests/test_patched_qwen3_5_target_verify_forwarding.py` (new file, 11 focused tests, all passing):
+
+- `TestPatchedQwen3_5LanguageModelTargetVerifyForwarding` (4 tests) — proves the wrapper `_patched_qwen3_5_language_model_call` accepts `target_verify=True` and forwards it to the inner `self.model(...)` call; proves the default `target_verify=False` is also forwarded (no kwarg drop); proves an existing default call (no `target_verify` kwarg at all) remains unchanged; proves the capture kwargs (`capture_layer_ids`, `hidden_sink`, `gdn_sink`) coexist with `target_verify=True` without regressing the inner forwarding.
+- `TestPatchedQwen3_5OuterModelCallTargetVerifyForwarding` (2 tests) — proves `_patched_qwen3_5_model_call` (outer) forwards `target_verify=True` through `**kwargs` to the language_model call, and that the default `False` reaches the inner as well.
+- Inner-signature introspection tests (3 tests, in the Inner Signature test class) — introspect the inner `PatchedQwen3_5TextModel.__call__`, the wrapper `_patched_qwen3_5_language_model_call`, and the outer `_patched_qwen3_5_model_call` signatures to prove `target_verify` is a real parameter (default `False`, kwarg-compatible) on the inner + wrapper, and that the outer uses `**kwargs` so any new kwarg flows through.
+- `TestTargetVerifyNoSurfaceWidening` (2 tests) — asserts no DFlash default-on flags (`enable_dflash`, `dflash_enabled`, `rollback_default_on`, `target_verify_default_on`) leak onto `PatchedQwen3_5TextModel`, and that callers that forget `target_verify` default to `False` rather than silently opting in.
+
+### Changed files
+
+- `mlx_engine/model_kit/patches/qwen3_5.py` — added `target_verify: bool = False` to `_patched_qwen3_5_language_model_call` and `PatchedQwen3_5TextModel.__call__`; forwarded the kwarg from the wrapper to the inner `self.model(...)` call.
+- `tests/test_patched_qwen3_5_target_verify_forwarding.py` — new focused test file (11 tests) for the forwarding contract.
+- `services.yaml` (`commands.test`) — added `tests/test_patched_qwen3_5_target_verify_forwarding.py` to the full M14 promotion pytest gate.
+- `.planning/performance-future-work.md` — this entry.
+
+### Test outcomes
+
+- Focused: `tests/test_patched_qwen3_5_target_verify_forwarding.py` — **11 passed, 0 failed**.
+- Scoped regression set (`test_patched_qwen3_5.py` + `test_patched_qwen3_5_dflash_rollback.py` + `test_dflash_runtime.py` + `test_dflash_boundary.py`) — **109 passed, 9 skipped, 0 failed** (the 9 skips are pre-existing environment-driven skips unrelated to this change).
+- M14 promotion gate (`services.yaml` `commands.test`) — **318 passed, 16 skipped, 0 failed, 48 subtests passed**.
+- Lint: `ruff check mlx_engine/model_kit/patches/qwen3_5.py tests/test_patched_qwen3_5_target_verify_forwarding.py` — clean.
+- Lint: `ruff check --exclude .worktrees .` (full repo) — clean.
+
+### No DFlash surface widening
+
+The kwarg is purely a forwarding passthrough. No DFlash flags became default-on; no env vars changed; the patched text model gains only the `target_verify` parameter, not any `enable_dflash` / `dflash_enabled` / `rollback_default_on` attribute. Existing default calls (text generation, batched, VLM, SpecPrefill, loaded-draft-model) do not change behavior because they either omit the kwarg (default `False`) or pass `False` explicitly.
+
+### Decision
+
+This feature is **IMPLEMENTATION ONLY**. No promotion, no smoke re-run, no `quality_compare.py` baseline comparison — those remain out of scope for this feature per the description ("do NOT modify already-committed WIP behavior unless you find a real defect" and the explicit "Add focused tests proving both wrapper call paths accept and forward `target_verify=True`, and that existing default calls remain unchanged" wording).
+
+The next implementation worker (or the bench-worker promotion evidence feature) can re-run the same capped DFlash smoke command shape (`shared_bench.py` with `--dflash --dflash-target-model ... --dflash-drafter-model ... --mlx-engine-force-sequential`) to confirm the runtime path no longer raises `TypeError: unexpected keyword argument 'target_verify'` at the first target-verify call. The smoke is not re-run from this feature scope because:
+
+1. Running the full Qwen3.6 27B + z-lab DFlash drafter smoke requires ≥39 GiB of free host memory plus serial execution with no concurrent MLX/Metal workload — both are environmental conditions that the bench-worker promotion lane owns.
+2. Per the feature description ("Never bypass target verification or emit unverified drafter tokens"), the only behavior change required is to make the existing target-verify call site succeed; no semantic change to DFlash target verification itself.
+
+If the smoke re-run shows the first `target_verify=True` call now succeeds and a subsequent blocker surfaces (e.g., another keyword mismatch, a captured-state mismatch, or a quality issue), that blocker should be filed as a follow-up M14 feature in its own right.
