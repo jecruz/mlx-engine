@@ -604,6 +604,120 @@ class PatchedDecoderLayer(DecoderLayer):
         return linear.out_proj(out.reshape(B, S, -1))
 
 
+def _qwen3_5_dflash_rollback_base_history_len(gdn_state) -> int:
+    """Return the pre-verify history length for a single gdn_state entry.
+
+    ``gdn_state`` is one entry from the per-layer ``gdn_states`` list the
+    DFlash runtime captured during target_verify. Supported shapes:
+
+    * ``None``: caller has no per-layer state available.
+    * mlx-vlm GDN sink tuple (12-tuple): no ``base_history_len`` attribute,
+      so return 0 (treat the pre-verify history length as unknown).
+    * Simple namespace / object exposing ``base_history_len``: return it.
+    """
+    if gdn_state is None:
+        return 0
+    if isinstance(gdn_state, tuple):
+        return 0
+    return int(getattr(gdn_state, "base_history_len", 0) or 0)
+
+
+def _qwen3_5_dflash_rollback_rewind_layer(cache_layer, keep: int) -> None:
+    """Truncate a single cache layer back to ``keep`` tokens.
+
+    The DFlash rollback is default-off and only invoked from the runtime
+    path. It must never widen the supported cache surface; the goal is the
+    narrow rollback that lets ``dflash_stream_generate`` recover from
+    partial DFlash rejection without leaking unverified tokens into the
+    live cache state.
+    """
+    if cache_layer is None:
+        return
+
+    history = getattr(cache_layer, "history", None)
+    if isinstance(history, list) and keep >= 0:
+        del history[keep:]
+
+    original_offset = getattr(cache_layer, "offset", None)
+
+    keys = getattr(cache_layer, "keys", None)
+    values = getattr(cache_layer, "values", None)
+    if (
+        keys is not None
+        and values is not None
+        and hasattr(keys, "shape")
+        and keep >= 0
+    ):
+        seq_axis = -2 if keys.ndim >= 3 else 1
+        current_offset = (
+            original_offset if isinstance(original_offset, int) else None
+        )
+        if current_offset is not None and current_offset > keep:
+            if seq_axis == -2:
+                cache_layer.keys = keys[..., :keep, :]
+                cache_layer.values = values[..., :keep, :]
+            else:
+                cache_layer.keys = keys[:, :keep, ...]
+                cache_layer.values = values[:, :keep, ...]
+
+    if isinstance(original_offset, int) and keep >= 0:
+        cache_layer.offset = keep
+
+    idx_attr = getattr(cache_layer, "_idx", None)
+    if isinstance(idx_attr, int) and keep >= 0:
+        cache_layer._idx = keep
+
+    lengths = getattr(cache_layer, "lengths", None)
+    if lengths is not None and hasattr(lengths, "shape") and keep >= 0:
+        try:
+            broadcast_shape = tuple(
+                1 if axis == 0 else lengths.shape[axis]
+                for axis in range(lengths.ndim)
+            )
+            floor = mx.full(broadcast_shape, keep, dtype=lengths.dtype)
+            cache_layer.lengths = mx.minimum(lengths, floor)
+        except Exception:
+            try:
+                cache_layer.lengths = mx.full(
+                    lengths.shape, keep, dtype=lengths.dtype
+                )
+            except Exception:
+                pass
+
+
+def _qwen3_5_dflash_rollback(
+    prompt_cache,
+    gdn_states,
+    accepted: int,
+    block_size: int,
+) -> None:
+    """Roll back partial DFlash rejection in the sequential text path.
+
+    See :meth:`PatchedQwen3_5TextModel.rollback_speculative_cache` for the
+    full contract. Module-level helper so focused tests and the DFlash
+    runtime can call the same rollback semantics without constructing a
+    real Qwen3.5 model.
+    """
+    if prompt_cache is None or accepted < 0:
+        return
+    if accepted >= block_size - 1:
+        # Full acceptance; nothing to roll back.
+        return
+
+    keep_extra = accepted + 1  # bonus target token + accepted drafts
+    for layer_index, cache_layer in enumerate(prompt_cache):
+        if cache_layer is None:
+            continue
+        if gdn_states is None or layer_index >= len(gdn_states):
+            base_history_len = 0
+        else:
+            base_history_len = _qwen3_5_dflash_rollback_base_history_len(
+                gdn_states[layer_index]
+            )
+        keep = base_history_len + keep_extra
+        _qwen3_5_dflash_rollback_rewind_layer(cache_layer, keep)
+
+
 class PatchedQwen3_5TextModel(Qwen3_5TextModel):
     """
     Qwen3_5TextModel with MRoPE position state management.
@@ -633,6 +747,39 @@ class PatchedQwen3_5TextModel(Qwen3_5TextModel):
         """
         self.position_ids = None
         self.rope_deltas = None
+
+    def rollback_speculative_cache(
+        self,
+        prompt_cache,
+        gdn_states,
+        accepted: int,
+        block_size: int,
+    ) -> None:
+        """Roll back partial DFlash rejection in the sequential text path.
+
+        ``dflash_stream_generate`` invokes this hook when a draft block was
+        partially rejected by the target (``accepted < block_size - 1``). The
+        implementation must restore the live prompt_cache so that:
+
+        * only the bonus target token plus the ``accepted`` draft tokens
+          remain in cache history after the rollback,
+        * the previously verified target tokens (those already in cache before
+          this verify call) are preserved,
+        * the rejected draft tokens never appear in the live cache state.
+
+        ``gdn_states`` is the optional per-layer GDN sink list captured during
+        target_verify. Each entry may be a SimpleNamespace exposing
+        ``base_history_len`` or an mlx-vlm GDN sink tuple. When empty or
+        ``None``, the method falls back to a base length of 0 per layer.
+
+        The method is default-off in practice: it is only called by the DFlash
+        runtime path (``dflash_stream_generate``) and never wired into
+        ordinary text generation. It does not widen DFlash beyond the
+        sequential text surface; batched, VLM, adapter, SpecPrefill, and
+        loaded-draft-model combinations remain fail-closed by the boundary
+        check.
+        """
+        _qwen3_5_dflash_rollback(prompt_cache, gdn_states, accepted, block_size)
 
     def __call__(
         self,

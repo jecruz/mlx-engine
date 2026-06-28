@@ -1798,3 +1798,43 @@ The smoke **does not** complete with valid output under the token cap because of
 | Prompt suite | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_capped_smoke.json` |
 | Live gate precheck | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-smoke-precheck.json` |
 | Phase-aware preflight evidence | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-phase-aware-preflight-evidence.json` |
+
+
+## M14 Qwen3.5 TextModel DFlash rollback hook (2026-06-28)
+
+Feature `m14-qwen35-textmodel-dflash-rollback` implements the missing `TextModel.rollback_speculative_cache` hook that `dflash_stream_generate` invokes after every partial DFlash rejection (see `mlx_engine/utils/dflash_runtime.py:371-375`). The previous capped-smoke blocker was fail-closed on `TextModel does not implement rollback_speculative_cache`; this feature exposes the hook on the patched Qwen3_5 `TextModel` and proves rollback safety with focused tests for accepted=0, partial, and full acceptance.
+
+### Hook contract
+
+- New method on `PatchedQwen3_5TextModel` (`mlx_engine/model_kit/patches/qwen3_5.py`):
+  `rollback_speculative_cache(prompt_cache, gdn_states, accepted, block_size)`
+- No-op when `accepted >= block_size - 1` (full acceptance), when `prompt_cache is None`, or when `accepted < 0`.
+- For partial acceptance, rolls back every per-layer cache entry so that only the `base_history_len + accepted + 1` (bonus token + accepted drafts) tokens remain in cache state.
+- Per-layer rewind supports:
+  - `history` list slicing (test-friendly + cheap fallback)
+  - `KVCache`-shaped layers (`keys`/`values` arrays + `offset` + `_idx`)
+  - `ArraysCache` and similar opaque caches (`lengths` truncated via `mx.minimum`)
+  - Generic `offset`/`_idx` rewinding when present
+  - `None` cache entries (skipped)
+- `gdn_states` entries may be `None`, the mlx-vlm GDN sink 12-tuple, or any object exposing `base_history_len`; tuples default to `base_history_len=0` and are sliced from the start of the verify pass.
+- The hook is default-off: it is only invoked by `dflash_stream_generate` after partial rejection. No code path in ordinary text generation, batched text, distributed, VLM, SpecPrefill, or adapter routes calls it.
+- The patched `PatchedQwen3_5TextModel` continues to be the only class that gains the method; existing `mlx_lm.models.qwen3_5.TextModel` and `mlx_lm.models.qwen3_5.Model` exports are untouched.
+
+### Verification
+
+- `.venv-py312/bin/python -m pytest -q tests/test_patched_qwen3_5_dflash_rollback.py` → 13 passed, 12 subtests passed, 0 failed.
+  - Covers: hook presence + callability, accepted=0 / partial-acceptance / full-acceptance history rollback, full acceptance is a no-op, empty `gdn_states` fallback, mlx-vlm GDN sink tuple handling, real `KVCache`-shaped layer truncation (keys/values arrays), negative `accepted` defensive guard, `None` cache layer skipping, no DFlash surface widening.
+  - Invariant subtests prove no rejected tokens remain in live cache state for every acceptance shape, accepted tokens survive rollback, and pre-existing prompt tokens are preserved.
+- `.venv-py312/bin/python -m pytest -q tests/test_dflash_runtime.py tests/test_dflash_boundary.py` → 36 passed, 22 subtests passed, 0 failed (no regression on existing DFlash boundary/runtime coverage; `test_rejects_missing_rollback_capability_before_prompt_processing` still passes because the patched text model now exposes the hook).
+- `.venv-py312/bin/python -m pytest -q <full M14 promotion pytest gate>` → 284 passed, 16 skipped, 0 failed (was 271; +13 new DFlash rollback hook tests).
+- `ruff check mlx_engine/model_kit/patches/qwen3_5.py tests/test_patched_qwen3_5_dflash_rollback.py` → All checks passed.
+
+### Changed files
+
+- `mlx_engine/model_kit/patches/qwen3_5.py` — added `_qwen3_5_dflash_rollback_base_history_len`, `_qwen3_5_dflash_rollback_rewind_layer`, and `_qwen3_5_dflash_rollback` module helpers, plus `PatchedQwen3_5TextModel.rollback_speculative_cache` which delegates to the module helper. The hook is class-level (so `getattr(lm, "rollback_speculative_cache", None)` from `dflash_stream_generate` succeeds).
+- `tests/test_patched_qwen3_5_dflash_rollback.py` — new focused test file covering hook existence, three acceptance shapes, mlx-vlm tuple compatibility, real `KVCache` truncation, and three invariant subtests.
+- `services.yaml` (`commands.test`) — added `tests/test_patched_qwen3_5_dflash_rollback.py` to the full M14 promotion pytest gate.
+
+### Status
+
+This feature resolves one of the two runtime compatibility blockers recorded in the M14 capped-smoke evidence above. The remaining blocker (the 48 `ArraysCache` ragged-cache layers) is scoped to a separate feature (`m14-dflash-gdn-arrayscache-runtime-compatibility`), which depends on this hook being present and tested. DFlash remains default-off and sequential-text-only until the ArraysCache compatibility feature lands and the capped smoke re-runs.
