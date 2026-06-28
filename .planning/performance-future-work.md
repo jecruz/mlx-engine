@@ -2482,3 +2482,92 @@ Promotion requirements under `VAL-M14-005` and `VAL-M14-006` are still unmet:
 | Baseline (DFlash off) report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T081709.285321Z-shared-bench.json` |
 | Candidate (DFlash on) report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T081821.970273Z-shared-bench.json` |
 | Quality compare (fail) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T081821.970273Z-quality-compare.json` |
+
+## M14 DFlash quality gate (max_draft_tokens=1) retry (2026-06-28)
+
+Feature `m14-dflash-real-quality-gate` re-ran the M14 DFlash quality gate conservatively with `--dflash-max-draft-tokens 1` after the prior `max_draft_tokens=4` attempt failed every prompt with repeated-token, JSON/math, and latency regressions. The orchestrator's lane description requires the gate to start at `1` and only retry `2` if `1` passes quality but lacks useful telemetry. This run does **not** pass quality, so per the lane description the worker is returning to the orchestrator with the exact compare JSON rather than silently retrying with `max_draft_tokens=2` or forcing a pass.
+
+### Invocations (verbatim)
+
+Baseline (DFlash OFF, matching the prior lane exactly except the new report timestamp):
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --prompt-suite-json prompt_suites/m14_dflash_quality_gate.json \
+  --runs 2 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text \
+  --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+```
+
+Candidate (DFlash ON, `--dflash-max-draft-tokens 1`):
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --dflash \
+  --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 \
+  --dflash-max-draft-tokens 1 \
+  --prompt-suite-json prompt_suites/m14_dflash_quality_gate.json \
+  --runs 2 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text \
+  --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+```
+
+### Reports captured
+
+- **Baseline (DFlash off) report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T083211.141558Z-shared-bench.json`
+- **Candidate (DFlash on, max_draft=1) report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T083305.726128Z-shared-bench.json`
+- **Quality compare (DFlash on vs baseline):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T083305.726128Z-quality-compare.json`
+
+### Row-error inspection (mandatory)
+
+Every baseline row has `error: null`, `completion_tokens` between `3` and `65`, and `finish_reason` of `eos_token` or `token_limit`. Every candidate row has `error: null` (no runner exception, no preflight blocker, no fallback) but `completion_tokens: 1` and `finish_reason: null` on every row. The candidate `dflash` block on every row shows `opted_in: true`, `fallback_status: default_off`, `sequential_text_only: true`, `uses_native_runtime: true`, `accepted_proposal_tokens: 0`, `rejected_proposal_tokens: 0`. The DFlash runtime path was activated (no VLM / batched / distributed / adapter / preflight fallback), but the generator only emitted the drafter's first token before stopping — no second token, no eos, no max_tokens cap reached.
+
+### Per-prompt observed outputs (candidate vs baseline)
+
+| Prompt | Baseline run 1 output | Candidate run 1 output | Required keywords | Required min tokens |
+| --- | --- | --- | --- | --- |
+| `m14_dflash_short_factual` | `ok.` (3 tok, eos) | `ok` (1 tok, no finish) | `ok` | 1 |
+| `m14_dflash_brief_summary` | `Washington D.C. is the capital of the United States.` (13 tok, eos) | `Washington` (1 tok, no finish) | `capital` | 4 |
+| `m14_dflash_code_function` | `\`\`\`python\ndef add(a, b):\n    return a + b\n\n# Example\nprint(a...` (47 tok, eos) | `\`\`\`` (1 tok, no finish) | `add`, `return` | 8 |
+| `m14_dflash_math_calc` | `$$ \frac{18 - 11}{18} \times 100 = \frac{7}{18} \times 100 \` (48 tok, token_limit) | `$$` (1 tok, no finish) | `38.9` | 4 |
+| `m14_dflash_json_output` | `{\n  "risk": "Inconsistent hardware performance and thermal t` (65 tok, eos) | `{` (1 tok, no finish) | `risk`, `mitigation`, `owner` | 16 |
+
+### Quality compare status and findings
+
+`quality_compare.py --baseline <20260628T083211…> --candidate <20260628T083305…>` returned **`status=fail`** on all five prompts (`failed_prompts=["m14_dflash_brief_summary","m14_dflash_code_function","m14_dflash_json_output","m14_dflash_math_calc","m14_dflash_short_factual"]`). The compare JSON records:
+
+- `m14_dflash_brief_summary`: `candidate row 1/2: completion tokens below threshold: 1 < 4`, `missing prompt keywords: capital`, warm TTFT median regression `+61.404%` (threshold 5%).
+- `m14_dflash_code_function`: `candidate row 1/2: completion tokens below threshold: 1 < 8`, `missing prompt keywords: add, return`, warm TTFT median regression `+67.917%`.
+- `m14_dflash_json_output`: `candidate row 1/2: completion tokens below threshold: 1 < 16`, `missing prompt keywords: risk, mitigation, owner`, warm TTFT median regression `+63.066%`.
+- `m14_dflash_math_calc`: `candidate row 1/2: completion tokens below threshold: 1 < 4`, `missing prompt keywords: 38.9`, warm TTFT median regression `+62.350%`.
+- `m14_dflash_short_factual`: `candidate row 1/2: completion tokens below threshold: 1 < 1` (boundary, but the per-row min is 1 — these technically pass that floor, but the larger 5-prompt suite still fails on the other four prompts). The candidate also shows a 1-token output that is correct on the first token but never reaches eos.
+
+The decode_tps regression shown by the gate (`+342917%` to `+791636%`) is **not** a real speedup — it is an artefact of the candidate emitting exactly 1 token and the harness measuring `decode_s` as the time between the first and (trivially fast) loop exit. The total latency sometimes looks lower (`total_change_pct: -30.379%` to `-78.637%`) only because the candidate stops after 1 token instead of generating a full answer.
+
+### Decision: return to orchestrator — KEEP OPT-IN, do not retry max_draft_tokens=2 in this lane
+
+- `quality_compare.py status == "pass"` is **not** satisfied. `status=fail` on all five prompts.
+- `VAL-M14-005` (`real-model DFlash quality gate passes against baseline`) remains **NOT MET**; this run is recorded as the second consecutive real-pair quality-gate failure (after the prior `max_draft_tokens=4` fail).
+- Per the lane description, the worker does **not** retry with `max_draft_tokens=2` because `1` did not pass quality. The next lane should start from a different fix (e.g. investigate why the generator stops after 1 token when `max_draft=1`, not just lower the budget further), not a different cap value.
+- DFlash remains **default-off / KEEP OPT-IN**. The capped smoke (M14 real-pair invariant work, `VAL-M14-004`) and the failing quality gates (this lane and the prior `max_draft=4` lane) are recorded as the only real-model evidence so far. Promotion, default-on, and `m14-dflash-performance-decision` remain **NOT** advanced by this run.
+
+### Recommended follow-up (for the orchestrator / next lane)
+
+- Investigate the candidate generator: with `max_draft=1`, the loop appears to yield exactly one token and then end. The drafter may not be re-invoked after the target verification step, or the drafter+target rollback path may be terminating the generator after the first round. Look at the `dflash_stream_generate` loop and confirm it continues after a single-token proposal under `max_draft_tokens=1`.
+- Confirm the drafter is actually proposing more than 1 token at `max_draft=1`. If the drafter is producing a 1-token block but the runtime is single-shot, raising to `max_draft=2` will not help either — the loop must continue across multiple rounds regardless of the per-round budget.
+- Do not treat either the prior `max_draft=4` fail or this `max_draft=1` fail as passing evidence. Both runs prove the native DFlash runtime path executes without a preflight or surface fallback, but the candidate's token emissions are too short and/or too divergent to satisfy the quality gate at any `max_draft_tokens` setting until the generator loop is fixed.
+
+| Artifact | Path |
+| --- | --- |
+| Baseline (DFlash off) report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T083211.141558Z-shared-bench.json` |
+| Candidate (DFlash on, max_draft=1) report | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T083305.726128Z-shared-bench.json` |
+| Quality compare (fail) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T083305.726128Z-quality-compare.json` |
