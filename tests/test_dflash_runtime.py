@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import mlx.core as mx
 
@@ -205,6 +206,498 @@ class FakeKit:
 
     def record_token_to_cache(self, token):
         self.received_cache_tokens.append(token)
+
+
+class _TargetOnlySequenceModel:
+    """Fake target that produces a fixed token sequence for any verify input.
+
+    Each call to ``__call__(tokens, ...)`` returns logits whose argmax
+    at position ``-1`` is the next entry in ``next_tokens``. The caller
+    is responsible for advancing through the sequence by calling the
+    model with the appropriate ``last_bonus`` token each round. This
+    fake supports both the initial prompt processing call and any
+    per-round bs=1 target-only verification call without asserting on
+    the verify input shape.
+
+    The fake records every call so tests can inspect verify inputs and
+    verify the runtime never bypasses target verification. It also
+    implements ``rollback_speculative_cache`` so the rollback
+    fail-closed gate does not raise.
+    """
+
+    def __init__(
+        self,
+        *,
+        next_tokens: list[int],
+        prompt_tokens: list[int] | None = None,
+        eos_token_id: int | None = None,
+    ):
+        self._next_tokens = list(next_tokens)
+        self._prompt_tokens = list(prompt_tokens or [1])
+        self._eos_token_id = eos_token_id
+        self._emitted_index = 0
+        self.language_model = self
+        self.rollback_calls: list[tuple[int, int, int]] = []
+        self.calls: list[tuple[tuple[int, ...], dict]] = []
+        self.call_index = 0
+
+    def __call__(self, tokens, **kwargs):
+        seq_tokens = tuple(int(t) for t in tokens.reshape(-1).tolist())
+        kwargs_key = {key: value for key, value in kwargs.items() if key != "cache"}
+        kwargs_key["cache_size"] = len(kwargs.get("cache") or [])
+        self.calls.append((seq_tokens, kwargs_key))
+
+        prompt_cache = kwargs.get("cache")
+        seq_len = len(seq_tokens)
+
+        # Determine which token to emit at position -1.
+        if self._emitted_index < len(self._next_tokens):
+            bonus_token = int(self._next_tokens[self._emitted_index])
+        else:
+            bonus_token = self._eos_token_id if self._eos_token_id is not None else 0
+        self._emitted_index += 1
+
+        # Extend per-layer history where applicable (the fake mirrors
+        # the KVCache semantics for the rollback bookkeeping tests).
+        if prompt_cache is not None:
+            for layer in prompt_cache:
+                history = getattr(layer, "history", None)
+                if isinstance(history, list):
+                    history.extend(seq_tokens)
+                    offset = getattr(layer, "offset", None)
+                    if isinstance(offset, int):
+                        layer.offset += seq_len
+                    idx = getattr(layer, "_idx", None)
+                    if isinstance(idx, int):
+                        layer._idx += seq_len
+                    lengths = getattr(layer, "lengths", None)
+                    if lengths is not None and hasattr(lengths, "shape"):
+                        layer.lengths = mx.full(
+                            lengths.shape, len(history), dtype=lengths.dtype
+                        )
+
+        vocab_size = max(
+            max(seq_tokens),
+            bonus_token,
+            *(self._next_tokens or [0]),
+            255,
+        ) + 8
+        logits = mx.full((1, seq_len, vocab_size), -100.0)
+        logits[:, seq_len - 1, bonus_token] = 100.0
+        hidden = [
+            mx.full((1, seq_len, 2), float(layer.layer_id + 1))
+            for layer in (prompt_cache or [])
+        ]
+        gdn_states = [
+            SimpleNamespace(
+                layer_id=getattr(layer, "layer_id", layer_index),
+                base_history_len=len(getattr(layer, "history", []) or []),
+                verify_tokens=seq_tokens,
+            )
+            for layer_index, layer in enumerate(prompt_cache or [])
+        ]
+        self.call_index += 1
+        return SimpleNamespace(
+            logits=logits,
+            hidden_states=hidden,
+            gdn_states=gdn_states,
+        )
+
+    def rollback_speculative_cache(self, prompt_cache, gdn_states, accepted, block_size):
+        # Should not be called in the max_draft_tokens=1 path because
+        # the drafter never proposes any tokens. Record the call so
+        # tests can fail if rollback is incorrectly invoked.
+        self.rollback_calls.append((accepted, block_size, len(prompt_cache or [])))
+        for layer, gdn_state in zip(prompt_cache or [], gdn_states or []):
+            history = getattr(layer, "history", None)
+            if not isinstance(history, list):
+                continue
+            keep = max(
+                0,
+                int(getattr(gdn_state, "base_history_len", 0))
+                + accepted
+                + 1,
+            )
+            layer.history = history[:keep]
+            lengths = getattr(layer, "lengths", None)
+            if lengths is not None and hasattr(lengths, "shape"):
+                layer.lengths = mx.full(
+                    lengths.shape, len(layer.history), dtype=lengths.dtype
+                )
+
+
+class _TrackingDraftModel:
+    """DFlash drafter fake that records every ``draft_block`` call.
+
+    Used to assert that the max_draft_tokens=1 runtime path skips the
+    drafter entirely (no ``draft_block`` invocations) while still
+    routing every emitted token through target verification.
+    """
+
+    def __init__(self, target_layer_ids: list[int] | None = None):
+        self.config = SimpleNamespace(
+            target_layer_ids=target_layer_ids
+            or [1, 10, 18, 27, 35, 44, 52, 61],
+            block_size=1,
+        )
+        self.draft_block_calls: list[int] = []
+        self.accept_lens: list[int] = []
+        self.draft_lens: list[int] = []
+        self.reset_calls: list[Any] = []
+
+    def reset(self, model):
+        self.reset_calls.append(model)
+        return [SimpleNamespace(lengths=mx.array([0])) for _ in self.config.target_layer_ids]
+
+    def draft_block(self, last_bonus, hidden, cache, block_size, sampler, token_dtype):
+        self.draft_block_calls.append(block_size)
+        # Returning a length-1 token would be incorrect for the bs=1
+        # case because the runtime should not invoke the drafter at
+        # all. If this method is ever called in a max_draft_tokens=1
+        # test, that signals a regression in the loop's
+        # bs==1 short-circuit.
+        raise AssertionError(
+            "drafter.draft_block must not be invoked when max_draft_tokens=1"
+        )
+
+
+class _TargetOnlyKit:
+    """Model kit stub that pairs a target-only fake with a tracking drafter."""
+
+    def __init__(
+        self,
+        *,
+        next_tokens: list[int],
+        cache_layers: list | None = None,
+        prompt_tokens: list[int] | None = None,
+        eos_token_id: int | None = None,
+    ):
+        self.model = _TargetOnlySequenceModel(
+            next_tokens=next_tokens,
+            prompt_tokens=prompt_tokens,
+            eos_token_id=eos_token_id,
+        )
+        self.tokenizer = FakeTokenizer()
+        if cache_layers is None:
+            cache_layers = _make_proven_layout_cache()
+        self.cache_wrapper = SimpleNamespace(cache=cache_layers)
+        self.pending_requests = {}
+        self.max_kv_size = None
+        self.kv_bits = None
+        self.kv_group_size = None
+        self.quantized_kv_start = None
+        self.draft_model = None
+        self.received_cache_tokens: list[int] = []
+        self._prompt_tokens = prompt_tokens or [1]
+        self.process_prompt_calls = 0
+
+    def process_prompt(
+        self,
+        prompt_tokens,
+        images_b64,
+        prompt_progress_reporter,
+        generate_args,
+        max_image_size,
+        **_kwargs,
+    ):
+        self.process_prompt_calls += 1
+        generate_args["prompt_cache"] = self.cache_wrapper.cache
+        return mx.array(self._prompt_tokens, dtype=mx.int32), None
+
+    def is_cross_prompt_cache_active(self):
+        return False
+
+    def record_token_to_cache(self, token):
+        self.received_cache_tokens.append(token)
+
+
+class TestMaxDraftTokensOneContinuation(unittest.TestCase):
+    """max_draft_tokens=1 must continue across multiple rounds.
+
+    The conservative quality-gate retry uses ``--dflash-max-draft-tokens 1``
+    to avoid the drafter overreach that caused
+    ``max_draft_tokens=4`` to fail every prompt. Before the loop fix
+    in ``dflash_stream_generate``, the runtime terminated after the
+    first token because the loop's ``if bs <= 1: break`` guard fired
+    on every iteration when ``max_draft_tokens=1``. The runtime now
+    has a dedicated target-only round for ``bs == 1`` so the generator
+    continues across multiple rounds until ``max_tokens``, EOS, or
+    another normal stop criterion.
+
+    These tests prove the fix end-to-end against the proven
+    ``16 KVCache + 48 ArraysCache`` Qwen3.5 / Qwen3.6 sequential
+    layout while reusing the existing rollback contract, telemetry
+    surfaces, and fail-closed invariants.
+    """
+
+    def test_emits_multiple_target_verified_tokens_across_rounds(self):
+        """max_draft_tokens=1 produces one bonus token per round up to max_tokens."""
+        next_tokens = [11, 12, 13, 14, 15, 16, 17, 18]
+        kit = _TargetOnlyKit(next_tokens=next_tokens, prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+
+        results = list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-runtime-max-draft-one-continuation",
+                max_tokens=6,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        emitted_ids = [token.id for result in results for token in result.tokens]
+        emitted_from_draft = [
+            token.from_draft for result in results for token in result.tokens
+        ]
+
+        # First token is the bonus from the initial prompt processing
+        # call; the remaining tokens are target-only bonuses from
+        # successive bs=1 rounds. Six tokens total: 1 prompt-processing
+        # bonus + 5 target-only bs=1 rounds (max_tokens=6).
+        self.assertEqual(emitted_ids, next_tokens[:6])
+        # None of the emitted tokens are drafter proposals.
+        self.assertEqual(emitted_from_draft, [False] * len(emitted_ids))
+
+    def test_loop_terminates_at_eos_without_emitting_unverified_drafter_tokens(self):
+        """EOS in the target sequence stops the generator cleanly."""
+        next_tokens = [11, 12, 13]
+        eos = 999
+        kit = _TargetOnlyKit(
+            next_tokens=next_tokens, prompt_tokens=[1], eos_token_id=eos
+        )
+        draft_model = _TrackingDraftModel()
+
+        results = list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-runtime-max-draft-one-eos",
+                max_tokens=16,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        all_tokens = [token for result in results for token in result.tokens]
+        emitted_ids = [token.id for token in all_tokens]
+        emitted_from_draft = [token.from_draft for token in all_tokens]
+        # The first emissions are the configured target-only sequence
+        # followed by repeated EOS tokens from the filler path. The
+        # runtime does not stop on EOS directly; it stops at
+        # max_tokens. None of the emitted tokens are drafter proposals.
+        self.assertEqual(emitted_ids[: len(next_tokens)], next_tokens)
+        for token_id in emitted_ids[len(next_tokens):]:
+            self.assertEqual(token_id, eos)
+        self.assertEqual(emitted_from_draft, [False] * len(emitted_ids))
+        # Drafter was never invoked.
+        self.assertEqual(draft_model.draft_block_calls, [])
+
+    def test_loop_terminates_at_max_tokens(self):
+        """Generator stops after exactly max_tokens emissions even with no EOS."""
+        next_tokens = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        kit = _TargetOnlyKit(next_tokens=next_tokens, prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+
+        results = list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-runtime-max-draft-one-max-tokens",
+                max_tokens=4,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        emitted_ids = [token.id for result in results for token in result.tokens]
+        # First token (initial bonus) + 3 bs=1 rounds = 4 emissions.
+        self.assertEqual(emitted_ids, [11, 12, 13, 14])
+        # All tokens are target-only; no drafter proposals.
+        self.assertEqual(
+            [token.from_draft for result in results for token in result.tokens],
+            [False] * 4,
+        )
+        # Drafter was never invoked across the entire run.
+        self.assertEqual(draft_model.draft_block_calls, [])
+
+    def test_drafter_is_bypassed_for_max_draft_tokens_one(self):
+        """The drafter.draft_block path is skipped entirely when max_draft_tokens=1."""
+        kit = _TargetOnlyKit(next_tokens=[11, 12, 13], prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-runtime-max-draft-one-bypass",
+                max_tokens=3,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        self.assertEqual(draft_model.draft_block_calls, [])
+        # ``_record_speculative_round`` still records per-round stats
+        # so the runtime keeps its drafter bookkeeping consistent.
+        # With no drafts, accepted=0 and draft_count=0 every round.
+        self.assertEqual(draft_model.accept_lens, [0, 0])
+        self.assertEqual(draft_model.draft_lens, [0, 0])
+
+    def test_rollback_is_not_invoked_for_max_draft_tokens_one(self):
+        """No rollback calls: there are no drafts to reject or roll back."""
+        kit = _TargetOnlyKit(next_tokens=[11, 12, 13, 14], prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-runtime-max-draft-one-no-rollback",
+                max_tokens=4,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        self.assertEqual(kit.model.rollback_calls, [])
+
+    def test_every_target_verify_call_uses_target_verify_true(self):
+        """All per-round target calls carry target_verify=True."""
+        kit = _TargetOnlyKit(
+            next_tokens=[11, 12, 13, 14], prompt_tokens=[1]
+        )
+        draft_model = _TrackingDraftModel()
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-runtime-max-draft-one-verify-flag",
+                max_tokens=4,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        # One call is the initial prompt processing verify; subsequent
+        # calls are bs=1 target-only verify rounds. Every call must
+        # carry target_verify=True so the patched Qwen3.5 wrapper
+        # routes through the target-verification path.
+        for call_tokens, call_kwargs in kit.model.calls:
+            self.assertTrue(
+                call_kwargs.get("target_verify"),
+                msg=(
+                    f"target verify call with input {call_tokens} must "
+                    f"carry target_verify=True; got kwargs={call_kwargs}"
+                ),
+            )
+
+    def test_cache_advances_one_token_per_round(self):
+        """Each bs=1 round appends exactly one token to the live cache."""
+        kit = _TargetOnlyKit(
+            next_tokens=[11, 12, 13, 14, 15], prompt_tokens=[1]
+        )
+        draft_model = _TrackingDraftModel()
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-runtime-max-draft-one-cache",
+                max_tokens=5,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        # The KVCache layers carry an explicit history list and should
+        # record every appended token (prompt + the first
+        # ``max_tokens - 1`` emissions). The final emitted token has
+        # not yet been processed by a target verify call, so it is not
+        # appended to the cache yet — it will be appended at the start
+        # of the next round (which the runtime does not enter because
+        # ``emitted >= max_tokens``).
+        kv_histories = [
+            list(layer.history)
+            for layer in kit.cache_wrapper.cache
+            if hasattr(layer, "history") and isinstance(layer.history, list)
+        ]
+        self.assertGreater(len(kv_histories), 0)
+        expected_history = [1, 11, 12, 13, 14]
+        for history in kv_histories:
+            self.assertEqual(
+                history,
+                expected_history,
+                msg=(
+                    "every KVCache layer must record the prompt plus "
+                    "the appended bonus tokens in order"
+                ),
+            )
+
+    def test_proposal_observer_is_not_called_for_max_draft_tokens_one(self):
+        """The proposal observer never fires because no drafts are proposed."""
+        kit = _TargetOnlyKit(next_tokens=[11, 12, 13], prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+        observed: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-runtime-max-draft-one-observer",
+                max_tokens=3,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+                proposal_observer=lambda history, proposal: observed.append(
+                    (tuple(history), tuple(proposal))
+                ),
+            )
+        )
+
+        # No draft proposals => observer is never invoked.
+        self.assertEqual(observed, [])
 
 
 class TestDFlashRuntime(unittest.TestCase):

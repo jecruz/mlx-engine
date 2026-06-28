@@ -355,8 +355,56 @@ def dflash_stream_generate(
         while emitted < max_tokens:
             block_total = _dflash_block_total(draft_model, dflash_options.max_draft_tokens)
             bs = min(block_total, dflash_options.max_draft_tokens, max_tokens - emitted + 1)
-            if bs <= 1:
+            if bs < 1:
                 break
+
+            if bs == 1:
+                # Target-only round: ``max_draft_tokens=1`` (or any
+                # configuration whose per-round block budget collapses
+                # to a single bonus verify position). The drafter is
+                # bypassed this round; the runtime still calls the
+                # target with ``target_verify=True`` so the next bonus
+                # is sampled from target logits (no unverified drafter
+                # tokens are ever emitted). The cache advances by one
+                # entry per round (``[last_bonus]`` is appended by the
+                # verify call). This branch is what restores multi-token
+                # generation for the conservative
+                # ``--dflash-max-draft-tokens 1`` quality-gate retry:
+                # the prior ``if bs <= 1: break`` terminated the loop
+                # after the first token, which caused
+                # ``completion_tokens=1`` and ``finish_reason=null`` on
+                # every prompt.
+                verify_input = mx.array(
+                    [[emitted_history[-1]]], dtype=mx.int32
+                )
+                with mx.stream(generation_stream):
+                    verify_out = target_model(
+                        verify_input,
+                        cache=prompt_cache,
+                        capture_layer_ids=target_layer_ids,
+                        hidden_sink=[],
+                        gdn_sink=[],
+                        target_verify=True,
+                    )
+                logprobs = verify_out.logits - mx.logsumexp(
+                    verify_out.logits, axis=-1, keepdims=True
+                )
+                target_token = sampler(logprobs[:, -1, :])
+                mx.async_eval(target_token, logprobs)
+                new_bonus = int(target_token.item())
+                _record_speculative_round(draft_model, 0, 0)
+                emitted_history.append(new_bonus)
+                emitted += 1
+                maybe_result = _emit_token(
+                    new_bonus,
+                    logprobs[0, -1],
+                    from_draft=False,
+                )
+                if maybe_result is not None:
+                    yield maybe_result
+                if emitted % 256 == 0:
+                    mx.clear_cache()
+                continue
 
             draft_tokens = draft_model.draft_block(
                 emitted_history[-1],
