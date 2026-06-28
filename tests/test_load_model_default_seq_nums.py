@@ -215,3 +215,34 @@ def test_load_model_rejects_vlm_prompt_cache_options_for_text_model(
             tmp_path,
             vlm_prompt_cache_min_save_tokens=1024,
         )
+
+
+def test_load_model_fails_dflash_preflight_before_heavy_model_load(
+    tmp_path, monkeypatch
+):
+    from mlx_engine import generate
+
+    _write_text_config(tmp_path)
+    monkeypatch.setattr(generate, "_is_known_vlm_model_type", lambda model_type: False)
+
+    def _raise_preflight(**_kwargs):
+        raise generate.DFlashUnavailableError("DFlash no-go: preflight blocked")
+
+    monkeypatch.setattr(
+        generate,
+        "validate_dflash_preload_compatibility",
+        _raise_preflight,
+    )
+    monkeypatch.setattr(
+        generate,
+        "ModelKit",
+        lambda *args, **kwargs: pytest.fail("model load should not happen"),
+    )
+
+    with pytest.raises(generate.DFlashUnavailableError, match="preflight blocked"):
+        generate.load_model(
+            tmp_path,
+            dflash_toggle=True,
+            dflash_target_model=tmp_path,
+            dflash_drafter_model=tmp_path / "drafter",
+        )

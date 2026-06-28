@@ -6,6 +6,9 @@ from dataclasses import dataclass
 import importlib.util
 import json
 import os
+import re
+import socket
+import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
@@ -17,6 +20,16 @@ DFLASH_TARGET_MODEL_ENV = "MLX_ENGINE_DFLASH_TARGET_MODEL"
 DFLASH_DRAFTER_MODEL_ENV = "MLX_ENGINE_DFLASH_DRAFTER_MODEL"
 DFLASH_MAX_DRAFT_TOKENS_ENV = "MLX_ENGINE_DFLASH_MAX_DRAFT_TOKENS"
 DEFAULT_DFLASH_MAX_DRAFT_TOKENS = 4
+DFLASH_EXPECTED_DTYPE = "bfloat16"
+DFLASH_REQUIRED_TARGET_TOKENIZER_FILES = (
+    "config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "vocab.json",
+)
+DFLASH_RESOURCE_PORTS = (3180, 3181, 3182, 12444)
+DFLASH_AVAILABLE_MEMORY_HEADROOM_RATIO = 0.25
+DFLASH_AVAILABLE_MEMORY_HEADROOM_MIN_BYTES = 8 * 1024 * 1024 * 1024
 
 _DFLASH_DEPENDENCY_MODULES = (
     "mlx_vlm.speculative.dflash",
@@ -55,6 +68,22 @@ class DFlashBoundaryOptions:
 
 
 @dataclass(frozen=True, slots=True)
+class DFlashTargetProfile:
+    """Validated local DFlash target snapshot summary."""
+
+    model_path: Path
+    config_path: Path
+    tokenizer_paths: tuple[Path, ...]
+    safetensors_paths: tuple[Path, ...]
+    architectures: tuple[str, ...]
+    model_type: str
+    dtype: str
+    num_hidden_layers: int
+    vocab_size: int
+    tokenizer_vocab_size: int
+
+
+@dataclass(frozen=True, slots=True)
 class DFlashReadinessReport:
     """Structured readiness report for the DFlash boundary spike."""
 
@@ -62,7 +91,11 @@ class DFlashReadinessReport:
     dependency_available: bool
     target_family: str | None
     drafter_family: str | None
-    blockers: tuple[str, ...]
+    target_profile: DFlashTargetProfile | None = None
+    cache_mode_blockers: tuple[str, ...] = ()
+    route_blockers: tuple[str, ...] = ()
+    resource_blockers: tuple[str, ...] = ()
+    blockers: tuple[str, ...] = ()
 
 
 class DFlashUnavailableError(ValueError):
@@ -174,6 +207,195 @@ def _classify_qwen_family(model_path: Path | None) -> str | None:
     return "qwen"
 
 
+def _normalize_dtype(dtype: Any) -> str:
+    normalized = str(dtype).strip().lower()
+    if normalized in {"bf16", "bfloat16"}:
+        return DFLASH_EXPECTED_DTYPE
+    return normalized
+
+
+def _collect_target_tokenizer_paths(
+    model_path: Path,
+    blockers: list[str],
+) -> tuple[Path, ...]:
+    if not model_path.exists():
+        blockers.append(f"DFlash target snapshot path does not exist: {model_path}")
+        return ()
+    if not model_path.is_dir():
+        blockers.append(f"DFlash target snapshot path is not a directory: {model_path}")
+        return ()
+
+    tokenizer_paths = tuple(
+        model_path / filename for filename in DFLASH_REQUIRED_TARGET_TOKENIZER_FILES
+    )
+    missing_files = [path for path in tokenizer_paths if not path.exists()]
+    if missing_files:
+        blockers.append(
+            "Missing DFlash target tokenizer/config files: "
+            + ", ".join(str(path) for path in missing_files)
+        )
+    return tokenizer_paths
+
+
+def _parse_target_profile(
+    model_path: Path,
+    blockers: list[str],
+) -> DFlashTargetProfile | None:
+    config_path = model_path / "config.json"
+    tokenizer_paths = _collect_target_tokenizer_paths(model_path, blockers)
+    config = _read_model_metadata(model_path)
+    if not config:
+        blockers.append(f"Missing or invalid DFlash target config file: {config_path}")
+        return None
+
+    if _classify_qwen_family(model_path) is None:
+        blockers.append(f"DFlash target must be a Qwen-family snapshot: {model_path}")
+
+    architectures = config.get("architectures")
+    if not isinstance(architectures, list) or not architectures or not all(
+        isinstance(item, str) for item in architectures
+    ):
+        blockers.append("DFlash target config.architectures must be a non-empty string list")
+        architectures_tuple: tuple[str, ...] = ()
+    else:
+        architectures_tuple = tuple(architectures)
+        if not any("qwen" in item.lower() for item in architectures_tuple):
+            blockers.append(
+                "DFlash target config.architectures must describe a Qwen-family model"
+            )
+
+    model_type = str(config.get("model_type", "")).strip().lower()
+    if not model_type.startswith("qwen"):
+        blockers.append("DFlash target config.model_type must be Qwen-family")
+
+    text_config = config.get("text_config")
+    if isinstance(text_config, dict):
+        dtype_value = _normalize_dtype(text_config.get("dtype", ""))
+        if dtype_value and dtype_value != DFLASH_EXPECTED_DTYPE:
+            blockers.append(
+                f"DFlash target text_config.dtype must be {DFLASH_EXPECTED_DTYPE!r}"
+            )
+        num_hidden_layers = text_config.get("num_hidden_layers")
+        vocab_size = text_config.get("vocab_size", config.get("vocab_size"))
+    else:
+        dtype_value = ""
+        num_hidden_layers = config.get("num_hidden_layers")
+        vocab_size = config.get("vocab_size")
+
+    if not isinstance(num_hidden_layers, int):
+        blockers.append("DFlash target num_hidden_layers must be an integer")
+        num_hidden_layers_int = -1
+    else:
+        num_hidden_layers_int = num_hidden_layers
+
+    if not isinstance(vocab_size, int):
+        blockers.append("DFlash target vocab_size must be an integer")
+        vocab_size_int = -1
+    else:
+        vocab_size_int = vocab_size
+
+    tokenizer_vocab_size = -1
+    vocab_path = model_path / "vocab.json"
+    if vocab_path.exists():
+        try:
+            tokenizer_vocab = json.loads(vocab_path.read_text())
+        except json.JSONDecodeError as exc:
+            blockers.append(f"Invalid JSON in DFlash target vocab file {vocab_path}: {exc.msg}")
+            tokenizer_vocab = {}
+        if isinstance(tokenizer_vocab, dict):
+            tokenizer_vocab_size = len(tokenizer_vocab)
+        else:
+            blockers.append(f"DFlash target vocab file must contain a JSON object: {vocab_path}")
+        if tokenizer_vocab_size != -1 and vocab_size_int != -1:
+            allowed_delta = max(1024, vocab_size_int // 100)
+            if tokenizer_vocab_size > vocab_size_int:
+                blockers.append(
+                    "DFlash target tokenizer vocab size must not exceed config.vocab_size "
+                    f"({tokenizer_vocab_size} > {vocab_size_int})"
+                )
+            elif vocab_size_int - tokenizer_vocab_size > allowed_delta:
+                blockers.append(
+                    "DFlash target tokenizer vocab size must stay close to config.vocab_size "
+                    f"({tokenizer_vocab_size} vs {vocab_size_int})"
+                )
+
+    if blockers:
+        return None
+
+    return DFlashTargetProfile(
+        model_path=model_path,
+        config_path=config_path,
+        tokenizer_paths=tokenizer_paths,
+        safetensors_paths=tuple(sorted(model_path.glob("*.safetensors"))),
+        architectures=architectures_tuple,
+        model_type=model_type,
+        dtype=dtype_value or DFLASH_EXPECTED_DTYPE,
+        num_hidden_layers=num_hidden_layers_int,
+        vocab_size=vocab_size_int,
+        tokenizer_vocab_size=tokenizer_vocab_size,
+    )
+
+
+def _probe_reserved_port_conflicts() -> tuple[str, ...]:
+    blockers: list[str] = []
+    for port in DFLASH_RESOURCE_PORTS:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.05)
+            if sock.connect_ex(("127.0.0.1", port)) == 0:
+                blockers.append(
+                    f"Reserved DFlash resource port 127.0.0.1:{port} is already in use"
+                )
+    return tuple(blockers)
+
+
+def _probe_available_memory_bytes() -> int | None:
+    try:
+        vm_stat = subprocess.run(
+            ["vm_stat"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        page_size_proc = subprocess.run(
+            ["sysctl", "-n", "hw.pagesize"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except Exception:  # pragma: no cover - macOS command availability
+        return None
+
+    try:
+        page_size = int(page_size_proc.stdout.strip())
+    except ValueError:  # pragma: no cover - defensive parsing
+        page_size = 4096
+
+    available_pages = 0
+    for line in vm_stat.stdout.splitlines():
+        match = re.match(r"Pages (free|inactive|speculative):\s+(\d+)\.", line)
+        if match:
+            available_pages += int(match.group(2))
+    if available_pages <= 0:
+        return None
+    return available_pages * page_size
+
+
+def _estimate_snapshot_bytes(paths: tuple[Path, ...]) -> int:
+    total = 0
+    for path in paths:
+        try:
+            total += path.stat().st_size
+        except FileNotFoundError:
+            continue
+    return total
+
+
+def _format_gib(size_in_bytes: int | None) -> str:
+    if size_in_bytes is None:
+        return "unknown"
+    return f"{size_in_bytes / (1024 ** 3):.2f} GiB"
+
+
 def probe_dflash_readiness(
     options: DFlashBoundaryOptions,
 ) -> DFlashReadinessReport:
@@ -193,6 +415,8 @@ def probe_dflash_readiness(
 
     target_family = _classify_qwen_family(options.target_model_path)
     drafter_family = _classify_qwen_family(options.drafter_model_path)
+    target_profile = None
+    resource_blockers: tuple[str, ...] = ()
 
     if options.target_model_path is None or options.drafter_model_path is None:
         blockers.append(
@@ -217,19 +441,140 @@ def probe_dflash_readiness(
             + ", ".join(missing_modules)
         )
 
+    if options.target_model_path is not None:
+        target_profile = _parse_target_profile(options.target_model_path, blockers)
+
+    drafter_profile = None
     if options.drafter_model_path is not None:
         try:
-            load_dflash_snapshot_profile(options.drafter_model_path)
+            drafter_profile = load_dflash_snapshot_profile(options.drafter_model_path)
         except DFlashSnapshotError as exc:
             blockers.extend(exc.blockers)
+
+    if target_profile is not None and drafter_profile is not None:
+        if target_profile.vocab_size != drafter_profile.vocab_size:
+            blockers.append(
+                "DFlash target and drafter vocab sizes must match "
+                f"({target_profile.vocab_size} != {drafter_profile.vocab_size})"
+            )
+        max_target_layer_id = max(drafter_profile.target_layer_ids)
+        if target_profile.num_hidden_layers <= max_target_layer_id:
+            blockers.append(
+                "DFlash target does not expose every configured target layer id "
+                f"(num_hidden_layers={target_profile.num_hidden_layers}, "
+                f"max_target_layer_id={max_target_layer_id})"
+            )
+
+        estimated_bytes = _estimate_snapshot_bytes(target_profile.safetensors_paths)
+        estimated_bytes += _estimate_snapshot_bytes(drafter_profile.safetensors_paths)
+        available_bytes = _probe_available_memory_bytes()
+        if available_bytes is not None:
+            headroom = max(
+                int(estimated_bytes * DFLASH_AVAILABLE_MEMORY_HEADROOM_RATIO),
+                DFLASH_AVAILABLE_MEMORY_HEADROOM_MIN_BYTES,
+            )
+            required_bytes = estimated_bytes + headroom
+            if available_bytes < required_bytes:
+                resource_blockers = (
+                    f"Insufficient free memory for real-pair DFlash preflight: "
+                    f"need at least {_format_gib(required_bytes)}, "
+                    f"found {_format_gib(available_bytes)}",
+                )
+
+    port_blockers = _probe_reserved_port_conflicts()
+    if port_blockers:
+        resource_blockers = (*resource_blockers, *port_blockers)
+
+    blockers.extend(resource_blockers)
 
     return DFlashReadinessReport(
         enabled=True,
         dependency_available=dependency_available,
         target_family=target_family,
         drafter_family=drafter_family,
-        blockers=tuple(blockers),
+        target_profile=target_profile,
+        resource_blockers=resource_blockers,
+        blockers=_dedupe_blockers(blockers),
     )
+
+
+def validate_dflash_preload_compatibility(
+    *,
+    options: DFlashBoundaryOptions,
+    loaded_model_path: Path,
+    is_vlm_route: bool,
+    vocab_only: bool,
+    distributed: bool,
+    max_seq_nums: int | None,
+    kv_bits: int | None,
+    kv_group_size: int | None,
+    quantized_kv_start: int | None,
+    vlm_prompt_cache_storage_root: Path | None,
+    vlm_prompt_cache_min_save_tokens: int | None,
+) -> DFlashReadinessReport:
+    """Fail closed before DFlash can reach heavyweight model loading."""
+
+    readiness = probe_dflash_readiness(options)
+    route_blockers = list(readiness.route_blockers)
+    cache_mode_blockers = list(readiness.cache_mode_blockers)
+
+    if not options.enabled:
+        return readiness
+
+    if options.target_model_path is not None and loaded_model_path.resolve() != options.target_model_path.resolve():
+        route_blockers.append(
+            "DFlash target model path must match the loaded model path "
+            f"({loaded_model_path} != {options.target_model_path})"
+        )
+    if is_vlm_route:
+        route_blockers.append("DFlash is only supported for sequential text generation")
+    if vocab_only:
+        route_blockers.append("DFlash cannot be combined with vocab_only loads yet")
+    if distributed:
+        route_blockers.append("DFlash cannot be combined with distributed loading yet")
+    if max_seq_nums is not None and max_seq_nums > 1:
+        route_blockers.append("DFlash requires the sequential route (max_seq_nums <= 1)")
+    if vlm_prompt_cache_storage_root is not None:
+        route_blockers.append(
+            "DFlash is not compatible with persistent VLM prompt-cache storage yet"
+        )
+    if vlm_prompt_cache_min_save_tokens is not None:
+        route_blockers.append(
+            "DFlash is not compatible with persistent VLM prompt-cache admission yet"
+        )
+
+    if kv_bits is not None:
+        cache_mode_blockers.append("DFlash does not support kv_bits cache mode yet")
+    if kv_group_size is not None:
+        cache_mode_blockers.append("DFlash does not support kv_group_size cache mode yet")
+    if quantized_kv_start is not None:
+        cache_mode_blockers.append(
+            "DFlash does not support quantized_kv_start cache mode yet"
+        )
+
+    blockers = _dedupe_blockers(
+        [
+            *readiness.blockers,
+            *route_blockers,
+            *cache_mode_blockers,
+        ]
+    )
+    report = DFlashReadinessReport(
+        enabled=readiness.enabled,
+        dependency_available=readiness.dependency_available,
+        target_family=readiness.target_family,
+        drafter_family=readiness.drafter_family,
+        target_profile=readiness.target_profile,
+        cache_mode_blockers=tuple(cache_mode_blockers),
+        route_blockers=tuple(route_blockers),
+        resource_blockers=readiness.resource_blockers,
+        blockers=blockers,
+    )
+    if blockers:
+        raise DFlashUnavailableError(
+            build_dflash_no_go_message(report)
+        )
+    return report
 
 
 def validate_dflash_surface_compatibility(

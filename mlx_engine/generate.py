@@ -43,6 +43,7 @@ from mlx_engine.utils.dflash_boundary import (
     build_dflash_no_go_message,
     probe_dflash_readiness,
     resolve_dflash_options,
+    validate_dflash_preload_compatibility,
     validate_dflash_surface_compatibility,
 )
 from mlx_engine.utils.speculative_decoding import (
@@ -298,6 +299,10 @@ def load_model(
     vlm_prompt_cache_storage_root: str | Path | None = None,
     vlm_prompt_cache_namespace: str | None = None,
     vlm_prompt_cache_min_save_tokens: int | None = None,
+    dflash_toggle: bool | None = None,
+    dflash_target_model: str | Path | None = None,
+    dflash_drafter_model: str | Path | None = None,
+    dflash_max_draft_tokens: int | None = None,
 ) -> LoadedModelKit:
     """
     Load a language model or vision-language model from the specified path.
@@ -331,6 +336,11 @@ def load_model(
         vlm_prompt_cache_min_save_tokens (int | None): Minimum image-expanded reusable
             prompt tokens needed before VLM prompt-cache records are saved. Persistent
             stores default to 512; temporary stores default to 0.
+        dflash_toggle (bool | None): Explicit DFlash opt-in used to fail fast before
+            heavyweight loading when the selected target/drafter pair is incompatible.
+        dflash_target_model (str | Path | None): Real target model path for DFlash preflight.
+        dflash_drafter_model (str | Path | None): Local DFlash drafter snapshot path.
+        dflash_max_draft_tokens (int | None): Max draft tokens used for DFlash preflight.
 
     Returns:
         LoadedModelKit: An initialized model instance:
@@ -352,7 +362,36 @@ def load_model(
         if vlm_prompt_cache_storage_root is None
         else Path(vlm_prompt_cache_storage_root)
     )
-
+    model_path = Path(model_path)
+    config_json = json.loads((model_path / "config.json").read_text())
+    model_type = config_json.get("model_type", "").lower().replace("-", "_").replace(".", "_")
+    is_vlm = "vision_config" in config_json and _is_known_vlm_model_type(model_type)
+    parallel_requested = max_seq_nums is not None and max_seq_nums > 1
+    kv_bits, kv_group_size, quantized_kv_start = get_kv_cache_quantization_params(
+        kv_bits,
+        kv_group_size,
+        quantized_kv_start,
+    )
+    dflash_options = resolve_dflash_options(
+        dflash_toggle,
+        dflash_target_model,
+        dflash_drafter_model,
+        dflash_max_draft_tokens,
+    )
+    if dflash_options.enabled:
+        validate_dflash_preload_compatibility(
+            options=dflash_options,
+            loaded_model_path=model_path,
+            is_vlm_route=is_vlm,
+            vocab_only=vocab_only,
+            distributed=distributed,
+            max_seq_nums=max_seq_nums,
+            kv_bits=kv_bits,
+            kv_group_size=kv_group_size,
+            quantized_kv_start=quantized_kv_start,
+            vlm_prompt_cache_storage_root=vlm_prompt_cache_storage_root,
+            vlm_prompt_cache_min_save_tokens=vlm_prompt_cache_min_save_tokens,
+        )
     if distributed:
         if vlm_prompt_cache_storage_root is not None:
             raise ValueError(
@@ -391,10 +430,6 @@ def load_model(
         logger.info("DistributedModelKit start completed")
         return model_kit
 
-    model_path = Path(model_path)
-    config_json = json.loads((model_path / "config.json").read_text())
-    parallel_requested = max_seq_nums is not None and max_seq_nums > 1
-
     def warn_if_parallel(reason: str) -> None:
         """Helper to warn about batching not being supported, only if parallel was requested."""
         if parallel_requested:
@@ -412,8 +447,6 @@ def load_model(
     # a known mlx-vlm vision architecture. Some text-only models inherit
     # vision_config from a shared architecture config (e.g. qwen35 arch used
     # by qwen3.6 text models), so "vision_config" alone is not sufficient.
-    model_type = config_json.get("model_type", "").lower().replace("-", "_").replace(".", "_")
-    is_vlm = "vision_config" in config_json and _is_known_vlm_model_type(model_type)
     if is_vlm and vocab_only:
         if vlm_prompt_cache_storage_root is not None:
             raise ValueError(
@@ -455,14 +488,6 @@ def load_model(
             raise ValueError(
                 "VLM prompt cache save admission is only supported for VLM models"
             )
-        # For non-vision models, choose between BatchedModelKit
-        # (continuous batching) and ModelKit (sequential).
-        kv_bits, kv_group_size, quantized_kv_start = get_kv_cache_quantization_params(
-            kv_bits,
-            kv_group_size,
-            quantized_kv_start,
-        )
-
         def is_batchable() -> bool:
             # 0. Ensure the load isn't vocab only
             if vocab_only:

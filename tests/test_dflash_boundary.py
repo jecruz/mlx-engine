@@ -17,6 +17,7 @@ from mlx_engine.utils.dflash_boundary import (
     DFlashBoundaryOptions,
     DFlashUnavailableError,
     validate_dflash_runtime_compatibility,
+    validate_dflash_preload_compatibility,
     probe_dflash_readiness,
     resolve_dflash_options,
     validate_dflash_surface_compatibility,
@@ -33,6 +34,14 @@ from mlx_engine.utils.dflash_snapshot import (
     DFLASH_EXPECTED_TARGET_LAYER_IDS,
     DFLASH_EXPECTED_VOCAB_SIZE,
     load_dflash_snapshot_profile,
+)
+
+
+REAL_DFLASH_TARGET = Path(
+    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit"
+)
+REAL_DFLASH_DRAFTER = Path(
+    "/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824"
 )
 
 
@@ -182,16 +191,38 @@ def _write_qwen_model_dir(
     architectures: list[str] | None = None,
     include_config: bool = True,
     include_weights: bool = True,
+    include_tokenizer_files: bool = False,
+    vocab_size: int = 3,
+    num_hidden_layers: int = 2,
 ) -> Path:
     model_dir = base / name
     model_dir.mkdir()
     if include_config:
-        config: dict[str, object] = {"model_type": model_type}
+        config: dict[str, object] = {
+            "model_type": model_type,
+            "vocab_size": vocab_size,
+            "num_hidden_layers": num_hidden_layers,
+            "text_config": {
+                "dtype": "bfloat16",
+                "num_hidden_layers": num_hidden_layers,
+                "model_type": model_type,
+            },
+        }
         if architectures is not None:
             config["architectures"] = architectures
+        elif "qwen" in model_type.lower():
+            config["architectures"] = ["Qwen3_5ForConditionalGeneration"]
+        else:
+            config["architectures"] = [f"{model_type.title()}ForConditionalGeneration"]
         (model_dir / "config.json").write_text(json.dumps(config))
     if include_weights:
         (model_dir / "weights.safetensors").write_text("stub")
+    if include_tokenizer_files:
+        (model_dir / "tokenizer.json").write_text("{}")
+        (model_dir / "tokenizer_config.json").write_text("{}")
+        (model_dir / "vocab.json").write_text(
+            json.dumps({f"token_{index}": index for index in range(vocab_size)})
+        )
     return model_dir
 
 
@@ -409,7 +440,14 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
     def test_probe_requires_qwen_family_pairing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
-            target_dir = _write_qwen_model_dir(temp_dir, "target", "qwen3_5_text")
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "target",
+                "qwen3_5_text",
+                include_tokenizer_files=True,
+                vocab_size=3,
+                num_hidden_layers=2,
+            )
             drafter_dir = _write_qwen_model_dir(temp_dir, "drafter", "llama")
 
             report = probe_dflash_readiness(
@@ -434,7 +472,6 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
             snapshot_dir = _write_dflash_snapshot(temp_dir, "valid-dflash")
-
             profile = load_dflash_snapshot_profile(snapshot_dir)
 
         self.assertIsInstance(profile, DFlashSnapshotProfile)
@@ -488,12 +525,25 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
     def test_probe_accepts_valid_local_dflash_snapshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
-            target_dir = _write_qwen_model_dir(temp_dir, "target", "qwen3_5_text")
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "target",
+                "qwen3_5_text",
+                include_tokenizer_files=True,
+                vocab_size=DFLASH_EXPECTED_VOCAB_SIZE,
+                num_hidden_layers=64,
+            )
             drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
 
             with patch(
                 "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
                 return_value=(True, ()),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._probe_reserved_port_conflicts",
+                return_value=(),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                return_value=256 * 1024 * 1024 * 1024,
             ):
                 report = probe_dflash_readiness(
                     DFlashBoundaryOptions(
@@ -511,7 +561,14 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
     def test_probe_rejects_invalid_local_dflash_snapshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
-            target_dir = _write_qwen_model_dir(temp_dir, "target", "qwen3_5_text")
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "target",
+                "qwen3_5_text",
+                include_tokenizer_files=True,
+                vocab_size=DFLASH_EXPECTED_VOCAB_SIZE,
+                num_hidden_layers=64,
+            )
             drafter_dir = _write_dflash_snapshot(
                 temp_dir,
                 "drafter",
@@ -565,6 +622,116 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
             any("Qwen-family" in blocker for blocker in report.blockers),
             msg=f"expected Qwen-family blocker, got: {report.blockers}",
         )
+
+
+class TestDFlashRealPairPreflight(unittest.TestCase):
+    def test_real_pair_preflight_accepts_target_and_drafter_metadata(self):
+        with patch(
+            "mlx_engine.utils.dflash_boundary._probe_reserved_port_conflicts",
+            return_value=(),
+        ), patch(
+            "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+            return_value=256 * 1024 * 1024 * 1024,
+        ):
+            report = validate_dflash_preload_compatibility(
+                options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=REAL_DFLASH_TARGET,
+                    drafter_model_path=REAL_DFLASH_DRAFTER,
+                    max_draft_tokens=4,
+                ),
+                loaded_model_path=REAL_DFLASH_TARGET,
+                is_vlm_route=False,
+                vocab_only=False,
+                distributed=False,
+                max_seq_nums=1,
+                kv_bits=None,
+                kv_group_size=None,
+                quantized_kv_start=None,
+                vlm_prompt_cache_storage_root=None,
+                vlm_prompt_cache_min_save_tokens=None,
+            )
+
+        self.assertEqual(report.blockers, ())
+        self.assertIsNotNone(report.target_profile)
+        self.assertEqual(report.target_profile.model_path, REAL_DFLASH_TARGET)
+        self.assertEqual(report.target_profile.vocab_size, DFLASH_EXPECTED_VOCAB_SIZE)
+        self.assertGreater(report.target_profile.tokenizer_vocab_size, 0)
+        self.assertLessEqual(
+            report.target_profile.vocab_size - report.target_profile.tokenizer_vocab_size,
+            1024,
+        )
+        self.assertEqual(report.drafter_family, "qwen")
+        self.assertEqual(report.target_family, "qwen")
+        self.assertGreater(report.target_profile.num_hidden_layers, max(DFLASH_EXPECTED_TARGET_LAYER_IDS))
+
+    def test_load_model_fails_fast_before_heavy_model_creation(self):
+        from mlx_engine import generate
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            model_dir = _write_qwen_model_dir(temp_dir, "target", "qwen3_5_text")
+
+            def _fail_preflight(**_kwargs):
+                raise DFlashUnavailableError("DFlash no-go: synthetic preflight failure")
+
+            with (
+                patch(
+                    "mlx_engine.generate.validate_dflash_preload_compatibility",
+                    side_effect=_fail_preflight,
+                ) as validate_preload,
+                patch(
+                    "mlx_engine.generate.ModelKit",
+                    side_effect=AssertionError("heavy model load should not occur"),
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    DFlashUnavailableError,
+                    "synthetic preflight failure",
+                ):
+                    generate.load_model(
+                        model_dir,
+                        dflash_toggle=True,
+                        dflash_target_model=model_dir,
+                        dflash_drafter_model=REAL_DFLASH_DRAFTER,
+                    )
+
+        validate_preload.assert_called_once()
+
+    def test_preload_compatibility_rejects_incompatible_route_and_cache_mode(self):
+        with patch(
+            "mlx_engine.utils.dflash_boundary.probe_dflash_readiness",
+            return_value=SimpleNamespace(
+                enabled=True,
+                dependency_available=True,
+                target_family="qwen",
+                drafter_family="qwen",
+                target_profile=None,
+                cache_mode_blockers=(),
+                route_blockers=(),
+                resource_blockers=(),
+                blockers=(),
+            ),
+        ):
+            with self.assertRaisesRegex(DFlashUnavailableError, "sequential text generation"):
+                validate_dflash_preload_compatibility(
+                    options=DFlashBoundaryOptions(
+                        enabled=True,
+                        target_model_path=REAL_DFLASH_TARGET,
+                        drafter_model_path=REAL_DFLASH_DRAFTER,
+                        max_draft_tokens=4,
+                    ),
+                    loaded_model_path=REAL_DFLASH_TARGET,
+                    is_vlm_route=True,
+                    vocab_only=False,
+                    distributed=False,
+                    max_seq_nums=4,
+                    kv_bits=4,
+                    kv_group_size=64,
+                    quantized_kv_start=8,
+                    vlm_prompt_cache_storage_root=Path("/tmp/cache-root"),
+                    vlm_prompt_cache_min_save_tokens=512,
+                )
 
     def test_runtime_validation_rejects_rollback_unsafe_cache_modes(self):
         cases = [
@@ -658,7 +825,14 @@ class TestDFlashRouting(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
-            target_dir = _write_qwen_model_dir(temp_dir, "target", "qwen3_5_text")
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "target",
+                "qwen3_5_text",
+                include_tokenizer_files=True,
+                vocab_size=DFLASH_EXPECTED_VOCAB_SIZE,
+                num_hidden_layers=64,
+            )
             drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
             (drafter_dir / "model.safetensors").unlink()
 

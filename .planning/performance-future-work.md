@@ -62,6 +62,15 @@ Feature `m1-warm-restore-image-fidelity` fixes the warm-restore divergence on th
 - Treat naive post-assembly rotating grouping as rejected. The 2026-06-23 retained Gemma spike collapsed the barrier from `96` arrays to `18` while preserving parity, but rebuilt-graph list-eval slowed from about `2.61 ms` median to about `4.17 ms` median because stacking existing per-layer rotating tensors cost more than it saved. Any future grouped rotating candidate must move earlier in the record/load pipeline.
 - Treat earlier preassembled grouped rotating as measured but not yet promotable. The 2026-06-23 retained Gemma spike that grouped rotating layers before per-layer reconstruction preserved parity and improved sharply over the naive grouped spike, but its combined grouped-materialize-plus-view path still landed slightly slower than the current retained barrier shape. Do not treat grouped rotating record/load as a default next candidate unless a stronger byte-reduction or end-to-end win hypothesis exists.
 
+## M14 real-pair DFlash preflight check (2026-06-27)
+
+Feature `m14-dflash-real-pair-preflight` added a fail-fast DFlash readiness gate before heavyweight model loading. The live probe below used the exact target/drafter pair requested by the mission and failed closed before any heavyweight load because a reserved resource port was already occupied.
+
+- **Target path:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit`
+- **Drafter path:** `/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824`
+- **Live probe result:** `DFlash no-go: Reserved DFlash resource port 127.0.0.1:12444 is already in use.`
+- **Meaning:** the new preflight stops the pair before heavyweight model load when resource isolation is unsafe.
+
 ## Remaining experiments worth trying
 
 1. Persistent VLM record layout
