@@ -1009,7 +1009,23 @@ class PatchedQwen3_5TextModel(Qwen3_5TextModel):
         capture_layer_ids: Optional[list[int]] = None,
         hidden_sink: Optional[list] = None,
         gdn_sink: Optional[list] = None,
+        target_verify: bool = False,
     ) -> mx.array:
+        """Inner ``Qwen3_5TextModel`` forward.
+
+        The ``target_verify`` kwarg is forwarded from the outer patched
+        ``TextModel.__call__`` wrapper so the DFlash runtime can drive
+        target-verification calls through the patched wrapper chain
+        without a ``TypeError``. At the inner ``Qwen3_5TextModel``
+        level, ``target_verify`` is accepted for signature compatibility
+        with the wrapper; the kwarg is consumed at the attention / GDN
+        layer level (see ``_patched_vlm_qwen3_5_attention_call`` and
+        ``_patched_vlm_qwen3_5_gated_delta_net_call``), so the inner
+        forward does not need to use it directly. Default-off: ordinary
+        text generation calls pass ``target_verify=False`` and this
+        method behaves identically to the unpatched
+        ``Qwen3_5TextModel.__call__``.
+        """
         capture_requested = (
             capture_layer_ids is not None or hidden_sink is not None or gdn_sink is not None
         )
@@ -1144,7 +1160,19 @@ def _patched_qwen3_5_language_model_call(
     capture_layer_ids: Optional[list[int]] = None,
     hidden_sink: Optional[list] = None,
     gdn_sink: Optional[list] = None,
+    target_verify: bool = False,
 ):
+    """Patched ``TextModel.__call__`` wrapper.
+
+    Forwards the DFlash ``target_verify`` kwarg to the inner
+    ``self.model(...)`` call. The DFlash runtime passes ``target_verify=True``
+    on every target-verify call so the underlying attention / GDN layers
+    can route through the target-verification path (see
+    ``_patched_vlm_qwen3_5_attention_call`` / ``_patched_vlm_qwen3_5_gated_delta_net_call``).
+    Default-off behavior: ordinary text generation passes
+    ``target_verify=False`` (the default) and the wrapper behaves exactly
+    like the unpatched ``TextModel.__call__``.
+    """
     capture_requested = (
         capture_layer_ids is not None or hidden_sink is not None or gdn_sink is not None
     )
@@ -1158,6 +1186,7 @@ def _patched_qwen3_5_language_model_call(
         capture_layer_ids=capture_layer_ids,
         hidden_sink=hidden_sink,
         gdn_sink=gdn_sink,
+        target_verify=target_verify,
     )
 
     if self.args.tie_word_embeddings:
