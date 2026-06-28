@@ -2334,3 +2334,44 @@ prompt=m14_dflash_smoke_ok status=pass
 
 - `m14-dflash-real-pair-invariants` — target-only verified-token emission, rejected-token cleanup, safe KV/GDN rollback on real target cache.
 - `m14-dflash-quality-perf-evidence` — repeated-sample `quality_compare.py` pass + repeatable latency win before any promote decision.
+
+## M14 real-pair DFlash draft/verify/rollback invariant tests (2026-06-28)
+
+Feature `m14-dflash-real-pair-invariants` proves the four M14 invariants VAL-M14-004 asks for: (1) only target-verified tokens are emitted, (2) drafter proposals stay separate from live emission, (3) rejected proposals are removed from live token history, and (4) target KV/GDN cache state is restored after partial rejection. It also keeps unsupported cache modes fail-closed.
+
+The hybrid test plan combines real-pair evidence from the capped smoke (accepted=1, rejected=14) with forced-rejection model-stub coverage for the cases the real model cannot reproduce on demand (zero acceptance, mid-block rejection, full acceptance). The model stub delegates the rollback math to the production `_qwen3_5_dflash_rollback` helper so the invariant tests exercise the same code path the patched Qwen3.5 wrapper exposes in production.
+
+### Test surface (`tests/test_dflash_real_pair_invariants.py`, 37 tests, 4 subtests, all passing)
+
+1. **`TestRealPairCappedSmokeTelemetryInvariants` (9 tests)** — direct evidence assertions on the capped smoke report `reports/20260628T074326.158545Z-shared-bench.json`, the structured evidence JSON `.planning/dflash-capped-smoke-evidence-20260628T074326Z.json`, and the quality inspect `.planning/dflash-capped-smoke-quality-inspect-20260628T074326Z.json`. Asserts the real pair (`Qwen3.6-27B-MLX-8bit` + `z-lab Qwen3.5-27B-DFlash`) executed draft/verify/rollback with `accepted_proposal_tokens=1` and `rejected_proposal_tokens=14`, `fallback_status=default_off` (no VLM/batched/distributed/adapter fallback), `uses_native_runtime=true`, `sequential_text_only=true`, and the structured evidence classifies the run as `runtime-path GO`.
+2. **`TestForcedRejectionEmissionInvariants` (3 tests)** — drives `dflash_stream_generate` end-to-end with a fake model kit that forces acceptance counts 0, 2, and 3. Asserts only target-verified tokens appear in the emit history (`[bonus=11, ...accepted drafts, target_correction]`), every accepted draft has `from_draft=True` and every target token has `from_draft=False`, the rejected draft token never appears in the emit history, the proposal observer saw the full drafter block before target verification, and the rollback hook is invoked exactly when `accepted < block_size - 1` and skipped on full acceptance.
+3. **`TestProposalObserverSeparatesDraftFromLiveEmission` (2 tests)** — proves the runtime calls the proposal observer with `(bonus_token, full_drafter_block)` BEFORE the target verify decision, and that the observer history contains only pre-draft emitted tokens (never a target correction). The multi-round subtest asserts the observer history is strictly growing and prefix-closed across rounds.
+4. **`TestRejectedTokenCleanupFromLiveCache` (4 tests)** — drives zero, partial, and full acceptance then inspects the live cache layer histories. Rejected draft tokens are absent from every layer's history after rollback; accepted draft tokens plus the bonus target token remain; preexisting prompt tokens always survive; full acceptance leaves every draft token in every layer's history.
+5. **`TestRealQwen36LayoutRollbackInvariants` (5 tests)** — uses the proven 16 KVCache + 48 ArraysCache sequential layout (`DFLASH_PROVEN_QWEN35_LAYOUT`) and the production `_qwen3_5_dflash_rollback` helper. Asserts the rollback restores every ArraysCache `cache[1]` (gated-delta state) to the right `intermediate_states[k]` boundary, the conv window `cache[0]` is preserved, ragged ArraysCache variants (non-`None` `lengths` / `left_padding`) are left untouched by the rollback helper, full acceptance is a no-op (cache[0] and cache[1] untouched), KVCache subsets truncate to the accepted boundary via the per-layer GDN sink, and the proven layout rounds the production rollback correctly across zero, partial, and full acceptance.
+6. **`TestUnsupportedCacheModesRemainFailClosed` (14 tests)** — proves the runtime compatibility validator stays fail-closed for: loaded `model_kit.draft_model`, `draft_model` kwarg, `num_draft_tokens` kwarg, `max_kv_size`, `kv_bits` / `kv_group_size` / `quantized_kv_start` (KV quantization), ragged ArraysCache with non-`None` `lengths` only, ragged ArraysCache with non-`None` `left_padding` only, ragged ArraysCache with both attributes, non-sequential ArraysCache (`lengths` is non-None), wrong total layer counts, extra KVCache / ArraysCache layer(s) in a subset, and a positive-control pass on the exact proven 16+48 layout with only the genuine blockers. Each fail-closed subtest asserts `validate_dflash_runtime_compatibility` raises `DFlashUnavailableError` with a message naming the unsupported surface.
+
+### Why hybrid (real + stub)
+
+- The real capped smoke (one row, accepted=1, rejected=14) covers invariants 1, 2, and 3 end-to-end and proves the runtime path works. It cannot force zero acceptance, mid-block rejection, or full acceptance on demand (acceptance is a function of the drafter+target agreement on the live prompt).
+- The forced-rejection stub covers the three acceptance patterns the live smoke cannot reproduce, and it delegates the rollback math to the production `_qwen3_5_dflash_rollback` helper. The stub only owns the deterministic acceptance count + verify output list + the per-call logit placement; the rollback safety contract is exercised against the real helper.
+- The proven 16+48 layout rollback invariant tests do NOT involve the DFlash stream at all; they directly call `_qwen3_5_dflash_rollback(prompt_cache, gdn_states, accepted, block_size)` with the production helper. This is the cleanest possible evidence for invariant 4 (KV/GDN rollback safety on the real Qwen3.6 layout).
+
+### Validation results
+
+- New test file: `tests/test_dflash_real_pair_invariants.py` (37 tests + 4 subtests, all passing).
+- Full `services.yaml` `commands.test` gate: 355 passed / 16 skipped / 0 failed (includes the new test file plus the M13 rollback + M14 forwarding tests, plus the regression net for dflash boundary, batched vision, SpecPrefill, request state, cache wrapper, model kit startup, prefill step, chat template args, mlx threading, distributed server, etc.).
+- Ruff: `ruff check tests/test_dflash_real_pair_invariants.py` clean. Full `ruff check --exclude .worktrees .` clean.
+- `services.yaml` `commands.test` updated to include `tests/test_dflash_real_pair_invariants.py` in the full promotion pytest group.
+
+### Promotion status
+
+- `VAL-M14-004` (target-only verified-token emission, rejected-token cleanup, safe KV/GDN rollback on real target cache) — **MET**. The 37 invariant tests cover all four invariants with real-pair telemetry evidence (capped smoke, accepted=1, rejected=14) plus forced-rejection model-stub coverage (zero, partial, full acceptance) plus direct production-helper rollback tests on the proven 16+48 layout plus 14 fail-closed tests for unsupported cache modes.
+- DFlash remains default-off. No promotion / KEEP OPT-IN / REJECT decision is recorded by this feature; the real-pair evidence proves the invariants, not the latency win. The bench-worker quality/perf evidence feature (`m14-dflash-quality-perf-evidence`) remains the next gate.
+
+| Artifact | Path |
+| --- | --- |
+| New test file | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_dflash_real_pair_invariants.py` (37 tests + 4 subtests, all passing) |
+| Capped smoke report (real pair) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T074326.158545Z-shared-bench.json` |
+| Capped smoke structured evidence | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-capped-smoke-evidence-20260628T074326Z.json` |
+| Capped smoke quality inspect | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-capped-smoke-quality-inspect-20260628T074326Z.json` |
+| Mission services file | `/Users/jeffreycruz/.factory/missions/dbaf7c9f-269e-49f0-993a-ded7115a0792/services.yaml` (`commands.test` now includes the new test file) |
