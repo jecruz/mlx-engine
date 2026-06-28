@@ -897,6 +897,47 @@ def _qwen3_5_dflash_rollback(
         )
 
 
+def _patched_qwen3_5_text_model_rollback_speculative_cache(
+    self,
+    prompt_cache,
+    gdn_states,
+    accepted: int,
+    block_size: int,
+) -> None:
+    """Outer ``mlx_lm.models.qwen3_5.TextModel`` rollback hook.
+
+    The loaded ``target_model.language_model`` is the outer mlx-lm
+    ``TextModel`` wrapper, not the inner ``Qwen3_5TextModel``. The
+    DFlash runtime reaches the rollback hook through ``getattr`` on
+    that wrapper, so the wrapper class must expose
+    ``rollback_speculative_cache`` after ``apply_patches()``. This
+    implementation delegates to the inner ``PatchedQwen3_5TextModel``
+    when one is available (the patched-class case), and otherwise
+    falls back to :func:`_qwen3_5_dflash_rollback` directly. Either
+    path preserves the accepted-state/rejected-cleanup semantics that
+    :meth:`PatchedQwen3_5TextModel.rollback_speculative_cache` already
+    documents.
+
+    Default-off in practice: the hook is only invoked by
+    ``dflash_stream_generate`` when ``accepted < block_size - 1`` and
+    is never wired into ordinary text generation. It does not widen
+    DFlash beyond the sequential text surface; batched, VLM, adapter,
+    SpecPrefill, and loaded-draft-model combinations remain fail-closed
+    by the boundary check.
+    """
+    inner = getattr(self, "model", None)
+    if inner is not None:
+        inner_hook = getattr(inner, "rollback_speculative_cache", None)
+        if callable(inner_hook):
+            inner_hook(prompt_cache, gdn_states, accepted, block_size)
+            return
+    # Fallback: a wrapper instance whose inner model was constructed
+    # before ``apply_patches()`` landed (or whose inner model does not
+    # implement the hook) still gets the same rollback semantics via
+    # the module-level helper.
+    _qwen3_5_dflash_rollback(prompt_cache, gdn_states, accepted, block_size)
+
+
 class PatchedQwen3_5TextModel(Qwen3_5TextModel):
     """
     Qwen3_5TextModel with MRoPE position state management.
@@ -1352,6 +1393,15 @@ def apply_patches():
     mlx_lm.models.qwen3_5.TextModel.__call__ = _patched_qwen3_5_language_model_call
     mlx_lm.models.qwen3_5.Model.__call__ = _patched_qwen3_5_model_call
     mlx_lm.models.qwen3_5.Qwen3_5TextModel = PatchedQwen3_5TextModel
+    # Bind the DFlash rollback hook on the outer mlx-lm ``TextModel``
+    # wrapper so ``target_model.language_model`` exposes it. The inner
+    # ``Qwen3_5TextModel`` already implements the hook via
+    # ``PatchedQwen3_5TextModel``; the wrapper delegates to that inner
+    # hook or, as a defensive fallback, to the module-level rollback
+    # helper. See ``_patched_qwen3_5_text_model_rollback_speculative_cache``.
+    mlx_lm.models.qwen3_5.TextModel.rollback_speculative_cache = (
+        _patched_qwen3_5_text_model_rollback_speculative_cache
+    )
 
     VlmQwen3_5Attention.__init__ = _patched_vlm_qwen3_5_attention_init
     VlmQwen3_5Attention.__call__ = _patched_vlm_qwen3_5_attention_call

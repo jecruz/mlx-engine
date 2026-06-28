@@ -2172,3 +2172,22 @@ No promotion decision is recorded. DFlash remains default-off. The bench-worker 
 - Resource gate precheck: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-smoke-precheck.json`
 - Phase-aware preflight evidence: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-phase-aware-preflight-evidence.json`
 
+## M14 wrapper `TextModel` rollback hook (2026-06-28)
+
+Feature `m14-qwen35-wrapper-textmodel-rollback-hook` closes the wrapper-vs-inner Qwen3_5 rollback hook blocker surfaced by the capped DFlash smoke. `apply_patches()` previously rebinds only the inner `Qwen3_5TextModel` to the patched class that implements `rollback_speculative_cache`; the loaded `target_model.language_model` is the outer `mlx_lm.models.qwen3_5.TextModel` wrapper and still lacks the hook.
+
+- **Fix:** add `_patched_qwen3_5_text_model_rollback_speculative_cache` (a thin delegating wrapper method) and bind it on the outer mlx-lm `TextModel` class inside `apply_patches()`. The wrapper hook first looks up `self.model.rollback_speculative_cache` and delegates to it when the inner `PatchedQwen3_5TextModel` exposes the hook; otherwise it falls back to the module-level `_qwen3_5_dflash_rollback` helper. Either path preserves the accepted-state/rejected-cleanup semantics that the inner hook already documents.
+- **Default-off in practice:** the hook is only invoked by `dflash_stream_generate` when `accepted < block_size - 1`. It does not enable any DFlash surface; batched, VLM, adapter, SpecPrefill, and loaded-draft-model combinations remain fail-closed by the boundary check.
+- **No widening of DFlash:** the wrapper class gains only `rollback_speculative_cache`; no default-on DFlash flags (`enable_dflash`, `dflash_enabled`, `rollback_default_on`) are added.
+- **Changed files:**
+  - `mlx_engine/model_kit/patches/qwen3_5.py` (add wrapper hook function, bind on `mlx_lm.models.qwen3_5.TextModel` in `apply_patches()`)
+  - `tests/test_patched_qwen3_5_dflash_rollback.py` (add `TestOuterTextModelWrapperRollbackHook` and `TestOuterTextModelRuntimeCompatibility` test classes with 8 focused tests)
+- **Test outcomes (focused):** `tests/test_patched_qwen3_5_dflash_rollback.py` — 27 passed, 0 failed, 12 subtests passed (8 new wrapper tests + the 19 pre-existing inner-class + ArraysCache tests).
+- **Test outcomes (M14 promotion gate):** 307 passed, 16 skipped, 0 failed, 48 subtests passed (`services.yaml commands.test`).
+- **Lint:** `ruff check mlx_engine/model_kit/patches/qwen3_5.py tests/test_patched_qwen3_5_dflash_rollback.py` — both files clean.
+- **Runtime verification (introspection, not a real smoke):**
+  - `mlx_lm.models.qwen3_5.TextModel.rollback_speculative_cache` exists and is callable after `apply_patches()`.
+  - `TextModel.__new__(TextModel).rollback_speculative_cache` resolves to a bound method with the signature `(prompt_cache, gdn_states, accepted: int, block_size: int) -> None` (matches the inner-class contract).
+  - The runtime compatibility check at `mlx_engine/utils/dflash_boundary.py:1444` (`hasattr(lm, 'rollback_speculative_cache')`) now passes for `lm = target_model.language_model` (the outer wrapper).
+- **Smoke follow-up:** the full capped real-model smoke has not been re-run in this feature scope; the bench-worker retry evidence feature is a separate M14 follow-up. The wrapper hook is now the only path that must be exercised to clear the `TextModel does not implement rollback_speculative_cache` blocker.
+

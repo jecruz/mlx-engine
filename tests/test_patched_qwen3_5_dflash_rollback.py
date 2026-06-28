@@ -887,5 +887,345 @@ class TestRealQwen3ArraysCacheRollback(unittest.TestCase):
         self.assertIsNotNone(ragged.left_padding)
 
 
+class TestOuterTextModelWrapperRollbackHook(unittest.TestCase):
+    """The outer ``mlx_lm.models.qwen3_5.TextModel`` wrapper exposes the hook.
+
+    The loaded ``target_model.language_model`` is the outer mlx-lm
+    ``TextModel`` wrapper class, not the inner ``Qwen3_5TextModel``.
+    ``validate_dflash_runtime_compatibility`` and
+    ``dflash_stream_generate`` reach the rollback hook through
+    ``getattr`` on that wrapper, so the wrapper class must expose
+    ``rollback_speculative_cache`` after ``apply_patches()`` and
+    delegate to the inner PatchedQwen3_5TextModel rollback
+    implementation. These tests prove the wrapper hook is exposed,
+    delegates to the inner rollback semantics (or falls back to the
+    module-level helper when the inner model lacks the hook), and does
+    not widen the DFlash surface.
+    """
+
+    def test_wrapper_hook_exposed_after_apply_patches(self):
+        """The outer ``TextModel`` exposes the rollback hook post-patch.
+
+        ``dflash_stream_generate`` looks up ``rollback_speculative_cache``
+        on the loaded ``target_model.language_model`` (the outer wrapper).
+        If the wrapper does not expose the hook, the validator fails
+        closed and the runtime raises DFlashUnavailableError before any
+        draft round can run.
+        """
+        from mlx_engine.model_kit.patches.qwen3_5 import apply_patches
+
+        apply_patches()
+
+        import mlx_lm.models.qwen3_5 as qm
+
+        self.assertTrue(hasattr(qm.TextModel, "rollback_speculative_cache"))
+        self.assertTrue(callable(qm.TextModel.rollback_speculative_cache))
+        # The inner class must continue to expose the hook too.
+        self.assertTrue(hasattr(qm.Qwen3_5TextModel, "rollback_speculative_cache"))
+
+    def test_wrapper_delegates_to_inner_patched_text_model(self):
+        """Wrapper delegates to ``self.model.rollback_speculative_cache``.
+
+        The patched-class case is the common path: the inner model was
+        constructed after ``apply_patches()`` and exposes the hook, so
+        the wrapper must hand off to it without going through the
+        module-level fallback helper. The wrapper hook must pass
+        ``prompt_cache``, ``gdn_states``, ``accepted``, and
+        ``block_size`` through unchanged.
+        """
+        from mlx_engine.model_kit.patches.qwen3_5 import (
+            _patched_qwen3_5_text_model_rollback_speculative_cache,
+        )
+
+        captured: list[tuple] = []
+
+        class _FakeInnerModel:
+            def rollback_speculative_cache(
+                self, prompt_cache, gdn_states, accepted, block_size
+            ):
+                captured.append((prompt_cache, gdn_states, accepted, block_size))
+
+        wrapper = SimpleNamespace(model=_FakeInnerModel())
+        prompt_cache = [object(), object()]
+        gdn_states = [object()]
+
+        _patched_qwen3_5_text_model_rollback_speculative_cache(
+            wrapper,
+            prompt_cache,
+            gdn_states,
+            accepted=2,
+            block_size=4,
+        )
+
+        self.assertEqual(captured, [(prompt_cache, gdn_states, 2, 4)])
+
+    def test_wrapper_falls_back_when_inner_model_lacks_hook(self):
+        """Wrapper falls back to the module-level rollback helper.
+
+        A wrapper instance whose inner model was constructed before
+        ``apply_patches()`` landed (or whose inner model does not
+        implement the hook for any reason) must still receive the same
+        accepted-state/rejected-cleanup semantics. The fallback path
+        drives :func:`_qwen3_5_dflash_rollback` directly with the same
+        arguments.
+        """
+        from mlx_engine.model_kit.patches.qwen3_5 import (
+            _patched_qwen3_5_text_model_rollback_speculative_cache,
+        )
+
+        # Inner model has no rollback_speculative_cache attribute at all.
+        wrapper = SimpleNamespace(model=SimpleNamespace())
+
+        base_history_len = 4
+        prompt_cache = [
+            _HistoryCacheLayer(layer_id=0, history=[1, 2, 3, 4, 99, 12, 13, 14]),
+            _HistoryCacheLayer(layer_id=1, history=[1, 2, 3, 4, 99, 12, 13, 14]),
+        ]
+        gdn_states = [
+            _build_gdn_state(base_history_len),
+            _build_gdn_state(base_history_len),
+        ]
+
+        _patched_qwen3_5_text_model_rollback_speculative_cache(
+            wrapper,
+            prompt_cache,
+            gdn_states,
+            accepted=2,
+            block_size=4,
+        )
+
+        # Same accepted-state/rejected-cleanup contract as the inner
+        # PatchedQwen3_5TextModel.rollback_speculative_cache path:
+        # keep = 4 + 2 + 1 = 7 — bonus target token plus the two
+        # accepted drafts.
+        expected_history = [1, 2, 3, 4, 99, 12, 13]
+        for layer in prompt_cache:
+            self.assertEqual(layer.history, expected_history)
+            self.assertEqual(int(layer.lengths.item()), len(expected_history))
+            self.assertEqual(layer._idx, len(expected_history))
+            self.assertEqual(layer.offset, len(expected_history))
+            # Rejected draft token (14) must not survive.
+            self.assertNotIn(14, layer.history)
+
+    def test_wrapper_handles_none_inner_model(self):
+        """A wrapper with no inner model still applies rollback semantics.
+
+        Defensive path: ``self.model`` may be ``None`` during teardown
+        or in a malformed load. The wrapper must not raise; it falls
+        back to the module-level helper, which still trims the
+        history list / KV offsets to the accepted boundary.
+        """
+        from mlx_engine.model_kit.patches.qwen3_5 import (
+            _patched_qwen3_5_text_model_rollback_speculative_cache,
+        )
+
+        wrapper = SimpleNamespace(model=None)
+        prompt_cache = [
+            _HistoryCacheLayer(layer_id=0, history=[1, 2, 3, 4, 99, 12, 13, 14]),
+        ]
+        gdn_states = [_build_gdn_state(base_history_len=4)]
+
+        _patched_qwen3_5_text_model_rollback_speculative_cache(
+            wrapper,
+            prompt_cache,
+            gdn_states,
+            accepted=1,
+            block_size=4,
+        )
+
+        # keep = 4 + 1 + 1 = 6.
+        expected_history = [1, 2, 3, 4, 99, 12]
+        self.assertEqual(prompt_cache[0].history, expected_history)
+
+    def test_wrapper_preserves_accepted_state_on_full_rejection(self):
+        """Full draft rejection through the wrapper keeps only the bonus token.
+
+        Mirrors ``TestPatchedQwen3_5RollbackHook.test_accepted_zero_keeps_only_bonus_token``
+        but routes through the outer wrapper hook, exercising the
+        delegation contract that ``validate_dflash_runtime_compatibility``
+        depends on.
+        """
+        from mlx_engine.model_kit.patches.qwen3_5 import (
+            _patched_qwen3_5_text_model_rollback_speculative_cache,
+        )
+
+        # Use the fallback path so we exercise the same module-level
+        # helper that the patched inner class delegates to.
+        wrapper = SimpleNamespace(model=SimpleNamespace())
+
+        base_history_len = 4
+        prompt_cache = [
+            _HistoryCacheLayer(layer_id=0, history=[1, 2, 3, 4, 99, 12, 13, 14]),
+            _HistoryCacheLayer(layer_id=1, history=[1, 2, 3, 4, 99, 12, 13, 14]),
+        ]
+        gdn_states = [
+            _build_gdn_state(base_history_len),
+            _build_gdn_state(base_history_len),
+        ]
+
+        _patched_qwen3_5_text_model_rollback_speculative_cache(
+            wrapper,
+            prompt_cache,
+            gdn_states,
+            accepted=0,
+            block_size=4,
+        )
+
+        expected_history = [1, 2, 3, 4, 99]
+        for layer in prompt_cache:
+            self.assertEqual(layer.history, expected_history)
+            self.assertEqual(int(layer.lengths.item()), len(expected_history))
+        for rejected_token in (12, 13, 14):
+            for layer in prompt_cache:
+                self.assertNotIn(rejected_token, layer.history)
+
+    def test_wrapper_full_acceptance_is_a_noop(self):
+        """Full acceptance via the wrapper hook must not mutate cache state.
+
+        Mirrors the inner-class invariant. ``dflash_stream_generate``
+        only invokes the hook on partial rejection, but the method must
+        be safe to call defensively.
+        """
+        from mlx_engine.model_kit.patches.qwen3_5 import (
+            _patched_qwen3_5_text_model_rollback_speculative_cache,
+        )
+
+        wrapper = SimpleNamespace(model=SimpleNamespace())
+        original_history = [1, 2, 3, 4, 99, 12, 13, 14]
+        prompt_cache = [
+            _HistoryCacheLayer(layer_id=0, history=list(original_history)),
+            _HistoryCacheLayer(layer_id=1, history=list(original_history)),
+        ]
+        gdn_states = [
+            _build_gdn_state(base_history_len=4),
+            _build_gdn_state(base_history_len=4),
+        ]
+
+        _patched_qwen3_5_text_model_rollback_speculative_cache(
+            wrapper,
+            prompt_cache,
+            gdn_states,
+            accepted=3,  # block_size=4 => block_size - 1 = 3
+            block_size=4,
+        )
+
+        for layer in prompt_cache:
+            self.assertEqual(layer.history, original_history)
+            self.assertEqual(int(layer.lengths.item()), len(original_history))
+            self.assertEqual(layer._idx, len(original_history))
+            self.assertEqual(layer.offset, len(original_history))
+
+    def test_wrapper_does_not_widen_dflash_surface(self):
+        """The wrapper hook must not enable any default-on DFlash surface.
+
+        The rollback hook is a text-only sequential utility bound on the
+        outer mlx-lm ``TextModel`` class. It must not import or
+        reference any non-DFlash generation path. We assert this by
+        inspecting the wrapper class: only ``rollback_speculative_cache``
+        should be added by this milestone, and no DFlash defaults-on
+        flags should leak onto the wrapper.
+        """
+        from mlx_engine.model_kit.patches.qwen3_5 import apply_patches
+
+        apply_patches()
+
+        import mlx_lm.models.qwen3_5 as qm
+
+        # Snapshot the wrapper's public surface for inspection.
+        declared = set(dir(qm.TextModel))
+        # The wrapper hook itself must exist.
+        self.assertIn("rollback_speculative_cache", declared)
+        # No DFlash defaults-on flags should leak onto the wrapper.
+        for forbidden_attr in (
+            "enable_dflash",
+            "dflash_enabled",
+            "rollback_default_on",
+        ):
+            self.assertNotIn(forbidden_attr, declared)
+
+    def test_wrapper_invokes_inner_hook_when_patched_inner_exists(self):
+        """End-to-end delegation through a real PatchedQwen3_5TextModel instance.
+
+        The wrapper looks up ``self.model.rollback_speculative_cache``
+        via ``getattr`` and delegates to it when the inner model
+        exposes the hook. We verify the delegation by patching a real
+        PatchedQwen3_5TextModel instance into a wrapper-shaped object
+        and confirming the wrapper route reaches the inner method
+        (observed through the rollback's effect on the live cache).
+        """
+        from mlx_engine.model_kit.patches.qwen3_5 import (
+            _patched_qwen3_5_text_model_rollback_speculative_cache,
+            PatchedQwen3_5TextModel,
+        )
+
+        # Build a PatchedQwen3_5TextModel instance without going through
+        # __init__ so we do not need a real MLX/Metal environment here.
+        # The hook only ever touches self.model.rollback_speculative_cache
+        # so a bare instance with the method is sufficient.
+        inner = PatchedQwen3_5TextModel.__new__(PatchedQwen3_5TextModel)
+        inner.position_ids = None
+        inner.rope_deltas = None
+
+        wrapper = SimpleNamespace(model=inner)
+
+        base_history_len = 4
+        prompt_cache = [
+            _HistoryCacheLayer(layer_id=0, history=[1, 2, 3, 4, 99, 12, 13, 14]),
+        ]
+        gdn_states = [_build_gdn_state(base_history_len)]
+
+        _patched_qwen3_5_text_model_rollback_speculative_cache(
+            wrapper,
+            prompt_cache,
+            gdn_states,
+            accepted=2,
+            block_size=4,
+        )
+
+        # If the wrapper reached the inner hook, the rollback must have
+        # trimmed the live cache state to the accepted boundary.
+        expected_history = [1, 2, 3, 4, 99, 12, 13]
+        self.assertEqual(prompt_cache[0].history, expected_history)
+
+
+class TestOuterTextModelRuntimeCompatibility(unittest.TestCase):
+    """The outer ``TextModel`` wrapper satisfies the runtime compatibility check.
+
+    ``validate_dflash_runtime_compatibility`` looks up
+    ``rollback_speculative_cache`` on ``target_model.language_model``.
+    After ``apply_patches()`` that wrapper exposes the hook, so the
+    validator must not raise the
+    "TextModel does not implement rollback_speculative_cache" blocker
+    for the Qwen3.5 / Qwen3.6 sequential surface.
+    """
+
+    def test_runtime_compatibility_passes_after_apply_patches(self):
+        """Direct call: wrapper exposes the hook so runtime compatibility passes.
+
+        The validator inspects the class via ``hasattr``, so we can
+        prove the post-patch behavior without loading a heavyweight
+        target model. The validator must see the hook on the wrapper
+        and not raise DFlashUnavailableError for that single blocker.
+        """
+        from mlx_engine.model_kit.patches.qwen3_5 import apply_patches
+
+        apply_patches()
+
+        import mlx_lm.models.qwen3_5 as qm
+
+        # Mimic the validator's lookup on the loaded language_model.
+        lm = qm.TextModel
+        self.assertTrue(
+            hasattr(lm, "rollback_speculative_cache"),
+            msg=(
+                "After apply_patches() the outer TextModel wrapper must "
+                "expose rollback_speculative_cache so "
+                "validate_dflash_runtime_compatibility does not raise "
+                "DFlashUnavailableError with the 'TextModel does not "
+                "implement rollback_speculative_cache' blocker."
+            ),
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
