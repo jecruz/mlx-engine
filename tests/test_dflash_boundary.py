@@ -11,31 +11,28 @@ from unittest.mock import patch
 
 import mlx.core as mx
 
-from mlx_engine.generate import create_generator
 from mlx_engine.utils.generation_result import GenerationResult
-from mlx_engine.utils.dflash_boundary import (
-    DFlashBoundaryOptions,
-    DFlashUnavailableError,
-    validate_dflash_runtime_compatibility,
-    validate_dflash_preload_compatibility,
-    probe_dflash_readiness,
-    resolve_dflash_options,
-    validate_dflash_surface_compatibility,
-)
-from mlx_engine.utils.dflash_snapshot import (
-    DFlashSnapshotError,
-    DFlashSnapshotProfile,
-    DFLASH_EXPECTED_BLOCK_SIZE,
-    DFLASH_EXPECTED_DTYPE,
-    DFLASH_EXPECTED_LAYER_COUNT,
-    DFLASH_EXPECTED_MASK_TOKEN_ID,
-    DFLASH_EXPECTED_MODEL_TYPE,
-    DFLASH_EXPECTED_SAFETENSORS_FORMAT,
-    DFLASH_EXPECTED_TARGET_LAYER_IDS,
-    DFLASH_EXPECTED_VOCAB_SIZE,
-    load_dflash_snapshot_profile,
-)
 
+DFLASH_EXPECTED_MODEL_TYPE = "qwen3"
+DFLASH_EXPECTED_DTYPE = "bfloat16"
+DFLASH_EXPECTED_LAYER_COUNT = 6
+DFLASH_EXPECTED_VOCAB_SIZE = 248320
+DFLASH_EXPECTED_BLOCK_SIZE = 16
+DFLASH_EXPECTED_MASK_TOKEN_ID = 248077
+DFLASH_EXPECTED_TARGET_LAYER_IDS = (1, 10, 18, 27, 35, 44, 52, 61)
+DFLASH_EXPECTED_SAFETENSORS_FORMAT = "pt"
+
+
+def _dflash_boundary():
+    from mlx_engine.utils import dflash_boundary
+
+    return dflash_boundary
+
+
+def _dflash_snapshot():
+    from mlx_engine.utils import dflash_snapshot
+
+    return dflash_snapshot
 
 REAL_DFLASH_TARGET = Path(
     "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit"
@@ -296,14 +293,16 @@ def _write_dflash_snapshot(
 
 class TestDFlashOptions(unittest.TestCase):
     def test_defaults_off_without_env(self):
+        boundary = _dflash_boundary()
         with patch.dict(os.environ, {}, clear=True):
-            options = resolve_dflash_options(None, None, None, None)
+            options = boundary.resolve_dflash_options(None, None, None, None)
 
         self.assertFalse(options.enabled)
         self.assertIsNone(options.target_model_path)
         self.assertIsNone(options.drafter_model_path)
 
     def test_env_opt_in_parses_explicit_pair(self):
+        boundary = _dflash_boundary()
         with patch.dict(
             os.environ,
             {
@@ -314,7 +313,7 @@ class TestDFlashOptions(unittest.TestCase):
             },
             clear=True,
         ):
-            options = resolve_dflash_options(None, None, None, None)
+            options = boundary.resolve_dflash_options(None, None, None, None)
 
         self.assertTrue(options.enabled)
         self.assertEqual(options.target_model_path, Path("/tmp/qwen-target"))
@@ -324,7 +323,8 @@ class TestDFlashOptions(unittest.TestCase):
 
 class TestDFlashSurfaceValidation(unittest.TestCase):
     def test_rejects_unsupported_surfaces(self):
-        supported = validate_dflash_surface_compatibility(
+        boundary = _dflash_boundary()
+        supported = boundary.validate_dflash_surface_compatibility(
             enabled=False,
             surface_label="sequential",
             images_b64=None,
@@ -394,7 +394,7 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
 
         for case in cases:
             with self.subTest(case=case["needle"]):
-                blockers = validate_dflash_surface_compatibility(
+                blockers = boundary.validate_dflash_surface_compatibility(
                     enabled=True,
                     surface_label=case["surface_label"],
                     images_b64=case["images_b64"],
@@ -409,7 +409,8 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
                 )
 
     def test_rejects_loaded_standard_draft_model_inputs(self):
-        blockers = validate_dflash_surface_compatibility(
+        boundary = _dflash_boundary()
+        blockers = boundary.validate_dflash_surface_compatibility(
             enabled=True,
             surface_label="sequential",
             images_b64=None,
@@ -438,6 +439,7 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
         )
 
     def test_probe_requires_qwen_family_pairing(self):
+        boundary = _dflash_boundary()
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
             target_dir = _write_qwen_model_dir(
@@ -450,8 +452,8 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
             )
             drafter_dir = _write_qwen_model_dir(temp_dir, "drafter", "llama")
 
-            report = probe_dflash_readiness(
-                DFlashBoundaryOptions(
+            report = boundary.probe_dflash_readiness(
+                boundary.DFlashBoundaryOptions(
                     enabled=True,
                     target_model_path=target_dir,
                     drafter_model_path=drafter_dir,
@@ -469,12 +471,13 @@ class TestDFlashSurfaceValidation(unittest.TestCase):
 
 class TestDFlashSnapshotLoader(unittest.TestCase):
     def test_loads_valid_dflash_snapshot_profile(self):
+        snapshot = _dflash_snapshot()
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
             snapshot_dir = _write_dflash_snapshot(temp_dir, "valid-dflash")
-            profile = load_dflash_snapshot_profile(snapshot_dir)
+            profile = snapshot.load_dflash_snapshot_profile(snapshot_dir)
 
-        self.assertIsInstance(profile, DFlashSnapshotProfile)
+        self.assertIsInstance(profile, snapshot.DFlashSnapshotProfile)
         self.assertEqual(profile.architectures, ("DFlashDraftModel",))
         self.assertEqual(profile.model_type, DFLASH_EXPECTED_MODEL_TYPE)
         self.assertEqual(profile.dtype, DFLASH_EXPECTED_DTYPE)
@@ -489,6 +492,7 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
         self.assertEqual(profile.safetensors_paths, (snapshot_dir / "model.safetensors",))
 
     def test_rejects_non_dflash_snapshot(self):
+        snapshot = _dflash_snapshot()
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
             snapshot_dir = _write_dflash_snapshot(
@@ -501,12 +505,13 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(
-                DFlashSnapshotError,
+                snapshot.DFlashSnapshotError,
                 "DFlash config.architectures",
             ):
-                load_dflash_snapshot_profile(snapshot_dir)
+                snapshot.load_dflash_snapshot_profile(snapshot_dir)
 
     def test_rejects_invalid_safetensors_metadata(self):
+        snapshot = _dflash_snapshot()
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
             snapshot_dir = _write_dflash_snapshot(
@@ -517,12 +522,13 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(
-                DFlashSnapshotError,
+                snapshot.DFlashSnapshotError,
                 "DFlash weights must all use 'bfloat16' dtype",
             ):
-                load_dflash_snapshot_profile(snapshot_dir)
+                snapshot.load_dflash_snapshot_profile(snapshot_dir)
 
     def test_probe_accepts_valid_local_dflash_snapshot(self):
+        boundary = _dflash_boundary()
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
             target_dir = _write_qwen_model_dir(
@@ -545,8 +551,8 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
                 "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
                 return_value=256 * 1024 * 1024 * 1024,
             ):
-                report = probe_dflash_readiness(
-                    DFlashBoundaryOptions(
+                report = boundary.probe_dflash_readiness(
+                    boundary.DFlashBoundaryOptions(
                         enabled=True,
                         target_model_path=target_dir,
                         drafter_model_path=drafter_dir,
@@ -559,6 +565,7 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
         self.assertEqual(report.drafter_family, "qwen")
 
     def test_probe_rejects_invalid_local_dflash_snapshot(self):
+        boundary = _dflash_boundary()
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
             target_dir = _write_qwen_model_dir(
@@ -582,8 +589,8 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
                 "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
                 return_value=(True, ()),
             ):
-                report = probe_dflash_readiness(
-                    DFlashBoundaryOptions(
+                report = boundary.probe_dflash_readiness(
+                    boundary.DFlashBoundaryOptions(
                         enabled=True,
                         target_model_path=target_dir,
                         drafter_model_path=drafter_dir,
@@ -597,6 +604,7 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
         )
 
     def test_probe_ignores_path_only_qwen_snapshot_without_metadata(self):
+        boundary = _dflash_boundary()
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
             target_dir = _write_qwen_model_dir(
@@ -607,8 +615,8 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
             )
             drafter_dir = _write_qwen_model_dir(temp_dir, "drafter", "qwen3_5_text")
 
-            report = probe_dflash_readiness(
-                DFlashBoundaryOptions(
+            report = boundary.probe_dflash_readiness(
+                boundary.DFlashBoundaryOptions(
                     enabled=True,
                     target_model_path=target_dir,
                     drafter_model_path=drafter_dir,
@@ -626,6 +634,7 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
 
 class TestDFlashRealPairPreflight(unittest.TestCase):
     def test_real_pair_preflight_accepts_target_and_drafter_metadata(self):
+        boundary = _dflash_boundary()
         with patch(
             "mlx_engine.utils.dflash_boundary._probe_reserved_port_conflicts",
             return_value=(),
@@ -633,8 +642,8 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
             "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
             return_value=256 * 1024 * 1024 * 1024,
         ):
-            report = validate_dflash_preload_compatibility(
-                options=DFlashBoundaryOptions(
+            report = boundary.validate_dflash_preload_compatibility(
+                options=boundary.DFlashBoundaryOptions(
                     enabled=True,
                     target_model_path=REAL_DFLASH_TARGET,
                     drafter_model_path=REAL_DFLASH_DRAFTER,
@@ -667,13 +676,16 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
 
     def test_load_model_fails_fast_before_heavy_model_creation(self):
         from mlx_engine import generate
+        boundary = _dflash_boundary()
 
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
             model_dir = _write_qwen_model_dir(temp_dir, "target", "qwen3_5_text")
 
             def _fail_preflight(**_kwargs):
-                raise DFlashUnavailableError("DFlash no-go: synthetic preflight failure")
+                raise boundary.DFlashUnavailableError(
+                    "DFlash no-go: synthetic preflight failure"
+                )
 
             with (
                 patch(
@@ -686,7 +698,7 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
                 ),
             ):
                 with self.assertRaisesRegex(
-                    DFlashUnavailableError,
+                    boundary.DFlashUnavailableError,
                     "synthetic preflight failure",
                 ):
                     generate.load_model(
@@ -699,6 +711,7 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
         validate_preload.assert_called_once()
 
     def test_preload_compatibility_rejects_incompatible_route_and_cache_mode(self):
+        boundary = _dflash_boundary()
         with patch(
             "mlx_engine.utils.dflash_boundary.probe_dflash_readiness",
             return_value=SimpleNamespace(
@@ -713,9 +726,12 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
                 blockers=(),
             ),
         ):
-            with self.assertRaisesRegex(DFlashUnavailableError, "sequential text generation"):
-                validate_dflash_preload_compatibility(
-                    options=DFlashBoundaryOptions(
+            with self.assertRaisesRegex(
+                boundary.DFlashUnavailableError,
+                "sequential text generation",
+            ):
+                boundary.validate_dflash_preload_compatibility(
+                    options=boundary.DFlashBoundaryOptions(
                         enabled=True,
                         target_model_path=REAL_DFLASH_TARGET,
                         drafter_model_path=REAL_DFLASH_DRAFTER,
@@ -734,6 +750,7 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
                 )
 
     def test_runtime_validation_rejects_rollback_unsafe_cache_modes(self):
+        boundary = _dflash_boundary()
         cases = [
             (
                 {"max_kv_size": 16},
@@ -774,7 +791,7 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
 
         for attrs, prompt_cache, needle in cases:
             with self.subTest(case=needle):
-                blockers = validate_dflash_runtime_compatibility(
+                blockers = boundary.validate_dflash_runtime_compatibility(
                     _runtime_model_kit(prompt_cache, **attrs)
                 )
                 self.assertTrue(
@@ -785,6 +802,8 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
 
 class TestDFlashRouting(unittest.TestCase):
     def test_default_off_uses_existing_stream_generate_path(self):
+        from mlx_engine.generate import create_generator
+
         kit = FakeSequentialKit()
         stream_result = SimpleNamespace(
             text="ok",
@@ -821,6 +840,8 @@ class TestDFlashRouting(unittest.TestCase):
         stream_generate.assert_called_once()
 
     def test_enabled_opt_in_fails_closed_with_missing_dependency(self):
+        from mlx_engine.generate import create_generator
+
         kit = FakeSequentialKit()
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -837,7 +858,7 @@ class TestDFlashRouting(unittest.TestCase):
             (drafter_dir / "model.safetensors").unlink()
 
             with self.assertRaisesRegex(
-                DFlashUnavailableError,
+                _dflash_boundary().DFlashUnavailableError,
                 "No safetensors weights found",
             ):
                 create_generator(
@@ -851,6 +872,8 @@ class TestDFlashRouting(unittest.TestCase):
                 )
 
     def test_enabled_opt_in_routes_through_dflash_runtime(self):
+        from mlx_engine.generate import create_generator
+
         kit = FakeSequentialKit()
         stream_result = GenerationResult(
             text="native-dflash",
