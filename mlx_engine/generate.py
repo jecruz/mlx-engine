@@ -41,8 +41,9 @@ from mlx_engine.utils.set_seed import set_seed
 from mlx_engine.utils.dflash_boundary import (
     DFlashUnavailableError,
     build_dflash_no_go_message,
-    probe_dflash_readiness,
+    probe_dflash_readiness,  # noqa: F401  re-exported for tests patching the generate module
     resolve_dflash_options,
+    validate_dflash_postload_compatibility,
     validate_dflash_preload_compatibility,
     validate_dflash_surface_compatibility,
 )
@@ -280,6 +281,23 @@ def _is_known_vlm_model_type(model_type: str) -> bool:
         return True
     except (ImportError, ValueError):
         return False
+
+
+def _resolve_loaded_model_path(model_kit: LoadedModelKit) -> Path:
+    """Best-effort resolve of the model snapshot path used to load a kit.
+
+    ModelKit and DistributedModelKit expose ``model_path``; BatchedModelKit
+    and BatchedVisionModelKit expose ``_model_path``. If the kit does not
+    expose either (e.g. tests substitute a fake), fall back to the current
+    working directory so the post-load preflight can still record a real
+    comparison.
+    """
+
+    for attr in ("model_path", "_model_path"):
+        candidate = getattr(model_kit, attr, None)
+        if candidate is not None:
+            return Path(candidate)
+    return Path.cwd()
 
 
 def load_model(
@@ -696,8 +714,29 @@ def create_generator(
             draft_model=kwargs.get("draft_model"),
             model_kit_draft_model=getattr(model_kit, "draft_model", None),
         )
-        dflash_readiness = probe_dflash_readiness(dflash_options)
-        if dflash_surface_blockers or dflash_readiness.blockers:
+        dflash_loaded_model_path = _resolve_loaded_model_path(model_kit)
+        try:
+            dflash_readiness = validate_dflash_postload_compatibility(
+                options=dflash_options,
+                loaded_model_path=dflash_loaded_model_path,
+                is_vlm_route=isinstance(model_kit, BatchedVisionModelKit),
+                vocab_only=False,
+                distributed=isinstance(model_kit, DistributedModelKit),
+                max_seq_nums=getattr(model_kit, "max_seq_nums", None),
+                kv_bits=getattr(model_kit, "kv_bits", None),
+                kv_group_size=getattr(model_kit, "kv_group_size", None),
+                quantized_kv_start=getattr(model_kit, "quantized_kv_start", None),
+                vlm_prompt_cache_storage_root=getattr(
+                    model_kit, "_model_path", None
+                )
+                and getattr(model_kit, "prompt_cache_storage_root", None),
+                vlm_prompt_cache_min_save_tokens=getattr(
+                    model_kit, "prompt_cache_min_save_tokens", None
+                ),
+            )
+        except DFlashUnavailableError:
+            raise
+        if dflash_surface_blockers:
             raise DFlashUnavailableError(
                 build_dflash_no_go_message(
                     dflash_readiness,

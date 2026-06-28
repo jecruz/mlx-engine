@@ -926,8 +926,27 @@ def _format_gib(size_in_bytes: int | None) -> str:
 
 def probe_dflash_readiness(
     options: DFlashBoundaryOptions,
+    *,
+    target_resident: bool = False,
 ) -> DFlashReadinessReport:
-    """Probe the DFlash boundary without mutating generation state."""
+    """Probe the DFlash boundary without mutating generation state.
+
+    The optional ``target_resident`` flag selects the phase-aware memory
+    accounting:
+
+    * ``target_resident=False`` (default) — pre-load accounting used by
+      ``validate_dflash_preload_compatibility`` before ``load_model`` has
+      constructed the heavyweight target. Memory must cover the target bytes,
+      the drafter bytes, and the configured headroom in full.
+    * ``target_resident=True`` — post-load accounting used by
+      ``validate_dflash_postload_compatibility`` after the Qwen-family target
+      has already been loaded into the active ``ModelKit``. The target bytes
+      are no longer required from residual free memory because the target is
+      already resident; only the incremental drafter bytes plus headroom must
+      still fit. All other fail-closed blockers (unsupported surfaces,
+      listeners, dependency availability, vocab/layer matching, route and
+      cache-mode checks) remain active in both phases.
+    """
 
     blockers: list[str] = []
     dependency_available, missing_modules = probe_dflash_dependency()
@@ -993,8 +1012,22 @@ def probe_dflash_readiness(
                 f"max_target_layer_id={max_target_layer_id})"
             )
 
-        estimated_bytes = _estimate_snapshot_bytes(target_profile.safetensors_paths)
-        estimated_bytes += _estimate_snapshot_bytes(drafter_profile.safetensors_paths)
+        if target_resident:
+            # Post-load / create_generator phase: the target model is already
+            # resident in the active ModelKit, so only the incremental drafter
+            # bytes plus headroom must still fit in residual free memory.
+            estimated_bytes = _estimate_snapshot_bytes(
+                drafter_profile.safetensors_paths
+            )
+            phase_label = "post-target-load DFlash preflight"
+        else:
+            # Pre-load / load_model phase: target + drafter + headroom must
+            # all fit in residual free memory before any heavyweight load.
+            estimated_bytes = _estimate_snapshot_bytes(target_profile.safetensors_paths)
+            estimated_bytes += _estimate_snapshot_bytes(
+                drafter_profile.safetensors_paths
+            )
+            phase_label = "real-pair DFlash preflight"
         available_bytes = _probe_available_memory_bytes()
         if available_bytes is not None:
             headroom = max(
@@ -1004,7 +1037,7 @@ def probe_dflash_readiness(
             required_bytes = estimated_bytes + headroom
             if available_bytes < required_bytes:
                 resource_blockers = (
-                    f"Insufficient free memory for real-pair DFlash preflight: "
+                    f"Insufficient free memory for {phase_label}: "
                     f"need at least {_format_gib(required_bytes)}, "
                     f"found {_format_gib(available_bytes)}",
                 )
@@ -1034,7 +1067,7 @@ def probe_dflash_readiness(
     )
 
 
-def validate_dflash_preload_compatibility(
+def validate_dflash_postload_compatibility(
     *,
     options: DFlashBoundaryOptions,
     loaded_model_path: Path,
@@ -1048,9 +1081,68 @@ def validate_dflash_preload_compatibility(
     vlm_prompt_cache_storage_root: Path | None,
     vlm_prompt_cache_min_save_tokens: int | None,
 ) -> DFlashReadinessReport:
-    """Fail closed before DFlash can reach heavyweight model loading."""
+    """Phase-aware DFlash preflight for the post-target-load surface.
 
-    readiness = probe_dflash_readiness(options)
+    This is the wrapper ``create_generator`` uses after the Qwen-family target
+    has already been loaded into the active ``ModelKit``. It reuses the same
+    route/cache/loaded-draft-model blockers as
+    :func:`validate_dflash_preload_compatibility` so that VLM, batched,
+    distributed, persistent VLM cache, and quantized-KV cache combinations
+    still fail closed. The only difference is the resource accounting:
+
+    * The pre-load preflight still requires target bytes + drafter bytes +
+      configured headroom from residual free memory, because no model has
+      been loaded yet.
+    * The post-load preflight treats the target snapshot as already
+      resident, so it only requires incremental drafter bytes + headroom.
+      This stops the preflight from double-counting the Qwen3.6 target that
+      ``load_model`` already paid for.
+
+    Listener evidence and all other fail-closed conditions remain identical
+    between the two phases.
+    """
+
+    return validate_dflash_preload_compatibility(
+        options=options,
+        loaded_model_path=loaded_model_path,
+        is_vlm_route=is_vlm_route,
+        vocab_only=vocab_only,
+        distributed=distributed,
+        max_seq_nums=max_seq_nums,
+        kv_bits=kv_bits,
+        kv_group_size=kv_group_size,
+        quantized_kv_start=quantized_kv_start,
+        vlm_prompt_cache_storage_root=vlm_prompt_cache_storage_root,
+        vlm_prompt_cache_min_save_tokens=vlm_prompt_cache_min_save_tokens,
+        target_resident=True,
+    )
+
+
+def validate_dflash_preload_compatibility(
+    *,
+    options: DFlashBoundaryOptions,
+    loaded_model_path: Path,
+    is_vlm_route: bool,
+    vocab_only: bool,
+    distributed: bool,
+    max_seq_nums: int | None,
+    kv_bits: int | None,
+    kv_group_size: int | None,
+    quantized_kv_start: int | None,
+    vlm_prompt_cache_storage_root: Path | None,
+    vlm_prompt_cache_min_save_tokens: int | None,
+    target_resident: bool = False,
+) -> DFlashReadinessReport:
+    """Fail closed before DFlash can reach heavyweight model loading.
+
+    Set ``target_resident=True`` to switch the resource accounting to the
+    post-load phase (the target snapshot is already resident in memory, so
+    only the incremental drafter bytes + headroom must still fit). The
+    pre-load default keeps the strict target + drafter + headroom check that
+    runs before ``load_model`` constructs the heavyweight target.
+    """
+
+    readiness = probe_dflash_readiness(options, target_resident=target_resident)
     route_blockers = list(readiness.route_blockers)
     cache_mode_blockers = list(readiness.cache_mode_blockers)
 

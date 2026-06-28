@@ -886,16 +886,27 @@ class TestDFlashRouting(unittest.TestCase):
         def fake_dflash_stream_generate(*_args, **_kwargs):
             yield stream_result
 
+        fake_report = SimpleNamespace(
+            enabled=True,
+            dependency_available=True,
+            target_family="qwen",
+            drafter_family="qwen",
+            target_profile=None,
+            cache_mode_blockers=(),
+            route_blockers=(),
+            resource_blockers=(),
+            blockers=(),
+            listener_evidence=(),
+        )
+
         with (
             patch(
+                "mlx_engine.generate.validate_dflash_postload_compatibility",
+                return_value=fake_report,
+            ),
+            patch(
                 "mlx_engine.generate.probe_dflash_readiness",
-                return_value=SimpleNamespace(
-                    enabled=True,
-                    dependency_available=True,
-                    target_family="qwen",
-                    drafter_family="qwen",
-                    blockers=(),
-                ),
+                return_value=fake_report,
             ),
             patch(
                 "mlx_engine.generate.dflash_stream_generate",
@@ -917,6 +928,88 @@ class TestDFlashRouting(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].tokens[0].id, 17)
         dflash_stream_generate.assert_called_once()
+
+    def test_create_generator_uses_postload_validator_when_target_resident(self):
+        from mlx_engine.generate import create_generator
+
+        kit = FakeSequentialKit()
+        stream_result = GenerationResult(
+            text="native-dflash",
+            tokens=[SimpleNamespace(id=21, text="21", logprob=0.0, from_draft=False)],
+            top_logprobs=[],
+            stop_condition=None,
+        )
+
+        captured_kwargs: dict[str, object] = {}
+
+        def fake_dflash_stream_generate(*_args, **kwargs):
+            captured_kwargs.update(kwargs)
+            yield stream_result
+
+        fake_report = SimpleNamespace(
+            enabled=True,
+            dependency_available=True,
+            target_family="qwen",
+            drafter_family="qwen",
+            target_profile=None,
+            cache_mode_blockers=(),
+            route_blockers=(),
+            resource_blockers=(),
+            blockers=(),
+            listener_evidence=(),
+        )
+
+        with (
+            patch(
+                "mlx_engine.generate.validate_dflash_postload_compatibility",
+                return_value=fake_report,
+            ) as postload_validator,
+            patch(
+                "mlx_engine.generate.validate_dflash_preload_compatibility",
+                side_effect=AssertionError(
+                    "create_generator must not re-run the preload validator"
+                ),
+            ),
+            patch(
+                "mlx_engine.generate.probe_dflash_readiness",
+                side_effect=AssertionError(
+                    "create_generator must use the wrapper, not the raw probe"
+                ),
+            ),
+            patch(
+                "mlx_engine.generate.dflash_stream_generate",
+                side_effect=fake_dflash_stream_generate,
+            ),
+        ):
+            results = list(
+                create_generator(
+                    kit,
+                    [1],
+                    max_tokens=1,
+                    request_id="dflash-postload",
+                    dflash_toggle=True,
+                    dflash_target_model="/tmp/qwen-target",
+                    dflash_drafter_model="/tmp/qwen-drafter",
+                )
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].tokens[0].id, 21)
+        postload_validator.assert_called_once()
+        # Post-load validator must be called with the resolved loaded-model path
+        # (FakeSequentialKit exposes neither model_path nor _model_path, so the
+        # helper falls back to Path.cwd()).
+        call_kwargs = postload_validator.call_args.kwargs
+        self.assertEqual(call_kwargs["loaded_model_path"], Path.cwd())
+        self.assertFalse(call_kwargs["is_vlm_route"])
+        self.assertFalse(call_kwargs["distributed"])
+        self.assertIsNone(call_kwargs["kv_bits"])
+        self.assertIsNone(call_kwargs["vlm_prompt_cache_storage_root"])
+        # The wrapped dflash_options must reach the runtime with the
+        # original max_draft_tokens preserved.
+        dflash_options = captured_kwargs.get("dflash_options")
+        self.assertIsNotNone(dflash_options)
+        self.assertEqual(dflash_options.max_draft_tokens, 4)
 
 
 def _write_llmdynamix_config(
@@ -1280,6 +1373,410 @@ class TestDFlashLLMDYNAMIXListenerClassification(unittest.TestCase):
 
         self.assertEqual(report.blockers, ())
         self.assertIn(fake_evidence, report.listener_evidence)
+
+
+class TestDFlashPhaseAwareMemoryAccounting(unittest.TestCase):
+    """Pre-load vs post-load accounting must differ correctly.
+
+    The pre-load preflight (called from ``load_model``) still requires target
+    bytes + drafter bytes + headroom before any heavyweight load. The
+    post-load preflight (called from ``create_generator`` after the target is
+    already resident) must only require incremental drafter bytes + headroom
+    so it does not double-count the Qwen3.6 target that ``load_model`` already
+    paid for. All other fail-closed conditions (dependency, family,
+    listeners, route, cache mode, vocab/layer matching) remain active in
+    both phases.
+    """
+
+    # Mirror the real Qwen3.6 27B target / z-lab DFlash drafter footprint so
+    # we exercise phase-aware accounting with realistic snapshot sizes without
+    # requiring a 27 GB tempfile.
+    REALISTIC_TARGET_BYTES = 27 * 1024 * 1024 * 1024
+    REALISTIC_DRAFTER_BYTES = 4 * 1024 * 1024 * 1024
+
+    def _build_options(
+        self, target_dir: Path, drafter_dir: Path
+    ):
+        boundary = _dflash_boundary()
+        return boundary.DFlashBoundaryOptions(
+            enabled=True,
+            target_model_path=target_dir,
+            drafter_model_path=drafter_dir,
+            max_draft_tokens=4,
+        )
+
+    def _estimate_safetensors_bytes(
+        self,
+        paths: tuple[Path, ...],
+        realistic_size: int,
+    ) -> int:
+        """Sum the stub sizes and add a realistic_size offset on the first path.
+
+        The fake snapshots are tiny stub safetensors. We piggyback a realistic
+        size on the first path so the memory accounting produces a
+        realistic-shape headroom check. The probe only sees the totals, so
+        it cannot tell the difference.
+        """
+
+        total = realistic_size if paths else 0
+        for index, path in enumerate(paths):
+            if index == 0:
+                # Skip the stub size of the first path since we replaced it
+                # with the realistic_size offset above.
+                continue
+            try:
+                total += path.stat().st_size
+            except FileNotFoundError:
+                continue
+        return total
+
+    def test_preload_accounts_for_target_and_drafter_together(self):
+        boundary = _dflash_boundary()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "target",
+                "qwen3_5_text",
+                include_tokenizer_files=True,
+                vocab_size=DFLASH_EXPECTED_VOCAB_SIZE,
+                num_hidden_layers=64,
+            )
+            drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
+
+            available = 8 * 1024 * 1024 * 1024  # 8 GiB residual
+            target_bytes = self.REALISTIC_TARGET_BYTES
+            drafter_bytes = self.REALISTIC_DRAFTER_BYTES
+
+            preload_headroom = max(
+                int(
+                    (target_bytes + drafter_bytes)
+                    * boundary.DFLASH_AVAILABLE_MEMORY_HEADROOM_RATIO
+                ),
+                boundary.DFLASH_AVAILABLE_MEMORY_HEADROOM_MIN_BYTES,
+            )
+            preload_required = target_bytes + drafter_bytes + preload_headroom
+
+            self.assertGreater(preload_required, available)
+
+            def _estimate(paths):
+                # Identify which snapshot we're estimating by content size
+                if not paths:
+                    return 0
+                first_path = paths[0]
+                if "target" in str(first_path):
+                    return self._estimate_safetensors_bytes(
+                        paths, target_bytes
+                    )
+                return self._estimate_safetensors_bytes(paths, drafter_bytes)
+
+            with patch(
+                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                return_value=(True, ()),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                return_value=(),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._estimate_snapshot_bytes",
+                side_effect=_estimate,
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                return_value=available,
+            ):
+                preload_report = boundary.probe_dflash_readiness(
+                    self._build_options(target_dir, drafter_dir),
+                    target_resident=False,
+                )
+
+            self.assertTrue(
+                any(
+                    "real-pair DFlash preflight" in blocker
+                    and "Insufficient free memory" in blocker
+                    for blocker in preload_report.blockers
+                ),
+                msg=(
+                    "expected pre-load blocker to mention real-pair DFlash "
+                    f"preflight; got: {preload_report.blockers}"
+                ),
+            )
+            self.assertTrue(
+                any(
+                    f"need at least {boundary._format_gib(preload_required)}" in blocker
+                    for blocker in preload_report.blockers
+                ),
+                msg=(
+                    "expected pre-load blocker to cite the combined "
+                    f"target+drafter+headroom requirement; got: {preload_report.blockers}"
+                ),
+            )
+
+    def test_postload_only_accounts_for_drafter_plus_headroom(self):
+        boundary = _dflash_boundary()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "target",
+                "qwen3_5_text",
+                include_tokenizer_files=True,
+                vocab_size=DFLASH_EXPECTED_VOCAB_SIZE,
+                num_hidden_layers=64,
+            )
+            drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
+
+            target_bytes = self.REALISTIC_TARGET_BYTES
+            drafter_bytes = self.REALISTIC_DRAFTER_BYTES
+
+            # 16 GiB residual post-load: large enough to fit incremental
+            # drafter+headroom (4 GiB drafter + 8 GiB floor = 12 GiB), but
+            # far too small to fit pre-load (27 + 4 + 8 = 39 GiB).
+            available = 16 * 1024 * 1024 * 1024
+
+            postload_headroom = max(
+                int(drafter_bytes * boundary.DFLASH_AVAILABLE_MEMORY_HEADROOM_RATIO),
+                boundary.DFLASH_AVAILABLE_MEMORY_HEADROOM_MIN_BYTES,
+            )
+            postload_required = drafter_bytes + postload_headroom
+
+            preload_headroom = max(
+                int(
+                    (target_bytes + drafter_bytes)
+                    * boundary.DFLASH_AVAILABLE_MEMORY_HEADROOM_RATIO
+                ),
+                boundary.DFLASH_AVAILABLE_MEMORY_HEADROOM_MIN_BYTES,
+            )
+            preload_required = target_bytes + drafter_bytes + preload_headroom
+
+            self.assertLess(postload_required, available)
+            self.assertGreater(preload_required, available)
+
+            def _estimate(paths):
+                if not paths:
+                    return 0
+                first_path = paths[0]
+                if "target" in str(first_path):
+                    return self._estimate_safetensors_bytes(paths, target_bytes)
+                return self._estimate_safetensors_bytes(paths, drafter_bytes)
+
+            with patch(
+                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                return_value=(True, ()),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                return_value=(),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._estimate_snapshot_bytes",
+                side_effect=_estimate,
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                return_value=available,
+            ):
+                preload_report = boundary.probe_dflash_readiness(
+                    self._build_options(target_dir, drafter_dir),
+                    target_resident=False,
+                )
+                postload_report = boundary.probe_dflash_readiness(
+                    self._build_options(target_dir, drafter_dir),
+                    target_resident=True,
+                )
+
+            self.assertGreater(preload_required, available)
+            self.assertLess(postload_required, preload_required)
+            self.assertTrue(
+                any(
+                    "Insufficient free memory" in blocker
+                    and "real-pair DFlash preflight" in blocker
+                    for blocker in preload_report.blockers
+                ),
+                msg=(
+                    "pre-load must block; got: "
+                    f"{preload_report.blockers}"
+                ),
+            )
+            # On the realistic post-load residual the drafter+headroom fits.
+            self.assertEqual(postload_report.blockers, ())
+            self.assertEqual(postload_report.resource_blockers, ())
+            self.assertEqual(postload_report.target_family, "qwen")
+            self.assertEqual(postload_report.drafter_family, "qwen")
+
+    def test_postload_still_blocks_on_listener_and_route_failures(self):
+        boundary = _dflash_boundary()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "target",
+                "qwen3_5_text",
+                include_tokenizer_files=True,
+                vocab_size=DFLASH_EXPECTED_VOCAB_SIZE,
+                num_hidden_layers=64,
+            )
+            drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
+            options = self._build_options(target_dir, drafter_dir)
+
+            heavy_evidence = boundary.ListenerEvidence(
+                port=12444,
+                classification=boundary.ListenerClassification.LOCAL_MLX_METAL_HEAVY,
+                pid=4444,
+                comm="ollama",
+            )
+            with patch(
+                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                return_value=(True, ()),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                return_value=(heavy_evidence,),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                return_value=256 * 1024 * 1024 * 1024,
+            ):
+                with self.assertRaisesRegex(
+                    boundary.DFlashUnavailableError,
+                    "local MLX/Metal-heavy",
+                ):
+                    boundary.validate_dflash_postload_compatibility(
+                        options=options,
+                        loaded_model_path=target_dir,
+                        is_vlm_route=False,
+                        vocab_only=False,
+                        distributed=False,
+                        max_seq_nums=1,
+                        kv_bits=None,
+                        kv_group_size=None,
+                        quantized_kv_start=None,
+                        vlm_prompt_cache_storage_root=None,
+                        vlm_prompt_cache_min_save_tokens=None,
+                    )
+
+            with patch(
+                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                return_value=(True, ()),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                return_value=(),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                return_value=256 * 1024 * 1024 * 1024,
+            ):
+                with self.assertRaisesRegex(
+                    boundary.DFlashUnavailableError,
+                    "sequential text generation",
+                ):
+                    boundary.validate_dflash_postload_compatibility(
+                        options=options,
+                        loaded_model_path=target_dir,
+                        is_vlm_route=True,
+                        vocab_only=False,
+                        distributed=False,
+                        max_seq_nums=4,
+                        kv_bits=4,
+                        kv_group_size=64,
+                        quantized_kv_start=8,
+                        vlm_prompt_cache_storage_root=Path("/tmp/cache-root"),
+                        vlm_prompt_cache_min_save_tokens=512,
+                    )
+
+    def test_postload_passes_with_cloud_only_listener_and_sufficient_memory(self):
+        boundary = _dflash_boundary()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "target",
+                "qwen3_5_text",
+                include_tokenizer_files=True,
+                vocab_size=DFLASH_EXPECTED_VOCAB_SIZE,
+                num_hidden_layers=64,
+            )
+            drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
+            options = self._build_options(target_dir, drafter_dir)
+
+            fake_evidence = boundary.ListenerEvidence(
+                port=12444,
+                classification=boundary.ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
+                notes=("synthetic cloud-only listener",),
+            )
+            with patch(
+                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                return_value=(True, ()),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                return_value=(fake_evidence,),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                return_value=256 * 1024 * 1024 * 1024,
+            ):
+                report = boundary.validate_dflash_postload_compatibility(
+                    options=options,
+                    loaded_model_path=target_dir,
+                    is_vlm_route=False,
+                    vocab_only=False,
+                    distributed=False,
+                    max_seq_nums=1,
+                    kv_bits=None,
+                    kv_group_size=None,
+                    quantized_kv_start=None,
+                    vlm_prompt_cache_storage_root=None,
+                    vlm_prompt_cache_min_save_tokens=None,
+                )
+
+        self.assertEqual(report.blockers, ())
+        self.assertEqual(report.resource_blockers, ())
+        self.assertIn(fake_evidence, report.listener_evidence)
+
+    def test_postload_still_blocks_when_drafter_alone_exceeds_memory(self):
+        boundary = _dflash_boundary()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "target",
+                "qwen3_5_text",
+                include_tokenizer_files=True,
+                vocab_size=DFLASH_EXPECTED_VOCAB_SIZE,
+                num_hidden_layers=64,
+            )
+            drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
+            options = self._build_options(target_dir, drafter_dir)
+
+            def _estimate(paths):
+                # Use realistic drafter bytes so the drafter alone
+                # overwhelms a tiny residual.
+                return self._estimate_safetensors_bytes(
+                    paths, self.REALISTIC_DRAFTER_BYTES
+                )
+
+            tiny_available = 256 * 1024 * 1024  # 256 MiB
+            with patch(
+                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                return_value=(True, ()),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                return_value=(),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._estimate_snapshot_bytes",
+                side_effect=_estimate,
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                return_value=tiny_available,
+            ):
+                with self.assertRaisesRegex(
+                    boundary.DFlashUnavailableError,
+                    "post-target-load DFlash preflight",
+                ):
+                    boundary.validate_dflash_postload_compatibility(
+                        options=options,
+                        loaded_model_path=target_dir,
+                        is_vlm_route=False,
+                        vocab_only=False,
+                        distributed=False,
+                        max_seq_nums=1,
+                        kv_bits=None,
+                        kv_group_size=None,
+                        quantized_kv_start=None,
+                        vlm_prompt_cache_storage_root=None,
+                        vlm_prompt_cache_min_save_tokens=None,
+                    )
 
 
 class _FakeURLLibResponse:

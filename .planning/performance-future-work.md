@@ -1641,3 +1641,76 @@ To re-run the capped smoke successfully, the next worker needs to either:
 | Smoke attempt #2 report (`max_seq_nums=1`) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T045739.756021Z-shared-bench.json` |
 | Quality inspect (attempt #2) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T045739.756021Z-quality-inspect.json` |
 
+## M14 DFlash post-target-load preflight accounting fix (2026-06-28)
+
+Feature `m14-dflash-post-load-preflight-accounting` fixes the M14 DFlash resource preflight so it stops double-counting the Qwen3.6 27B target after `load_model` has already paid for it. The `load_model` preflight keeps the strict target + drafter + headroom check that runs before any heavyweight load; `create_generator` now calls a new phase-aware `validate_dflash_postload_compatibility` wrapper that treats the target as already resident and only requires incremental drafter + headroom. All other fail-closed conditions (local MLX/Metal-heavy listeners, unsupported routes/cache modes, dependency/family/vocab/layer matching, genuinely insufficient memory for the drafter alone) remain active in both phases.
+
+### Code change
+
+- `mlx_engine/utils/dflash_boundary.py`
+  - `probe_dflash_readiness(options, *, target_resident=False)` — new `target_resident` flag. When `True`, the resource accounting only sums `drafter_bytes + max(drafter * 0.25, 8 GiB)` headroom and labels the blocker `"post-target-load DFlash preflight"` so the no-go message distinguishes the phase.
+  - `validate_dflash_preload_compatibility(..., target_resident=False)` — accepts the flag and forwards it to `probe_dflash_readiness`. All existing callers continue to use the strict pre-load default.
+  - `validate_dflash_postload_compatibility(...)` — thin wrapper that mirrors the preload signature but always sets `target_resident=True`. Reuses every route/cache/loaded-draft-model blocker so VLM/batched/distributed/persistent VLM cache/quantized KV combinations still fail closed after the target is loaded.
+- `mlx_engine/generate.py`
+  - `_resolve_loaded_model_path(model_kit)` — best-effort resolver for the path used to load the active `ModelKit` (handles `model_path` and `_model_path`).
+  - `create_generator(...)` now calls `validate_dflash_postload_compatibility` instead of the raw `probe_dflash_readiness`, threading the resolved `loaded_model_path`, `is_vlm_route`, `distributed`, `kv_bits`/`kv_group_size`/`quantized_kv_start`, and VLM-cache attrs read off the live `model_kit`. The `dflash_surface_blockers` from `validate_dflash_surface_compatibility` are still applied via `build_dflash_no_go_message` so the VLM image/draft_model/SpecPrefill/speculative_decoding_toggle/num_draft_tokens surface checks keep working.
+
+### Tests added
+
+`tests/test_dflash_boundary.py::TestDFlashPhaseAwareMemoryAccounting` (5 tests, all passing):
+
+- `test_preload_accounts_for_target_and_drafter_together` — patches realistic target (27 GiB) and drafter (4 GiB) byte estimates plus an 8 GiB residual. Asserts the pre-load blocker explicitly cites the combined `target + drafter + headroom` requirement and labels it `"real-pair DFlash preflight"`.
+- `test_postload_only_accounts_for_drafter_plus_headroom` — same realistic byte estimates, 16 GiB residual. Asserts the post-load report has zero blockers and zero resource_blockers while the pre-load report (run first) still blocks, proving the two phases produce materially different required-byte totals on identical inputs.
+- `test_postload_still_blocks_on_listener_and_route_failures` — proves the new wrapper still raises `DFlashUnavailableError` for a local MLX/Metal-heavy listener on `127.0.0.1:12444` (no target snapshot is loaded before that listener check runs) and for an unsupported post-load surface (VLM + `max_seq_nums=4` + `kv_bits` + `kv_group_size` + `quantized_kv_start` + persistent VLM cache + `min_save_tokens=512`).
+- `test_postload_passes_with_cloud_only_listener_and_sufficient_memory` — proves the cloud-only LLMDYNAMIX listener is still allowed at the post-load phase and the wrapper returns an empty blocker tuple when there is enough incremental memory.
+- `test_postload_still_blocks_when_drafter_alone_exceeds_memory` — patches a 256 MiB residual to prove the post-load phase still fails closed when the drafter alone cannot fit, and labels the blocker `"post-target-load DFlash preflight"`.
+
+Plus `tests/test_dflash_boundary.py::TestDFlashRouting::test_create_generator_uses_postload_validator_when_target_resident` — proves `create_generator` calls `validate_dflash_postload_compatibility` exactly once with the resolved loaded-model path, and explicitly asserts that the preload validator and the raw probe are NOT invoked.
+
+### Synthetic residual-memory demonstration
+
+Re-running the preflight through the public API with the same residual value (19.94 GiB) the prior capped-smoke worker reported after the Qwen3.6 27B target loaded:
+
+```
+Pre-load phase (target_resident=False):
+  - Insufficient free memory for real-pair DFlash preflight: need at least 39.44 GiB, found 19.94 GiB
+  resource_blockers: ['Insufficient free memory for real-pair DFlash preflight: need at least 39.44 GiB, found 19.94 GiB']
+
+Post-load phase (target_resident=True) — the fix:
+  resource_blockers: []
+
+Accounted requirements:
+  preload_required: 39.44 GiB (target + drafter + headroom)
+  postload_required: 11.96 GiB (drafter + headroom only)
+
+SUCCESS: pre-load still blocks (correct fail-closed) while post-load passes (no double-counting).
+```
+
+The post-load phase no longer fails closed with `"Insufficient free memory for real-pair DFlash preflight"` once the Qwen3.6 target is already resident. This resolves the residual-memory blocker identified in the prior handoff without weakening any other fail-closed condition. The capped smoke (next feature, `m14-dflash-capped-real-smoke`) should now be able to reach `dflash_stream_generate` on a host whose pre-load residual was already validated by the live gate probe.
+
+### Live resource gate (unchanged behavior)
+
+```
+$ .venv-py312/bin/python scripts/dflash_resource_gate_probe.py \
+    --output .planning/dflash-resource-gate-evidence-current.json
+ready_for_dflash_smoke= True cloud_only_listener= True blocked_listener= False
+```
+
+The live gate probe still uses the pre-load validator and remains unchanged.
+
+### Verification
+
+- `.venv-py312/bin/python -m pytest -q tests/test_dflash_boundary.py` → 32 passed, 0 failed (was 27; +5 new phase-aware tests).
+- `.venv-py312/bin/python -m pytest -q tests/test_dflash_boundary.py tests/test_dflash_runtime.py` → 36 passed, 22 subtests passed, 0 failed (was 30; +6 including the `create_generator` post-load routing test).
+- `.venv-py312/bin/python -m pytest -q <full M14 promotion pytest gate>` → 271 passed, 16 skipped, 0 failed.
+- `ruff check mlx_engine/utils/dflash_boundary.py mlx_engine/generate.py tests/test_dflash_boundary.py` → All checks passed.
+- `.venv-py312/bin/python scripts/dflash_resource_gate_probe.py --output .planning/dflash-resource-gate-evidence-current.json` → `ready_for_dflash_smoke=True cloud_only_listener=True blocked_listener=False`.
+- Synthetic residual-memory demonstration (19.94 GiB residual) — preload still blocks (`need at least 39.44 GiB`), post-load now passes with zero resource_blockers.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| Phase-aware evidence JSON | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-phase-aware-preflight-evidence.json` |
+| Live gate evidence (re-recorded) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-current.json` |
+
