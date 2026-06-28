@@ -2191,3 +2191,22 @@ Feature `m14-qwen35-wrapper-textmodel-rollback-hook` closes the wrapper-vs-inner
   - The runtime compatibility check at `mlx_engine/utils/dflash_boundary.py:1444` (`hasattr(lm, 'rollback_speculative_cache')`) now passes for `lm = target_model.language_model` (the outer wrapper).
 - **Smoke follow-up:** the full capped real-model smoke has not been re-run in this feature scope; the bench-worker retry evidence feature is a separate M14 follow-up. The wrapper hook is now the only path that must be exercised to clear the `TextModel does not implement rollback_speculative_cache` blocker.
 
+### Capped real-model smoke re-run (2026-06-28, `m14-dflash-capped-real-smoke`, engine HEAD `62adb12`)
+
+After the `m14-qwen35-wrapper-textmodel-rollback-hook` commit (62adb12) exposed `rollback_speculative_cache` on the outer `mlx_lm.models.qwen3_5.TextModel`, the capped real-model smoke was re-run with the exact same command shape as the prior failed attempts. The smoke ran further than before:
+
+1. The resource gate probe returned `ready_for_dflash_smoke=True cloud_only_listener=True blocked_listener=False` (53.48 GiB available, ports 3180/3181/3182 empty, port 12444 cloud-only LLMDYNAMIX with no loaded models).
+2. The Qwen3.6 27B target loaded end-to-end through `ModelKit` and ran the standard sequential startup warmup (`prompt_tokens=25 -> 513 -> 4095`) without `RuntimeError: There is no Stream(...)` or any preflight blocker.
+3. `dflash_stream_generate` was reached; the shape-strict `validate_dflash_runtime_compatibility` (16 KVCache + 48 ArraysCache) accepted the real Qwen3.6 target for the first time.
+4. The Qwen3.5 z-lab DFlash drafter loaded successfully.
+5. The first `target_verify=True` call inside `dflash_stream_generate` (line 308) failed with `TypeError: _patched_qwen3_5_language_model_call() got an unexpected keyword argument 'target_verify'` at `mlx_engine/model_kit/patches/qwen3_5.py:1185`.
+
+**Boundary check vs runtime-path attribution:** boundary-check passes (preflight, phase-aware post-load preflight, shape-strict runtime compatibility all green); runtime-path fails. The `_patched_qwen3_5_language_model_call` wrapper does not declare `target_verify` in its signature and the inner `self.model(inputs, ...)` call does not forward the kwarg, so every `target_verify=True` call from the native DFlash runtime raises TypeError before any token emission. No unverified token was emitted; `accepted_proposal_tokens=0` and `rejected_proposal_tokens=0` in the telemetry block.
+
+**Smoke evidence:**
+- `mlx-bench-harness/reports/20260628T071621.589182Z-shared-bench.json` (runner exit 0, per-row TypeError captured cleanly).
+- `mlx-bench-harness/reports/20260628T071621.589182Z-quality-inspect.json` (`status=fail`, `failed_prompts=["m14_dflash_smoke_ok"]`).
+- `.planning/dflash-capped-smoke-evidence-current.json` (structured smoke evidence with all five phase observations).
+- `.planning/dflash-resource-gate-evidence-precheck.json` (live precheck proving the resource gate is ready).
+
+**Per the feature description ("If resource or compatibility problems appear, attribute the row error to boundary-check versus runtime-path no-go where possible, then return to orchestrator with exact logs instead of retrying heavy loads blindly"), the smoke is returned to the orchestrator with the exact logs above rather than retried.** Promoting or changing behavior is out of scope; the next implementation worker must add `target_verify` to `_patched_qwen3_5_language_model_call` (and forward it to `self.model(...)`) plus a focused pytest asserting the kwarg is accepted and forwarded, then re-run this same smoke command.

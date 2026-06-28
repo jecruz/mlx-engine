@@ -1,0 +1,88 @@
+{
+  "feature": "m14-dflash-capped-real-smoke",
+  "date": "2026-06-28",
+  "engine_head": "62adb12",
+  "scenario": "Run the first capped real Qwen3.6 27B + z-lab DFlash drafter sequential text smoke through direct shared_bench.py after the m14-qwen35-wrapper-textmodel-rollback-hook commit (62adb12) exposed rollback_speculative_cache on the outer mlx_lm.models.qwen3_5.TextModel wrapper.",
+  "preflight_status": {
+    "ready_for_dflash_smoke": true,
+    "cloud_only_listener": true,
+    "blocked_listener": false,
+    "evidence_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-precheck.json"
+  },
+  "model_paths": {
+    "target": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit",
+    "drafter_snapshot": "/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824",
+    "target_architectures": ["Qwen3_5ForConditionalGeneration"],
+    "target_model_type": "qwen3_5",
+    "target_text_model_type": "qwen3_5_text",
+    "target_image_token_id": 248056,
+    "target_num_hidden_layers": 64,
+    "target_vocab_size": 248320
+  },
+  "smoke_command": "env PYTHONPATH=. python3 shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --mlx-engine-force-sequential --dflash --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 --dflash-max-draft-tokens 4 --prompt-suite-json prompt_suites/m14_dflash_capped_smoke.json --runs 1 --max-tokens 16 --temperature 0.0 --top-p 1.0 --include-output-text",
+  "smoke_reports": [
+    {
+      "report_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T071621.589182Z-shared-bench.json",
+      "quality_inspect_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T071621.589182Z-quality-inspect.json",
+      "runner_returncode": 0,
+      "row_error_present": true,
+      "row_error_class": "TypeError",
+      "row_error_message": "_patched_qwen3_5_language_model_call() got an unexpected keyword argument 'target_verify'",
+      "row_error_origin_file": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/patches/qwen3_5.py",
+      "row_error_origin_line": 1185,
+      "runner_exit_zero_meaning": "Process exit 0 is NOT success. Per-row TypeError confirms fail-closed runtime-path blocker. No assistant output was generated."
+    }
+  ],
+  "phase_progress": {
+    "phase_1_preflight_passed": {
+      "observation": "Resource gate remains ready: ports 3180/3181/3182 are empty, port 12444 holds a cloud-only LLMDYNAMIX listener with zero loaded models. The pre-load and phase-aware post-load preflight passed cleanly.",
+      "evidence_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-precheck.json"
+    },
+    "phase_2_target_loaded_warmup_completed": {
+      "observation": "The Qwen3.6 27B target loaded end-to-end through ModelKit, ran the standard sequential startup warmup (prompt_tokens=25 -> 513 -> 4095), and produced token=446 text_len=2 on the warmup with mode=sequential, distributed=False, ThreadLocalStream(Device(gpu, 0), 4). No 'Insufficient free memory' or other preflight blocker was raised. The mlx-engine load_model path passed the preflight, the post-load preflight (m14-dflash-post-load-preflight-accounting) passed.",
+      "stderr_evidence": "[mlx_lm_stream][INFO]: MLX stream state ... mode=sequential distributed=False prompt_tokens=4095 input_tokens=1 max_tokens=1 ... generation_stream=ThreadLocalStream(Device(gpu, 0), 4)"
+    },
+    "phase_3_reached_dflash_stream_generate": {
+      "observation": "dflash_stream_generate was invoked. validate_dflash_runtime_compatibility (the shape-strict 16 KVCache + 48 ArraysCache check introduced in fa634dc) PASSED for the real Qwen3.6 27B target."
+    },
+    "phase_4_drafter_loaded_target_verify_attempted": {
+      "observation": "The Qwen3.5 z-lab DFlash drafter was loaded successfully. The smoke reached the first target verify call inside dflash_stream_generate (mlx_engine/utils/dflash_runtime.py:308) which calls model_kit.model(prompt_tokens_array, cache=..., capture_layer_ids=..., hidden_sink=[], gdn_sink=[], target_verify=True).",
+      "evidence_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/utils/dflash_runtime.py:308"
+    },
+    "phase_5_runtime_path_typeerror": {
+      "observation": "TypeError raised at mlx_engine/model_kit/patches/qwen3_5.py:1185 inside _patched_qwen3_5_language_model_call(). The patched wrapper does not declare target_verify in its signature and the inner call site (self.model(inputs, ...)) does not forward the kwarg. dflash_stream_generate passes target_verify=True so the call fails with 'unexpected keyword argument'.",
+      "blocker_class": "TypeError: _patched_qwen3_5_language_model_call() got an unexpected keyword argument 'target_verify'",
+      "evidence_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/patches/qwen3_5.py:1139-1176 (_patched_qwen3_5_language_model_call signature lacks target_verify)"
+    }
+  },
+  "telemetry_block": {
+    "opted_in": true,
+    "target_model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit",
+    "drafter_model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824",
+    "max_draft_tokens": 4,
+    "sequential_text_only": true,
+    "uses_native_runtime": true,
+    "fallback_status": "default_off",
+    "accepted_proposal_tokens": 0,
+    "rejected_proposal_tokens": 0
+  },
+  "boundary_check_vs_runtime_path_attribution": {
+    "boundary_check": "PASS",
+    "rationale": "Pre-load probe_dflash_readiness (cloud-only listener allowed, sufficient memory), the phase-aware post-load validate_dflash_postload_compatibility, and validate_dflash_runtime_compatibility (shape-strict 16+48 layout) all passed. The shape-strict ArraysCache layout check from fa634dc accepted the real Qwen3.6 target. The wrapper rollback_speculative_cache hook from 62adb12 is now present on the outer TextModel.",
+    "runtime_path": "FAIL",
+    "rationale": "TypeError raised at the first target_verify=True call inside dflash_stream_generate. _patched_qwen3_5_language_model_call (the patched wrapper) does not declare target_verify in its signature and does not forward the kwarg to the inner self.model call. This is a runtime-call-site incompatibility, not a preflight blocker.",
+    "classification": "runtime-path no-go"
+  },
+  "expected_vs_actual_behavior": {
+    "a_capped_real_qwen36_dflash_smoke_completes_through_sequential_text_route": "FAIL-CLOSED (runtime TypeError) - sequential text route used (mode=sequential, distributed=False, ThreadLocalStream); target loaded; drafter loaded; shape-strict runtime compatibility passed; target_verify=True call fails with TypeError before any token emission.",
+    "smoke_report_has_zero_row_errors_and_valid_assistant_output_under_the_token_cap": "FAIL - per-row TypeError captured cleanly; output_preview empty; no assistant output produced.",
+    "evidence_proves_no_unsupported_fallback_or_adapter_lm_studio_route_was_used": "PASS - telemetry.sequential_text_only=true, uses_native_runtime=true, fallback_status=default_off (NOT fallback_unsupported_surface); no LM Studio, no cheetara adapter (3180/3181/3182), no standard autoregressive draft_model loading used; target_verify kwarg originated from the native DFlash runtime, not from any external adapter or LM Studio surface.",
+    "smoke_artifacts_and_observations_are_recorded_for_later_quality_performance_features": "PASS - this JSON + the shared-bench report path + stderr evidence + quality inspect JSON are recorded for follow-up features."
+  },
+  "verdict": "RUNTIME-PATH NO-GO - One new runtime compatibility blocker surfaced after the m14-qwen35-wrapper-textmodel-rollback-hook commit (62adb12): _patched_qwen3_5_language_model_call() does not accept the target_verify kwarg that dflash_stream_generate passes on every target call. The preflight, model load, drafter load, shape-strict runtime check, and wrapper rollback hook all passed; the failure is at the call site inside the patched wrapper signature. Returning to orchestrator with exact logs per the feature description ('If resource or compatibility problems appear, attribute the row error to boundary-check versus runtime-path no-go where possible, then return to orchestrator with exact logs instead of retrying heavy loads blindly').",
+  "followup_required_before_retry": [
+    "Update _patched_qwen3_5_language_model_call (and possibly _patched_qwen3_5_model_call) in mlx_engine/model_kit/patches/qwen3_5.py to declare target_verify=False and forward it to the inner self.model(...) call (which already supports target_verify per the captured gdn_states work).",
+    "Add a focused pytest asserting that target_verify=True is accepted by both _patched_qwen3_5_language_model_call and _patched_qwen3_5_model_call, and that the inner self.model call still receives the kwarg unchanged.",
+    "Re-run the same capped smoke command once the target_verify kwarg is plumbed through the wrapper. The preflight, load, warmup, drafter load, and shape-strict runtime compatibility have already been observed to pass."
+  ]
+}
