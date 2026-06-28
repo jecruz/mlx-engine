@@ -117,6 +117,15 @@ feature. DFlash is separate from standard autoregressive draft models and is
 not supported for VLM, batched, distributed, adapter, SpecPrefill, loaded
 `draft_model`, or unsupported cache-mode paths in this foundation stage.
 
+M14 closeout kept DFlash default-off and opt-in only. The native runtime path
+now has evidence for preflight, harness telemetry, capped smoke, verified-token
+emission, rejected-token cleanup, and KV/GDN rollback safety, but promotion was
+rejected after real Qwen3.6 + z-lab DFlash validation: row errors stayed at
+zero, yet quality/performance promotion gates failed because the DFlash path
+regressed TTFT, decode TPS, and total latency. See commits `9582970`
+(runtime-loop fix), `8f98e8a` (quality negative evidence), and `fd32c99`
+(performance REJECT) for the final evidence chain.
+
 ## Development Setup
 
 ### Pre-commit Hooks
@@ -139,6 +148,12 @@ To run tests, run the following from the root of this repo:
 ```bash
 python -m pip install pytest
 python -m pytest tests/
+```
+
+For the current evidence-gated optimization paths, also run lint before
+promotion or closeout:
+```bash
+ruff check --exclude .worktrees .
 ```
 
 To test specific vision models:
