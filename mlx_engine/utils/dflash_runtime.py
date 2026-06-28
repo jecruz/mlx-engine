@@ -82,6 +82,57 @@ def _copy_prompt_cache(model_kit: ModelKit | DistributedModelKit) -> list[Any]:
     return prompt_cache
 
 
+def _align_gdn_states_with_prompt_cache(
+    prompt_cache: list[Any],
+    gdn_states: Optional[Sequence[Any]],
+    lm: Any,
+) -> Optional[list[Any]]:
+    """Return a ``gdn_states`` list aligned 1:1 with ``prompt_cache``.
+
+    The mlx-vlm ``target_verify`` path populates ``gdn_states`` with one
+    entry per GDN (linear / gated-delta) layer in iteration order. For
+    Qwen3.5/Qwen3.6 the prompt-cache list mixes ``KVCache`` and
+    ``ArraysCache`` layers in layer-index order (16 KVCache + 48
+    ArraysCache for the proven sequential layout), so the flat
+    ``gdn_states`` cannot be zipped directly against ``prompt_cache``.
+
+    This helper walks the patched Qwen3.5 ``lm.layers`` list, identifies
+    which layer indices are linear (``is_linear=True``), and rewrites
+    ``gdn_states`` so ``aligned[i]`` is the GDN sink tuple captured for
+    the linear layer at cache index ``i`` (``None`` for non-linear
+    layers). The ``rollback_speculative_cache`` hook can then look up
+    the correct per-layer GDN state by cache index.
+    """
+
+    if gdn_states is None:
+        return None
+    layers = getattr(lm, "layers", None)
+    if layers is None:
+        # No layer info available; pass through the original list so the
+        # hook can fall back to its defensive behavior.
+        return list(gdn_states)
+
+    aligned: list[Any] = [None] * len(prompt_cache)
+    gdn_iter = iter(gdn_states)
+    matched = 0
+    for layer_index, layer in enumerate(layers):
+        if layer_index >= len(aligned):
+            break
+        if not bool(getattr(layer, "is_linear", False)):
+            continue
+        try:
+            aligned[layer_index] = next(gdn_iter)
+            matched += 1
+        except StopIteration:
+            break
+
+    if matched == 0:
+        # No linear layers matched; keep the original list shape so the
+        # hook can decide whether to ignore or fail closed.
+        return list(gdn_states)
+    return aligned
+
+
 def dflash_stream_generate(
     model_kit: ModelKit | DistributedModelKit,
     prompt_tokens: list[int],
@@ -373,8 +424,11 @@ def dflash_stream_generate(
                     raise DFlashUnavailableError(
                         f"{type(lm).__name__} does not implement rollback_speculative_cache"
                     )
+                aligned_gdn_states = _align_gdn_states_with_prompt_cache(
+                    prompt_cache, verify_out.gdn_states, lm
+                )
                 with mx.stream(generation_stream):
-                    rollback(prompt_cache, verify_out.gdn_states, accepted, bs)
+                    rollback(prompt_cache, aligned_gdn_states, accepted, bs)
 
             if emitted % 256 == 0:
                 mx.clear_cache()

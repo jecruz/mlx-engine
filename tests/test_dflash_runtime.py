@@ -6,8 +6,11 @@ from types import SimpleNamespace
 
 import mlx.core as mx
 
-from mlx_engine.utils.dflash_boundary import DFlashBoundaryOptions
-from mlx_engine.utils.dflash_boundary import DFlashUnavailableError
+from mlx_engine.utils.dflash_boundary import (
+    DFLASH_PROVEN_QWEN35_LAYOUT,
+    DFlashBoundaryOptions,
+    DFlashUnavailableError,
+)
 from mlx_engine.utils.dflash_runtime import dflash_stream_generate
 
 
@@ -25,16 +28,49 @@ class KVCache:
     def __init__(self, layer_id: int):
         self.layer_id = layer_id
         self.history: list[int] = []
+        self.lengths = mx.array([0], dtype=mx.int32)
+
+
+class _FakeArraysCache:
+    """Test fake for sequential single-sequence ``ArraysCache``.
+
+    Mirrors the real mlx-lm ``ArraysCache`` shape (no ``lengths`` /
+    ``left_padding``) so the DFlash runtime validator allows it through
+    the proven-shape check. The fake carries a ``history`` list so the
+    test can introspect live cache state without a real GDN state
+    machine.
+    """
+
+    def __init__(self, layer_id: int):
+        self.layer_id = layer_id
+        self.cache = [mx.zeros((1, 2, 4), dtype=mx.bfloat16)] * 2
+        self.lengths = None
+        self.left_padding = None
+        self.history: list[int] = []
+
+
+def _make_proven_layout_cache() -> list:
+    """Build the exact proven 16 KVCache + 48 ArraysCache layout."""
+
+    proven_kv, proven_arrays = DFLASH_PROVEN_QWEN35_LAYOUT
+    layers: list = []
+    for layer_id in range(proven_kv):
+        layers.append(KVCache(layer_id=layer_id))
+    for layer_id in range(proven_arrays):
+        layers.append(_FakeArraysCache(layer_id=layer_id + proven_kv))
+    return layers
 
 
 class FakeDraftModel:
     def __init__(
         self,
         draft_tokens: list[int],
-        layer_count: int = 2,
+        layer_count: int | None = None,
         target_layer_ids: list[int] | None = None,
     ):
         self._draft_tokens = tuple(draft_tokens)
+        if layer_count is None:
+            layer_count = sum(DFLASH_PROVEN_QWEN35_LAYOUT)
         if target_layer_ids is None:
             target_layer_ids = list(range(layer_count))
         self.config = SimpleNamespace(
@@ -61,11 +97,13 @@ class FakeTargetModel:
         prompt_tokens: list[int],
         spec_input_tokens: list[int],
         spec_output_tokens: list[int],
-        layer_count: int = 2,
+        layer_count: int | None = None,
     ):
         self._prompt_tokens = tuple(prompt_tokens)
         self._spec_input_tokens = tuple(spec_input_tokens)
         self._spec_output_tokens = tuple(spec_output_tokens)
+        if layer_count is None:
+            layer_count = sum(DFLASH_PROVEN_QWEN35_LAYOUT)
         self._layer_count = layer_count
         self.calls = []
         self.rollback_calls = []
@@ -90,7 +128,8 @@ class FakeTargetModel:
         )
         for layer in prompt_cache:
             layer.history.extend(seq_tokens)
-            layer.lengths = mx.array([len(layer.history)], dtype=mx.int32)
+            if hasattr(layer, "lengths") and isinstance(layer.lengths, mx.array):
+                layer.lengths = mx.array([len(layer.history)], dtype=mx.int32)
         vocab_size = max(max(seq_tokens), max(self._spec_output_tokens), 255) + 8
         logits = mx.full((1, seq_len, vocab_size), -100.0)
         for index, token in enumerate(output_tokens):
@@ -114,7 +153,8 @@ class FakeTargetModel:
         for layer, gdn_state in zip(prompt_cache, gdn_states):
             keep = gdn_state.base_history_len + accepted + 1
             layer.history = layer.history[:keep]
-            layer.lengths = mx.array([len(layer.history)], dtype=mx.int32)
+            if hasattr(layer, "lengths") and isinstance(layer.lengths, mx.array):
+                layer.lengths = mx.array([len(layer.history)], dtype=mx.int32)
 
 
 class FakeKit:
@@ -135,7 +175,7 @@ class FakeKit:
         self.cache_wrapper = SimpleNamespace(
             cache=cache_layers
             if cache_layers is not None
-            else [KVCache(layer_id) for layer_id in range(2)]
+            else _make_proven_layout_cache()
         )
         self.pending_requests = {}
         self.max_kv_size = None
@@ -254,22 +294,38 @@ class TestDFlashRuntime(unittest.TestCase):
                 self.assertEqual(observed_proposals, [((11,), tuple(draft_tokens))])
                 self.assertEqual(len(kit.model.calls), 2)
                 self.assertTrue(all(call[1]["target_verify"] for call in kit.model.calls))
+                # Capture layer ids default to range(layer_count); for the
+                # default proven layout that is range(64).
+                expected_capture_ids = list(range(sum(DFLASH_PROVEN_QWEN35_LAYOUT)))
                 self.assertTrue(
-                    all(call[1]["capture_layer_ids"] == [0, 1] for call in kit.model.calls)
+                    all(
+                        call[1]["capture_layer_ids"] == expected_capture_ids
+                        for call in kit.model.calls
+                    )
                 )
                 self.assertEqual(draft_model.draft_lens[0], (11, expected_block_size))
                 self.assertEqual(draft_model.accept_lens, [accepted])
+                expected_layer_count = sum(DFLASH_PROVEN_QWEN35_LAYOUT)
                 self.assertEqual(
                     kit.model.rollback_calls,
-                    [] if case["rollback"] is None else [case["rollback"] + (2,)],
+                    [] if case["rollback"] is None else [case["rollback"] + (expected_layer_count,)],
                 )
                 self.assertEqual(
                     [list(layer.history) for layer in kit.cache_wrapper.cache],
-                    [expected_history, expected_history],
+                    [expected_history] * expected_layer_count,
                 )
+                # Only KVCache layers carry an mx.array ``lengths`` in the
+                # fake; the ArraysCache fake mirrors the real
+                # ``lengths=None`` single-sequence shape.
+                kv_lengths = [
+                    int(layer.lengths.tolist()[0])
+                    for layer in kit.cache_wrapper.cache
+                    if hasattr(layer, "lengths")
+                    and isinstance(layer.lengths, mx.array)
+                ]
                 self.assertEqual(
-                    [int(layer.lengths.tolist()[0]) for layer in kit.cache_wrapper.cache],
-                    [len(expected_history), len(expected_history)],
+                    kv_lengths,
+                    [len(expected_history)] * len(kv_lengths),
                 )
                 rejected_tokens = draft_tokens[accepted:]
                 for layer in kit.cache_wrapper.cache:
@@ -351,7 +407,6 @@ class TestDFlashRuntime(unittest.TestCase):
             [12, 13, 14],
             [11, 12, 13, 14],
             [12, 21, 99, 98],
-            cache_layers=[KVCache(0)],
         )
         draft_model = FakeDraftModel([12, 13, 14], target_layer_ids=target_layer_ids)
 

@@ -1949,3 +1949,159 @@ validator, the rollback hook, and the smoke evidence are unchanged in
 behavior; only the test coverage and documentation have been added to
 pin the no-go so future workers cannot silently widen the ragged-cache
 surface.
+
+
+## M14 real Qwen3.6 ArraysCache/GDN rollback — proven shape (2026-06-28)
+
+Feature ``m14-dflash-real-arrayscache-gdn-rollback`` turns the
+documented M14 no-go (commit ``d3f6d10``) into a safe runtime path
+for the exact proven Qwen3.6 27B DFlash layout. The
+``PatchedQwen3_5TextModel.rollback_speculative_cache`` hook now drives
+``mlx_vlm.models.qwen3_5.gated_delta.gated_delta_accept_states`` to
+restore the real ``ArraysCache.cache[0]`` (conv window) and
+``cache[1]`` (running gated-delta state) for the proven sequential
+single-sequence shape, and
+``validate_dflash_runtime_compatibility`` is tightened to only allow
+that exact shape through.
+
+### Implementation summary
+
+- **Sequential shape detection:** new
+  ``_qwen3_5_arrays_cache_is_sequential_single_sequence`` helper
+  identifies the real mlx-lm ``ArraysCache`` used by sequential text
+  generation (``lengths`` and ``left_padding`` both ``None``, ``cache``
+  is a list of >=2 ``mlx.core.array`` entries). Ragged batched
+  variants with non-``None`` ``lengths`` / ``left_padding`` arrays are
+  not the proven shape and are rejected by the validator.
+- **ArraysCache rollback path:** new
+  ``_qwen3_5_dflash_arrays_cache_rollback`` mutates ``cache[0]`` and
+  ``cache[1]`` in place using the per-layer GDN sink tuple captured
+  during target_verify (``initial_state``, ``conv_input``,
+  ``intermediate_states``, ``conv_kernel_size``) plus
+  ``gated_delta_accept_states`` to compute the boundary state for the
+  accepted prefix. Accepted=0 / accepted<0 restores the live cache to
+  the pre-verify state; full acceptance is a no-op so the post-verify
+  state survives intact.
+- **GDN state alignment:** new
+  ``_align_gdn_states_with_prompt_cache`` helper in
+  ``dflash_runtime.py`` rewrites the flat ``gdn_states`` list so each
+  ``prompt_cache[i]`` (mixing ``KVCache`` and ``ArraysCache`` in layer
+  order) can look up its own per-layer GDN sink tuple. The helper
+  walks ``lm.layers`` and matches ``is_linear=True`` (GDN) layers to
+  cache indices.
+- **Validator tightening:** ``validate_dflash_runtime_compatibility``
+  now requires the exact 16 ``KVCache`` + 48 ``ArraysCache`` sequential
+  layout. Any ragged, opaque, or non-Qwen cache shape (different
+  counts, ragged ArraysCache, BatchKVCache, RotatingKVCache, mixed
+  ragged with the exact counts) stays fail-closed with a precise
+  blocker naming the expected (16, 48) split.
+- **Shape-strict constants:** ``DFLASH_PROVEN_QWEN35_LAYOUT = (16, 48)``
+  and ``DFLASH_PROVEN_QWEN35_TOTAL_LAYERS = 64`` are exported so the
+  runtime and tests share a single source of truth.
+
+### Rollback semantics proven by focused tests
+
+- ``tests/test_patched_qwen3_5_dflash_rollback.py::TestRealQwen3ArraysCacheRollback``
+  replaces the gap-pin tests with five success tests on a realistic
+  Qwen3.6 ``ArraysCache`` shape (parameterized conv_kernel_size /
+  conv_dim / head_v_dim / head_k_dim / num_v_heads):
+  - ``test_accepted_zero_restores_pre_verify_state``: live
+    ``cache[0]`` / ``cache[1]`` after rollback match the pre-verify
+    ``initial_state`` plus the bonus-token-only ``intermediate_states[0]``
+    boundary.
+  - ``test_partial_acceptance_snapshots_correct_intermediate_state``:
+    for accepted=1 / 2 the rollback picks
+    ``intermediate_states[accepted]`` as the new ``cache[1]`` and
+    reslices ``conv_input[:, accepted+1 : accepted+1+(k-1), :]`` as
+    the new ``cache[0]`` window.
+  - ``test_full_acceptance_is_no_op``: the rollback leaves the live
+    GDN state untouched when the entire draft block was accepted.
+  - ``test_full_qwen36_layout_only_touches_arrays_cache``: the full
+    16 ``KVCache`` + 48 ``ArraysCache`` layout rolls back the
+    ArraysCache subset without touching the KVCache subset, mirroring
+    the mlx-vlm GDN state machine exactly.
+  - ``test_ragged_arrays_cache_is_left_untouched``: the rollback path
+    refuses to mutate a ragged ArraysCache (non-``None``
+    ``lengths``), so the validator's fail-closed policy cannot be
+    bypassed by code that calls the hook directly.
+- ``tests/test_dflash_boundary.py::TestDFlashArraysCacheShapeStrict``
+  replaces the no-go pin tests with nine shape-strict tests proving
+  the validator's allow / reject contract on the real Qwen3.6 layout
+  plus every nearby variant (48 ArraysCache alone, wrong ArraysCache
+  count, wrong KVCache count, ragged ArraysCache, ragged mixed with
+  exact counts, BatchKVCache, RotatingKVCache).
+- ``tests/test_dflash_runtime.py``: added ``_FakeArraysCache`` and
+  ``_make_proven_layout_cache`` so the runtime stream-generate tests
+  run through the proven 16+48 layout by default; KVCache fake now
+  carries an ``mx.array`` ``lengths`` so layer-count assertions stay
+  KVCache-only.
+
+### Decision: DFlash runtime surface narrowed, not widened
+
+This feature does NOT claim DFlash is promotion-ready. The proven
+sequential-text rollback path is now safe for the exact 16 KVCache + 48
+ArraysCache Qwen3.6 27B layout; every other ragged / opaque / non-Qwen
+shape remains fail-closed by ``validate_dflash_runtime_compatibility``
+and ``rollback_speculative_cache``. Promotion to default-on DFlash
+still requires repeated quality-passing capped-smoke evidence captured
+by a separate bench-worker feature; this implementation feature only
+closes the runtime compatibility gap and must be re-validated end to
+end before any promotion decision.
+
+### Verification
+
+- ``.venv-py312/bin/python -m pytest -q
+  tests/test_dflash_boundary.py tests/test_dflash_runtime.py
+  tests/test_patched_qwen3_5_dflash_rollback.py`` → all targeted
+  tests pass.
+- ``.venv-py312/bin/python -m pytest -q <full M14 promotion pytest
+  gate per services.yaml commands.test>`` → **298 passed, 16 skipped,
+  0 failed** in ~63 s (was 292; +6 new shape-strict + ArraysCache
+  rollback tests).
+- ``ruff check mlx_engine/utils/dflash_boundary.py
+  mlx_engine/utils/dflash_runtime.py
+  mlx_engine/model_kit/patches/qwen3_5.py
+  tests/test_dflash_boundary.py tests/test_dflash_runtime.py
+  tests/test_patched_qwen3_5_dflash_rollback.py`` → All checks
+  passed.
+
+### Changed files
+
+- ``mlx_engine/model_kit/patches/qwen3_5.py`` — added
+  ``_qwen3_5_arrays_cache_is_sequential_single_sequence`` and
+  ``_qwen3_5_dflash_arrays_cache_rollback``; updated
+  ``_qwen3_5_dflash_rollback_rewind_layer`` to route ArraysCache
+  layers to the new helper and ``_qwen3_5_dflash_rollback`` to pass
+  per-layer ``gdn_state`` / ``accepted`` / ``block_size``.
+- ``mlx_engine/utils/dflash_runtime.py`` — added
+  ``_align_gdn_states_with_prompt_cache``; updated the rollback
+  invocation site to use the aligned list.
+- ``mlx_engine/utils/dflash_boundary.py`` — added
+  ``DFLASH_PROVEN_QWEN35_LAYOUT``,
+  ``DFLASH_PROVEN_QWEN35_TOTAL_LAYERS``,
+  ``_cache_layer_is_qwen35_sequential_arrays_cache``, and
+  ``_summarize_prompt_cache_layout``; rewrote
+  ``validate_dflash_runtime_compatibility`` to require the exact (16,
+  48) sequential layout with descriptive blockers for every other
+  shape.
+- ``tests/test_patched_qwen3_5_dflash_rollback.py`` — replaced the
+  ArraysCache gap-pin tests with realistic-shape success tests
+  covering accepted=0 / partial / full rollback semantics.
+- ``tests/test_dflash_boundary.py`` — replaced
+  ``TestDFlashArraysCacheNoGo`` with
+  ``TestDFlashArraysCacheShapeStrict`` covering both allow and
+  reject paths on the exact Qwen3.6 layout plus every nearby variant.
+- ``tests/test_dflash_runtime.py`` — added ``_FakeArraysCache`` and
+  ``_make_proven_layout_cache``; updated KVCache fake and FakeKit
+  default to the proven 16+48 layout.
+- ``.planning/performance-future-work.md`` — this entry.
+
+### Status
+
+DFlash runtime compatibility is now narrowed to the exact proven
+Qwen3.6 27B sequential-text layout and proven safe by focused tests.
+DFlash remains default-off until repeated quality-passing capped-smoke
+evidence is captured by the bench-worker. No new cache shape or route
+is silently widened; ragged, opaque, BatchKVCache, and RotatingKVCache
+layers remain fail-closed.
+

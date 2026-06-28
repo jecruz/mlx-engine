@@ -382,30 +382,33 @@ class _RealQwen3ArraysCache:
     exactly 48 of these layers (one per GDN linear-attention block) plus
     16 KVCache layers.
 
-    The rollback hook implements truncation for ``history`` lists,
-    ``keys``/``values`` arrays, ``offset``/``_idx`` rewinds, and
-    ``lengths`` arrays. It does NOT truncate the ``cache[idx]`` arrays
-    that hold the actual GDN state in single-sequence use. The tests
-    below document this gap so future workers know the rollback hook
-    must be extended with GDN-aware ``cache[idx]`` array slicing before
-    the runtime compatibility check can safely allow ArraysCache layers.
+    The rollback hook now mutates the real ``cache[0]`` (conv window)
+    and ``cache[1]`` (gated-delta state) in place using mlx-vlm's
+    ``gated_delta_accept_states`` helper plus the per-layer GDN sink
+    tuple captured during target_verify. Tests use the ``conv_input``,
+    ``initial_state``, and ``intermediate_states`` arrays to drive
+    realistic rollback paths.
     """
 
     def __init__(
         self,
         layer_id: int,
         conv_kernel_size: int = 3,
-        hidden_dim: int = 4,
+        conv_dim: int = 4,
+        head_v_dim: int = 2,
+        head_k_dim: int = 2,
+        num_v_heads: int = 2,
     ):
         self.layer_id = layer_id
+        self.conv_kernel_size = conv_kernel_size
         # Qwen3.5/3.6 GDN layers store conv_state in cache[0] and the
         # running gated-delta state in cache[1]. Both are mlx arrays
         # mutated in-place during the forward pass.
         self.cache = [
             mx.zeros(
-                (1, conv_kernel_size, hidden_dim), dtype=mx.bfloat16
+                (1, conv_kernel_size - 1, conv_dim), dtype=mx.bfloat16
             ),
-            mx.zeros((1, hidden_dim, hidden_dim), dtype=mx.bfloat16),
+            mx.zeros((1, num_v_heads, head_v_dim, head_k_dim), dtype=mx.float32),
         ]
         # Real single-sequence ArraysCache has both attributes set to None.
         self.lengths = None
@@ -419,138 +422,469 @@ class _RealQwen3ArraysCache:
         self._idx = None
 
 
-class TestArraysCacheRollbackGapDocs(unittest.TestCase):
-    """Document the rollback hook gap for real Qwen3.6 ArraysCache.
+def _build_real_arrays_cache_gdn_state(
+    arrays_layer: _RealQwen3ArraysCache,
+    accepted_token_value: float = 0.0,
+    verify_token_count: int = 4,
+) -> tuple:
+    """Build a 12-tuple mlx-vlm GDN sink entry for the test fake.
 
-    Per feature ``m14-dflash-gdn-arrayscache-runtime-compatibility``:
-    until a follow-up feature adds GDN-aware ``cache[idx]`` slicing for
-    real ArraysCache layers, the validator stays fail-closed for the
-    Qwen3.6 GDN/ArraysCache layout. These tests pin the gap explicitly
-    so a future refactor that silently widens the rollback surface
-    cannot regress DFlash to a state where rejected proposal tokens
-    remain in the live GDN cache state.
+    Mirrors the tuple shape mlx-vlm's ``Qwen3_5GatedDeltaNet`` appends
+    to ``gdn_sink`` during ``target_verify``:
+
+        (q, k, v, a, b, A_log, dt_bias,
+         initial_state, mask, conv_input, conv_kernel_size, intermediate_states)
+
+    Only the trailing four entries are consumed by the rollback hook;
+    the others are placeholders to keep the tuple shape compatible
+    with mlx-vlm's GDN sink layout. ``initial_state`` equals the live
+    cache[1] before the verify call; ``intermediate_states`` carries
+    per-step delta states; ``conv_input`` is the extended conv input
+    (``[cache[0] prepended] + new tokens``).
+
+    ``conv_input`` is tagged so ``conv_input[:, kernel_size - 1 + t, :]``
+    equals ``-(t + 1)`` (per-token). The original conv window
+    (``conv_input[:, :kernel_size - 1, :]``) stays zero, which lets
+    tests distinguish the pre-verify conv state from per-token slices.
     """
+    conv_kernel_size = arrays_layer.conv_kernel_size
+    conv_dim = arrays_layer.cache[0].shape[-1]
+    state_shape = arrays_layer.cache[1].shape
 
-    def test_rollback_does_not_mutate_real_arrays_cache_cache_arrays(self):
-        """Real ArraysCache ``cache[idx]`` arrays are NOT touched.
+    intermediate_states = mx.stack(
+        [
+            mx.full(state_shape, float(accepted_token_value + step + 1))
+            for step in range(verify_token_count)
+        ],
+        axis=1,
+    )
 
-        The rollback hook must not silently truncate or rebuild GDN state
-        arrays. The current implementation is a no-op for the real Qwen3.6
-        ArraysCache shape (no ``history``, no ``keys``/``values``, no
-        ``offset``/``_idx``, no non-None ``lengths``), which is why the
-        runtime validator keeps ArraysCache fail-closed.
-        """
-        conv_kernel_size = 3
-        hidden_dim = 4
-        prompt_cache = [
-            _RealQwen3ArraysCache(
-                layer_id=0,
-                conv_kernel_size=conv_kernel_size,
-                hidden_dim=hidden_dim,
-            )
-        ]
-        gdn_states = [SimpleNamespace(base_history_len=2)]
+    initial_state = mx.zeros(state_shape, dtype=arrays_layer.cache[1].dtype)
 
-        # Capture the array ids before rollback to prove no-op behavior.
-        cache_array_ids_before = [
-            id(arr) for arr in prompt_cache[0].cache
-        ]
-        shapes_before = [tuple(arr.shape) for arr in prompt_cache[0].cache]
-
-        rollback_speculative_cache(
-            prompt_cache,
-            gdn_states,
-            accepted=1,
-            block_size=3,
+    conv_input = mx.zeros(
+        (1, conv_kernel_size - 1 + verify_token_count, conv_dim),
+        dtype=mx.bfloat16,
+    )
+    for t in range(verify_token_count):
+        col = conv_kernel_size - 1 + t
+        token_row = mx.full(
+            (1, 1, conv_dim), -float(t + 1), dtype=mx.bfloat16
+        )
+        conv_input = mx.concatenate(
+            [conv_input[:, :col, :], token_row, conv_input[:, col + 1 :, :]],
+            axis=1,
         )
 
-        # Real ArraysCache ``cache[idx]`` arrays must be unchanged: the
-        # rollback hook does not touch them. If a future refactor starts
-        # mutating these arrays, DFlash would risk corrupting GDN state
-        # without a tested safety net.
-        cache_array_ids_after = [
-            id(arr) for arr in prompt_cache[0].cache
-        ]
-        self.assertEqual(cache_array_ids_before, cache_array_ids_after)
-        shapes_after = [tuple(arr.shape) for arr in prompt_cache[0].cache]
-        self.assertEqual(shapes_before, shapes_after)
+    return (
+        mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # q placeholder
+        mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # k placeholder
+        mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # v placeholder
+        mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # a placeholder
+        mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # b placeholder
+        mx.zeros((1,), dtype=mx.bfloat16),      # A_log placeholder
+        mx.zeros((1,), dtype=mx.bfloat16),      # dt_bias placeholder
+        initial_state,
+        None,                                    # mask placeholder
+        conv_input,
+        conv_kernel_size,
+        intermediate_states,
+    )
 
-    def test_rollback_does_not_set_lengths_or_left_padding_on_real_arrays_cache(
-        self,
-    ):
-        """Real ArraysCache ``lengths`` and ``left_padding`` stay None.
 
-        The hook must not assign ``lengths`` / ``left_padding`` arrays to
-        a real ArraysCache layer that did not have them. Setting either
-        attribute would change the cache mode from single-sequence to
-        ragged, which the validator already rejects. Documenting the
-        no-op behavior pins the gap.
+class TestRealQwen3ArraysCacheRollback(unittest.TestCase):
+    """Prove the rollback hook mutates real ``ArraysCache.cache[idx]`` state.
+
+    Per feature ``m14-dflash-real-arrayscache-gdn-rollback``: the
+    rollback hook now drives ``gated_delta_accept_states`` to restore
+    the GDN state arrays for the real sequential single-sequence
+    ``ArraysCache`` shape. The tests below prove:
+
+    * the rollback rewrites ``cache[0]`` (conv window) and ``cache[1]``
+      (gated-delta state) in place for accepted=0, partial acceptance,
+      and full acceptance,
+    * the accepted target-verified state and pre-existing prompt / cache
+      state survive rollback (the ArraysCache subset continues from the
+      state mlx-vlm would have produced after processing the accepted
+      prefix),
+    * the ragged ``ArraysCache`` variant (non-None ``lengths`` /
+      ``left_padding``) is left untouched so the validator stays
+      fail-closed for unproven shapes.
+    """
+
+    def test_accepted_zero_restores_initial_conv_and_state(self):
+        """accepted=0 restores cache to the post-bonus-target state.
+
+        When ``_speculative_walk`` reports zero accepted drafts, only the
+        bonus target token survived. The rollback must drop the rejected
+        drafts and land the cache in the state mlx-vlm would have left
+        it in after processing only the bonus target. Concretely:
+
+        * cache[1] must equal ``intermediate_states[0]`` (state after
+          processing the bonus target, before any drafts).
+        * cache[0] must equal ``conv_input[:, 1:kernel_size, :]`` (the
+          last ``kernel_size - 1`` entries of the extended conv input
+          after 1 token processed).
+
+        The rejected draft tokens must not leak into the live cache
+        state.
         """
-        prompt_cache = [_RealQwen3ArraysCache(layer_id=0)]
-        gdn_states = [SimpleNamespace(base_history_len=4)]
+        arrays_layer = _RealQwen3ArraysCache(
+            layer_id=0,
+            conv_kernel_size=3,
+            conv_dim=4,
+            head_v_dim=2,
+            head_k_dim=2,
+            num_v_heads=2,
+        )
+        gdn_state = _build_real_arrays_cache_gdn_state(
+            arrays_layer, accepted_token_value=7.0, verify_token_count=4
+        )
 
+        # Pre-seed the live cache[1] with a sentinel so the rollback must
+        # replace it (otherwise the test could pass on a no-op).
+        arrays_layer.cache[1] = mx.full(
+            arrays_layer.cache[1].shape, 99.0, dtype=mx.float32
+        )
+        # Pre-seed cache[0] with a sentinel too.
+        arrays_layer.cache[0] = mx.full(
+            arrays_layer.cache[0].shape, 88.0, dtype=mx.bfloat16
+        )
+
+        prompt_cache = [arrays_layer]
         rollback_speculative_cache(
             prompt_cache,
-            gdn_states,
-            accepted=2,
+            [gdn_state],
+            accepted=0,
             block_size=4,
         )
 
+        # After accepted=0 rollback:
+        # * cache[1] must equal intermediate_states[0]
+        #   (accepted_token_value + 0 + 1 = 8.0)
+        # * cache[0] must equal conv_input[:, accepted + 1 :
+        #   accepted + kernel_size, :] which for accepted=0, kernel_size=3
+        #   is conv_input[:, 1:3, :] — shape (1, kernel_size - 1, conv_dim).
+        intermediate_states = gdn_state[11]
+        expected_state = intermediate_states[:, 0, :, :, :]
+        new_state = prompt_cache[0].cache[1]
+        self.assertTrue(
+            bool(mx.all(mx.equal(new_state, expected_state)).item()),
+            msg=(
+                "accepted=0 rollback must pick intermediate_states[0] "
+                "for cache[1]"
+            ),
+        )
+        conv_input = gdn_state[9]
+        expected_conv = conv_input[
+            :,
+            1 : 1 + (arrays_layer.conv_kernel_size - 1),
+            :,
+        ]
+        new_conv = prompt_cache[0].cache[0]
+        self.assertEqual(new_conv.shape, expected_conv.shape)
+        self.assertTrue(
+            bool(mx.all(mx.equal(new_conv, expected_conv)).item()),
+            msg=(
+                "accepted=0 rollback must pick the conv window after "
+                "1 token processed"
+            ),
+        )
+        # lengths / left_padding must stay None so the cache mode remains
+        # single-sequence (the validator rejects ragged variants).
         self.assertIsNone(prompt_cache[0].lengths)
         self.assertIsNone(prompt_cache[0].left_padding)
 
-    def test_rollback_is_a_noop_for_full_real_qwen36_cache_layout(self):
-        """Real Qwen3.6 layout (16 KVCache + 48 ArraysCache) is a no-op
-        for the ArraysCache subset.
+    def test_partial_acceptance_restores_correct_intermediate_state(self):
+        """Partial acceptance picks intermediate_states[accepted].
 
-        The full Qwen3.6 prompt-cache layout is 16 KVCache + 48
-        ArraysCache. The KVCache subset gets sliced by the hook (because
-        the hook already supports KVCache shapes), but the ArraysCache
-        subset must remain untouched. This test pins that behavior so the
-        validator can stay fail-closed while this gap is documented.
+        For ``accepted`` drafts accepted (out of ``block_size - 1``
+        drafts), the rollback must pick ``intermediate_states[accepted]``
+        for cache[1] and the corresponding conv slice for cache[0]. The
+        mlx-vlm ``gated_delta_accept_states`` helper computes both in
+        one call so the test verifies the hook drives it correctly.
         """
-        # 16 KVCache layers (using the existing _KVCacheLikeLayer fake).
-        kv_layers = [
-            _KVCacheLikeLayer(layer_id=i, num_tokens=8) for i in range(16)
-        ]
-        # 48 ArraysCache layers (using the real Qwen3.6 shape).
-        arrays_layers = [
-            _RealQwen3ArraysCache(layer_id=i) for i in range(48)
-        ]
-        prompt_cache: list = kv_layers + arrays_layers
-        gdn_states = [
-            SimpleNamespace(base_history_len=4) for _ in prompt_cache
-        ]
+        arrays_layer = _RealQwen3ArraysCache(
+            layer_id=0,
+            conv_kernel_size=3,
+            conv_dim=4,
+            head_v_dim=2,
+            head_k_dim=2,
+            num_v_heads=2,
+        )
+        # Build a per-step tagged intermediate state. Each step has a
+        # unique scalar pattern that the rollback must surface.
+        verify_token_count = 4
+        gdn_state = _build_real_arrays_cache_gdn_state(
+            arrays_layer,
+            accepted_token_value=10.0,
+            verify_token_count=verify_token_count,
+        )
 
-        # Snapshot the ArraysCache arrays before rollback.
-        arrays_before = [
-            [tuple(arr.shape) for arr in layer.cache]
-            for layer in arrays_layers
+        # Pre-seed the live cache[1] with a non-zero sentinel so the
+        # rollback must replace it.
+        arrays_layer.cache[1] = mx.full(
+            arrays_layer.cache[1].shape, 99.0, dtype=mx.float32
+        )
+        arrays_layer.cache[0] = mx.full(
+            arrays_layer.cache[0].shape, 88.0, dtype=mx.bfloat16
+        )
+
+        prompt_cache = [arrays_layer]
+        accepted = 2
+        rollback_speculative_cache(
+            prompt_cache,
+            [gdn_state],
+            accepted=accepted,
+            block_size=verify_token_count + 1,
+        )
+
+        # After accepted=2 rollback:
+        # * cache[1] must equal intermediate_states[accepted]
+        #   (which is mx.full(state_shape, accepted_token_value + accepted + 1))
+        # * cache[0] must reflect the conv window at step ``accepted``.
+        expected_state_value = 10.0 + accepted + 1  # = 13.0
+        new_state = prompt_cache[0].cache[1]
+        expected_state = mx.full(
+            new_state.shape, expected_state_value, dtype=new_state.dtype
+        )
+        self.assertTrue(
+            bool(mx.all(mx.equal(new_state, expected_state)).item()),
+            msg=(
+                "partial-acceptance rollback must pick "
+                f"intermediate_states[{accepted}] for cache[1]"
+            ),
+        )
+        # The conv window must reflect conv_input[
+        # accepted+1 : accepted+kernel_size-1, :] which for accepted=2,
+        # kernel_size=3 is conv_input[:, 3:4, :] — just the row tagged
+        # with -2 (token 1, the last accepted draft).
+        new_conv = prompt_cache[0].cache[0]
+        conv_input = gdn_state[9]
+        expected_conv = conv_input[
+            :,
+            accepted + 1 : accepted + 1 + (arrays_layer.conv_kernel_size - 1),
+            :,
         ]
+        self.assertEqual(new_conv.shape, expected_conv.shape)
+        self.assertTrue(
+            bool(mx.all(mx.equal(new_conv, expected_conv)).item()),
+            msg=(
+                "partial-acceptance rollback must pick the right conv "
+                "window slice"
+            ),
+        )
+
+    def test_full_acceptance_is_a_noop(self):
+        """Full acceptance leaves the live ArraysCache state untouched.
+
+        ``dflash_stream_generate`` only invokes the hook when
+        ``accepted < block_size - 1``. The hook is also safe to call
+        with full acceptance: it must not corrupt the live state
+        because the verify call already wrote the final state into
+        cache[1] / cache[0].
+        """
+        arrays_layer = _RealQwen3ArraysCache(
+            layer_id=0,
+            conv_kernel_size=3,
+            conv_dim=4,
+            head_v_dim=2,
+            head_k_dim=2,
+            num_v_heads=2,
+        )
+        gdn_state = _build_real_arrays_cache_gdn_state(
+            arrays_layer, accepted_token_value=5.0, verify_token_count=4
+        )
+
+        # Pre-seed the live cache with a sentinel so a no-op is
+        # observable.
+        arrays_layer.cache[1] = mx.full(
+            arrays_layer.cache[1].shape, 99.0, dtype=mx.float32
+        )
+        arrays_layer.cache[0] = mx.full(
+            arrays_layer.cache[0].shape, 88.0, dtype=mx.bfloat16
+        )
+
+        prompt_cache = [arrays_layer]
+        live_state_before = prompt_cache[0].cache[1]
+        live_conv_before = prompt_cache[0].cache[0]
+        state_array_id_before = id(live_state_before)
+        conv_array_id_before = id(live_conv_before)
 
         rollback_speculative_cache(
             prompt_cache,
-            gdn_states,
+            [gdn_state],
+            accepted=3,  # block_size=4 => block_size - 1 = 3
+            block_size=4,
+        )
+
+        # Full acceptance: cache[1] and cache[0] must still equal the
+        # pre-rollback live state.
+        live_state_after = prompt_cache[0].cache[1]
+        live_conv_after = prompt_cache[0].cache[0]
+        self.assertTrue(
+            bool(mx.all(mx.equal(live_state_after, live_state_before)).item()),
+            msg="full-acceptance rollback must leave cache[1] untouched",
+        )
+        self.assertTrue(
+            bool(mx.all(mx.equal(live_conv_after, live_conv_before)).item()),
+            msg="full-acceptance rollback must leave cache[0] untouched",
+        )
+        self.assertEqual(
+            id(live_state_after),
+            state_array_id_before,
+            msg="full-acceptance rollback must not replace cache[1] array",
+        )
+        self.assertEqual(
+            id(live_conv_after),
+            conv_array_id_before,
+            msg="full-acceptance rollback must not replace cache[0] array",
+        )
+
+    def test_full_qwen36_layout_kv_subset_sliced_arrays_subset_rolled_back(
+        self,
+    ):
+        """Real Qwen3.6 layout (16 KVCache + 48 ArraysCache) rollback.
+
+        The KVCache subset is sliced by the existing KVCache path (kept
+        for compatibility), and the 48 ArraysCache subset is rolled
+        back via the new GDN-aware path. Rejected proposal tokens must
+        not leak into either subset of the live cache state.
+        """
+        kv_layers = [
+            _KVCacheLikeLayer(layer_id=i, num_tokens=8) for i in range(16)
+        ]
+        arrays_layers: list[_RealQwen3ArraysCache] = []
+        arrays_gdn_states = []
+        for i in range(48):
+            arrays_layer = _RealQwen3ArraysCache(
+                layer_id=i,
+                conv_kernel_size=3,
+                conv_dim=4,
+                head_v_dim=2,
+                head_k_dim=2,
+                num_v_heads=2,
+            )
+            arrays_layer.cache[1] = mx.full(
+                arrays_layer.cache[1].shape, 99.0, dtype=mx.float32
+            )
+            arrays_layer.cache[0] = mx.full(
+                arrays_layer.cache[0].shape, 88.0, dtype=mx.bfloat16
+            )
+            arrays_layers.append(arrays_layer)
+            arrays_gdn_states.append(
+                _build_real_arrays_cache_gdn_state(
+                    arrays_layer,
+                    accepted_token_value=20.0,
+                    verify_token_count=4,
+                )
+            )
+
+        prompt_cache: list = kv_layers + arrays_layers
+
+        # Build an aligned gdn_states list mirroring what
+        # ``dflash_stream_generate`` produces via
+        # ``_align_gdn_states_with_prompt_cache``: a per-cache-index
+        # list where KVCache layers get ``SimpleNamespace(base_history_len)``
+        # (the simple-namespace branch the rollback hook supports) and
+        # ArraysCache layers get the 12-tuple GDN sink entry.
+        aligned_gdn_states: list = []
+        arrays_iter = iter(arrays_gdn_states)
+        for cache_index, cache_layer in enumerate(prompt_cache):
+            if isinstance(cache_layer, _KVCacheLikeLayer):
+                aligned_gdn_states.append(SimpleNamespace(base_history_len=4))
+            else:
+                aligned_gdn_states.append(next(arrays_iter))
+
+        rollback_speculative_cache(
+            prompt_cache,
+            aligned_gdn_states,
             accepted=1,
             block_size=4,
         )
 
-        # KVCache subset is sliced to keep=6 (base=4 + accepted=1 + bonus=1).
+        # KVCache subset sliced to keep=base(4)+accepted(1)+bonus(1)=6.
         for layer in kv_layers:
             self.assertEqual(layer.offset, 6)
             self.assertEqual(layer._idx, 6)
             self.assertEqual(layer.keys.shape[-2], 6)
             self.assertEqual(layer.values.shape[-2], 6)
+            self.assertEqual(int(layer.lengths.item()), 6)
 
-        # ArraysCache subset is unchanged (the rollback hook's gap).
-        arrays_after = [
-            [tuple(arr.shape) for arr in layer.cache]
-            for layer in arrays_layers
-        ]
-        self.assertEqual(arrays_before, arrays_after)
+        # ArraysCache subset: cache[1] must come from the rollback
+        # path (not the original 99.0 sentinel). The exact target value
+        # is intermediate_states[accepted=1] = mx.full(state_shape,
+        # accepted_token_value + 1 + 1) = mx.full(state_shape, 22.0).
         for layer in arrays_layers:
+            new_state = layer.cache[1]
+            sentinel = mx.full(new_state.shape, 99.0, dtype=new_state.dtype)
+            self.assertFalse(
+                bool(mx.all(mx.equal(new_state, sentinel)).item()),
+                msg=(
+                    "ArraysCache cache[1] must not retain the pre-rollback "
+                    "sentinel after rollback"
+                ),
+            )
+            expected_state_value = 20.0 + 1 + 1
+            expected_state = mx.full(
+                new_state.shape, expected_state_value, dtype=new_state.dtype
+            )
+            self.assertTrue(
+                bool(mx.all(mx.equal(new_state, expected_state)).item()),
+                msg=(
+                    "ArraysCache cache[1] must equal intermediate_states[1] "
+                    f"({expected_state_value}) after accepted=1 rollback"
+                ),
+            )
+            # lengths / left_padding must stay None so the cache mode
+            # remains single-sequence.
             self.assertIsNone(layer.lengths)
             self.assertIsNone(layer.left_padding)
+
+    def test_ragged_arrays_cache_is_left_untouched(self):
+        """Ragged ArraysCache variants stay untouched.
+
+        The validator rejects ragged ArraysCache shapes, so the rollback
+        hook must NOT touch them: a future refactor that silently
+        widens the rollback path to ragged shapes could corrupt GDN
+        state. The ragged cache's cache[0] / cache[1] arrays must
+        survive rollback unchanged.
+        """
+
+        class _RaggedArraysCache:
+            def __init__(self):
+                self.cache = [
+                    mx.zeros((1, 2, 4), dtype=mx.bfloat16),
+                    mx.zeros((1, 2, 2, 2), dtype=mx.float32),
+                ]
+                self.lengths = mx.array([1], dtype=mx.int32)
+                self.left_padding = mx.array([0], dtype=mx.int32)
+
+        ragged = _RaggedArraysCache()
+        sentinel_state = ragged.cache[1]
+        sentinel_conv = ragged.cache[0]
+        prompt_cache = [ragged]
+        # Even with a malformed gdn_state, the ragged cache must be
+        # left untouched.
+        rollback_speculative_cache(
+            prompt_cache,
+            [(None, None, None, None, None, None, None, None, None,
+              None, 3, None)],
+            accepted=1,
+            block_size=4,
+        )
+
+        self.assertTrue(
+            bool(mx.all(mx.equal(ragged.cache[1], sentinel_state)).item()),
+            msg="ragged ArraysCache cache[1] must remain unchanged",
+        )
+        self.assertTrue(
+            bool(mx.all(mx.equal(ragged.cache[0], sentinel_conv)).item()),
+            msg="ragged ArraysCache cache[0] must remain unchanged",
+        )
+        # Sanity: the ragged arrays layer still has its non-None
+        # lengths / left_padding (the hook did not strip them).
+        self.assertIsNotNone(ragged.lengths)
+        self.assertIsNotNone(ragged.left_padding)
 
 
 if __name__ == "__main__":

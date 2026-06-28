@@ -1258,6 +1258,29 @@ def _collect_prompt_cache_layers(model_kit: Any) -> tuple[Any, ...]:
         return (prompt_cache,)
 
 
+def _cache_layer_is_qwen35_sequential_arrays_cache(cache: Any) -> bool:
+    """True iff ``cache`` is the proven sequential single-sequence ``ArraysCache``.
+
+    The real mlx-lm ``ArraysCache`` loaded by Qwen3.5 / Qwen3.6
+    ``ModelKit`` for sequential text generation has ``lengths`` and
+    ``left_padding`` set to ``None`` with the GDN state stored in the
+    ``cache`` list (``cache[0]`` is the conv window, ``cache[1]`` is the
+    running gated-delta state). Any non-``None`` ``lengths`` /
+    ``left_padding`` (ragged / batched variant) is NOT the proven shape
+    and must remain fail-closed.
+    """
+    if cache is None:
+        return False
+    cache_list = getattr(cache, "cache", None)
+    if not isinstance(cache_list, list) or len(cache_list) < 2:
+        return False
+    if getattr(cache, "lengths", None) is not None:
+        return False
+    if getattr(cache, "left_padding", None) is not None:
+        return False
+    return True
+
+
 def _dedupe_blockers(blockers: list[str]) -> tuple[str, ...]:
     seen: set[str] = set()
     deduped: list[str] = []
@@ -1269,8 +1292,47 @@ def _dedupe_blockers(blockers: list[str]) -> tuple[str, ...]:
     return tuple(deduped)
 
 
+# Exact proven Qwen3.5 / Qwen3.6 27B sequential-text cache layout
+# (16 KVCache full-attention layers + 48 ArraysCache GDN layers). Only
+# this exact shape is allowed through the DFlash runtime validator; all
+# other ragged / opaque / non-Qwen cache layouts must remain fail-closed
+# unless future work proves a wider surface is rollback-safe.
+DFLASH_PROVEN_QWEN35_LAYOUT = (16, 48)
+DFLASH_PROVEN_QWEN35_TOTAL_LAYERS = sum(DFLASH_PROVEN_QWEN35_LAYOUT)
+
+
+def _summarize_prompt_cache_layout(
+    prompt_cache_layers: tuple[Any, ...],
+) -> tuple[int, int, int]:
+    """Return ``(kv_count, arrays_count, other_count)`` for the prompt cache."""
+
+    kv_count = 0
+    arrays_count = 0
+    other_count = 0
+    for cache in prompt_cache_layers:
+        if cache is None:
+            continue
+        cache_type_name = type(cache).__name__
+        if cache_type_name == "KVCache":
+            kv_count += 1
+        elif cache_type_name == "ArraysCache" or _cache_layer_is_qwen35_sequential_arrays_cache(
+            cache
+        ):
+            arrays_count += 1
+        else:
+            other_count += 1
+    return kv_count, arrays_count, other_count
+
+
 def validate_dflash_runtime_compatibility(model_kit: Any) -> tuple[str, ...]:
-    """Fail closed before DFlash mutates prompt caches or live history."""
+    """Fail closed before DFlash mutates prompt caches or live history.
+
+    Only the exact proven Qwen3.5 / Qwen3.6 sequential-text layout
+    (16 ``KVCache`` layers + 48 ``ArraysCache`` GDN layers, with
+    ``lengths`` and ``left_padding`` both ``None`` on the ArraysCache
+    subset) is allowed through. Any other ragged, opaque, or non-Qwen
+    cache shape must remain fail-closed.
+    """
 
     blockers: list[str] = []
     if getattr(model_kit, "draft_model", None) is not None:
@@ -1290,17 +1352,40 @@ def validate_dflash_runtime_compatibility(model_kit: Any) -> tuple[str, ...]:
     if not prompt_cache_layers:
         blockers.append("DFlash requires a prompt cache before runtime execution")
     else:
+        kv_count = 0
+        arrays_count = 0
+        ragged_arrays_count = 0
         for cache in prompt_cache_layers:
+            if cache is None:
+                continue
             cache_type_name = type(cache).__name__
             if cache_type_name == "KVCache":
+                kv_count += 1
                 continue
             if cache_type_name == "RotatingKVCache" or (
                 getattr(cache, "max_size", None) is not None
                 and getattr(cache, "keep", None) is not None
             ):
-                blockers.append("DFlash does not support bounded/rotating cache layers yet")
+                blockers.append(
+                    "DFlash does not support bounded/rotating cache layers yet"
+                )
                 continue
-            if cache_type_name in {"ArraysCache", "BatchKVCache"} or (
+            if cache_type_name == "BatchKVCache":
+                blockers.append("DFlash does not support ragged cache layers yet")
+                continue
+            is_arrays_cache = cache_type_name == "ArraysCache" or isinstance(
+                getattr(cache, "cache", None), list
+            )
+            if is_arrays_cache:
+                if _cache_layer_is_qwen35_sequential_arrays_cache(cache):
+                    arrays_count += 1
+                else:
+                    ragged_arrays_count += 1
+                    blockers.append(
+                        "DFlash does not support ragged ArraysCache layers yet"
+                    )
+                continue
+            if (
                 getattr(cache, "lengths", None) is not None
                 or getattr(cache, "left_padding", None) is not None
             ):
@@ -1309,6 +1394,46 @@ def validate_dflash_runtime_compatibility(model_kit: Any) -> tuple[str, ...]:
             blockers.append(
                 f"DFlash does not support non-rollback-safe cache layer {cache_type_name} yet"
             )
+
+        # Only the exact proven Qwen3.5 / Qwen3.6 sequential layout
+        # (16 KVCache + 48 ArraysCache with lengths / left_padding None)
+        # is allowed. Any other count, mix, or layer shape must stay
+        # fail-closed so future refactors cannot silently widen the
+        # DFlash runtime surface.
+        proven_kv, proven_arrays = DFLASH_PROVEN_QWEN35_LAYOUT
+        if (
+            ragged_arrays_count > 0
+            or kv_count != proven_kv
+            or arrays_count != proven_arrays
+        ):
+            # Describe the exact gap so workers can see why their cache
+            # shape is still fail-closed.
+            if (
+                kv_count == proven_kv
+                and arrays_count != proven_arrays
+                and ragged_arrays_count == 0
+            ):
+                blockers.append(
+                    "DFlash requires exactly 16 KVCache + 48 ArraysCache "
+                    f"sequential layers; got {kv_count} KVCache + "
+                    f"{arrays_count} ArraysCache"
+                )
+            elif (
+                arrays_count == proven_arrays
+                and kv_count != proven_kv
+                and ragged_arrays_count == 0
+            ):
+                blockers.append(
+                    "DFlash requires exactly 16 KVCache + 48 ArraysCache "
+                    f"sequential layers; got {kv_count} KVCache + "
+                    f"{arrays_count} ArraysCache"
+                )
+            else:
+                blockers.append(
+                    "DFlash requires exactly 16 KVCache + 48 ArraysCache "
+                    f"sequential layers; got {kv_count} KVCache + "
+                    f"{arrays_count} ArraysCache"
+                )
 
     target_model = getattr(model_kit, "model", model_kit)
     lm = (

@@ -622,7 +622,152 @@ def _qwen3_5_dflash_rollback_base_history_len(gdn_state) -> int:
     return int(getattr(gdn_state, "base_history_len", 0) or 0)
 
 
-def _qwen3_5_dflash_rollback_rewind_layer(cache_layer, keep: int) -> None:
+def _qwen3_5_arrays_cache_is_sequential_single_sequence(cache_layer) -> bool:
+    """True iff ``cache_layer`` is a real mlx-lm ``ArraysCache`` in single-sequence mode.
+
+    Real single-sequence Qwen3.5/Qwen3.6 GDN layers use ``ArraysCache``
+    with ``lengths`` and ``left_padding`` both set to ``None`` and the
+    GDN state stored in the ``cache`` list (``cache[0]`` is the conv
+    window, ``cache[1]`` is the running gated-delta state). Ragged /
+    multi-row batched variants set ``lengths`` or ``left_padding`` to
+    non-``None`` arrays and must NOT be treated as the proven rollback
+    surface.
+    """
+    if cache_layer is None:
+        return False
+    cache_list = getattr(cache_layer, "cache", None)
+    if not isinstance(cache_list, list) or len(cache_list) < 2:
+        return False
+    if getattr(cache_layer, "lengths", None) is not None:
+        return False
+    if getattr(cache_layer, "left_padding", None) is not None:
+        return False
+    return True
+
+
+def _qwen3_5_dflash_arrays_cache_rollback(
+    cache_layer,
+    gdn_state,
+    accepted: int,
+    block_size: int,
+) -> bool:
+    """Roll back a real ``ArraysCache`` layer's GDN state for partial DFlash rejection.
+
+    ``cache_layer`` must be the sequential single-sequence ArraysCache
+    shape (see :func:`_qwen3_5_arrays_cache_is_sequential_single_sequence`).
+    ``gdn_state`` is the mlx-vlm GDN sink tuple captured during the
+    verify call:
+
+        (q, k, v, a, b, A_log, dt_bias,
+         initial_state, mask, conv_input, conv_kernel_size, intermediate_states)
+
+    ``initial_state`` (index 7) is the GDN state BEFORE the verify call
+    (= ``cache[1]`` at the time the verify started). ``conv_input`` (index
+    9) is the extended conv input (``[cache[0] prepended] + new tokens``).
+    ``intermediate_states`` (index 11) holds the per-step GDN state
+    snapshots.
+
+    Returns ``True`` if the rollback was applied. Returns ``False`` if
+    the layer is not the proven sequential shape, the ``gdn_state`` is
+    missing or malformed, or the rollback was a no-op (full acceptance).
+    """
+
+    if gdn_state is None or not _qwen3_5_arrays_cache_is_sequential_single_sequence(
+        cache_layer
+    ):
+        return False
+    if not isinstance(gdn_state, tuple) or len(gdn_state) < 12:
+        return False
+
+    # Full acceptance: rollback is a no-op. Keep the live GDN state
+    # unchanged so the next verify round starts from the post-verify
+    # state.
+    if accepted >= block_size - 1:
+        return True
+
+    initial_state = gdn_state[7]
+    conv_input = gdn_state[9]
+    conv_kernel_size = int(gdn_state[10])
+    intermediate_states = gdn_state[11]
+
+    if (
+        initial_state is None
+        or conv_input is None
+        or intermediate_states is None
+        or conv_kernel_size <= 0
+    ):
+        return False
+
+    cache_list = cache_layer.cache
+    conv_window = conv_kernel_size - 1
+
+    # accepted == 0 (only bonus target kept) and accepted == -1 (defensive)
+    # both mean "no drafts accepted": restore the live cache to the
+    # pre-verify state from the gdn_sink tuple.
+    if accepted < 0:
+        cache_list[1] = initial_state
+        if conv_input.ndim == 3 and conv_window > 0 and conv_input.shape[1] >= conv_window:
+            cache_list[0] = mx.contiguous(conv_input[:, :conv_window, :])
+        return True
+
+    # Partial acceptance: use mlx-vlm's gated_delta_accept_states helper
+    # to compute the cache[1] state and cache[0] conv window at the
+    # accepted boundary. For sequential single-sequence use the
+    # ``accepted`` array has a single element.
+    try:
+        from mlx_vlm.models.qwen3_5.gated_delta import gated_delta_accept_states
+    except Exception:
+        return False
+
+    live_state = cache_list[1]
+    live_conv = cache_list[0]
+
+    if live_state is None or not hasattr(live_state, "shape"):
+        # Defensive: nothing to restore against.
+        cache_list[1] = initial_state
+        if conv_input.ndim == 3 and conv_window > 0 and conv_input.shape[1] >= conv_window:
+            cache_list[0] = mx.contiguous(conv_input[:, :conv_window, :])
+        return True
+
+    if live_conv is None or not hasattr(live_conv, "shape"):
+        if conv_input.ndim == 3 and conv_window > 0 and conv_input.shape[1] >= conv_window:
+            live_conv = mx.zeros(
+                (conv_input.shape[0], conv_window, conv_input.shape[2]),
+                dtype=conv_input.dtype,
+            )
+        else:
+            return False
+
+    accepted_array = mx.array([int(accepted)], dtype=mx.int32)
+    try:
+        new_state, new_conv = gated_delta_accept_states(
+            intermediate_states,
+            conv_input,
+            live_state,
+            live_conv,
+            accepted_array,
+            conv_kernel_size,
+            use_kernel=False,
+        )
+    except Exception:
+        return False
+
+    if new_state is None:
+        cache_list[1] = initial_state
+    else:
+        cache_list[1] = new_state
+    if new_conv is not None:
+        cache_list[0] = mx.contiguous(new_conv)
+    return True
+
+
+def _qwen3_5_dflash_rollback_rewind_layer(
+    cache_layer,
+    keep: int,
+    gdn_state=None,
+    accepted: int = -1,
+    block_size: int = 0,
+) -> None:
     """Truncate a single cache layer back to ``keep`` tokens.
 
     The DFlash rollback is default-off and only invoked from the runtime
@@ -630,8 +775,30 @@ def _qwen3_5_dflash_rollback_rewind_layer(cache_layer, keep: int) -> None:
     narrow rollback that lets ``dflash_stream_generate`` recover from
     partial DFlash rejection without leaking unverified tokens into the
     live cache state.
+
+    For the real sequential single-sequence ``ArraysCache`` shape (Qwen3.5
+    / Qwen3.6 GDN linear-attention layers), the rollback uses the
+    per-layer GDN sink tuple captured during target_verify and mlx-vlm's
+    ``gated_delta_accept_states`` helper to restore both ``cache[0]``
+    (the conv window) and ``cache[1]`` (the running gated-delta state)
+    to the boundary between accepted and rejected proposal tokens. The
+    truncation is performed in-place on the live cache list and matches
+    the mlx-vlm GDN state machine exactly so a subsequent verify round
+    continues from the right GDN state without re-using rejected
+    proposal tokens.
+
+    Any other ``ArraysCache`` variant (non-``None`` ``lengths`` /
+    ``left_padding`` arrays) is left untouched here; the validator keeps
+    those shapes fail-closed so this branch is never reached for
+    unproven ragged variants.
     """
     if cache_layer is None:
+        return
+
+    if _qwen3_5_arrays_cache_is_sequential_single_sequence(cache_layer):
+        _qwen3_5_dflash_arrays_cache_rollback(
+            cache_layer, gdn_state, accepted, block_size
+        )
         return
 
     history = getattr(cache_layer, "history", None)
@@ -708,14 +875,26 @@ def _qwen3_5_dflash_rollback(
     for layer_index, cache_layer in enumerate(prompt_cache):
         if cache_layer is None:
             continue
-        if gdn_states is None or layer_index >= len(gdn_states):
-            base_history_len = 0
-        else:
-            base_history_len = _qwen3_5_dflash_rollback_base_history_len(
-                gdn_states[layer_index]
+        layer_gdn_state = (
+            gdn_states[layer_index]
+            if gdn_states is not None and layer_index < len(gdn_states)
+            else None
+        )
+        if _qwen3_5_arrays_cache_is_sequential_single_sequence(cache_layer):
+            # ArraysCache rollback uses the per-layer GDN sink tuple and
+            # is independent of the simple ``keep`` arithmetic.
+            _qwen3_5_dflash_arrays_cache_rollback(
+                cache_layer, layer_gdn_state, accepted, block_size
             )
+            continue
+        base_history_len = _qwen3_5_dflash_rollback_base_history_len(
+            layer_gdn_state
+        )
         keep = base_history_len + keep_extra
-        _qwen3_5_dflash_rollback_rewind_layer(cache_layer, keep)
+        _qwen3_5_dflash_rollback_rewind_layer(
+            cache_layer, keep, gdn_state=layer_gdn_state,
+            accepted=accepted, block_size=block_size,
+        )
 
 
 class PatchedQwen3_5TextModel(Qwen3_5TextModel):
