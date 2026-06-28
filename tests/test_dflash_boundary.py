@@ -150,6 +150,39 @@ class RotatingKVCache:
 
 
 class ArraysCache:
+    """Mimic the real mlx-lm ``ArraysCache`` loaded by Qwen3.6 ModelKit.
+
+    Real ``ArraysCache`` (single-sequence GDN linear-attention state) has
+    ``lengths`` and ``left_padding`` attributes set to ``None`` with the
+    GDN state stored in ``cache`` (a list of arrays). The validator
+    matches on the class name ``ArraysCache`` to flag this as a ragged
+    cache layer (the same check that previously rejected the
+    ``m14_dflash_arrayscache_no_go`` blockers in the
+    capped real-model smoke).
+    """
+
+    def __init__(self, layer_id: int = 0):
+        self.layer_id = layer_id
+        # Qwen3.5/3.6 GDN layers store conv_state in cache[0] and the
+        # running gated-delta state in cache[1]. Both are mlx arrays
+        # mutated in-place during the forward pass.
+        self.cache = [
+            mx.zeros((1, 3, 4), dtype=mx.bfloat16),
+            mx.zeros((1, 4, 4), dtype=mx.bfloat16),
+        ]
+        # Real single-sequence ArraysCache has both attributes set to None.
+        self.lengths = None
+        self.left_padding = None
+
+
+class ArraysCacheWithLengths:
+    """Variant ArraysCache with non-None ``lengths``/``left_padding`` arrays.
+
+    Mirrors the previous test fake so existing ragged-cache coverage
+    still exercises the second validator branch
+    (``lengths``/``left_padding`` not None).
+    """
+
     def __init__(self):
         self.lengths = mx.array([1], dtype=mx.int32)
         self.left_padding = mx.array([0], dtype=mx.int32)
@@ -780,7 +813,7 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
             ),
             (
                 {},
-                [ArraysCache()],
+                [ArraysCacheWithLengths()],
                 "ragged",
             ),
             (
@@ -799,6 +832,154 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
                     any(needle in blocker for blocker in blockers),
                     msg=f"expected {needle!r} blocker, got: {blockers}",
                 )
+
+
+class TestDFlashArraysCacheNoGo(unittest.TestCase):
+    """Focused tests proving the Qwen3.6 GDN/ArraysCache fail-closed.
+
+    The capped real-model DFlash smoke
+    (``reports/20260628T052638.586203Z-shared-bench.json``) reaches
+    ``validate_dflash_runtime_compatibility`` after the Qwen3.6 target loads
+    64 prompt-cache layers: 16 ``KVCache`` (full attention) + 48
+    ``ArraysCache`` (GDN linear-attention state). The 48 ``ArraysCache``
+    layers are flagged as ragged cache layers and DFlash stays fail-closed.
+
+    Per feature ``m14 dflash gdn arrayscache runtime compatibility``: the
+    rollback hook implemented in ``m14-qwen35-textmodel-dflash-rollback``
+    handles ``history`` lists, ``keys``/``values`` arrays, and ``lengths``
+    arrays, but it does NOT truncate the real ``ArraysCache.cache[idx]``
+    arrays that hold the actual GDN state in single-sequence use. Until a
+    follow-up feature adds GDN-aware rollback semantics for that shape,
+    ``validate_dflash_runtime_compatibility`` MUST remain fail-closed for
+    the Qwen3.6 GDN/ArraysCache layer combination.
+
+    These tests document the no-go and prove the validator is correctly
+    fail-closed for the real Qwen3.6 shape (not just the test fake with
+    ``lengths`` set).
+    """
+
+    def test_real_qwen36_arrays_cache_shape_is_fail_closed(self):
+        """Real Qwen3.6 ArraysCache (lengths=None, cache=[arrays]) fails closed.
+
+        The real ``ArraysCache`` loaded by ModelKit for Qwen3.6 sequential
+        text has ``lengths`` and ``left_padding`` attributes set to ``None``
+        with the GDN state stored in ``cache`` (a list of arrays). The
+        validator must classify this as a ragged cache layer and reject it
+        so DFlash stays fail-closed until a tested rollback path exists.
+        """
+        boundary = _dflash_boundary()
+        prompt_cache = [
+            ArraysCache(layer_id=index) for index in range(48)
+        ]
+        kit = _runtime_model_kit(prompt_cache)
+
+        blockers = boundary.validate_dflash_runtime_compatibility(kit)
+
+        self.assertTrue(
+            any("ragged cache" in blocker for blocker in blockers),
+            msg=(
+                "real Qwen3.6 ArraysCache (lengths=None) must be flagged "
+                f"as ragged cache; got: {blockers}"
+            ),
+        )
+
+    def test_mixed_kv_arrays_cache_layer_combo_is_fail_closed(self):
+        """Mixed KVCache + real ArraysCache layers must fail closed.
+
+        The real Qwen3.6 target produces 16 KVCache + 48 ArraysCache layers.
+        Even when the KVCache subset is rollback-safe, the ArraysCache
+        subset is not, so the prompt-cache layer list as a whole must
+        remain fail-closed until per-layer GDN rollback is implemented.
+        """
+        boundary = _dflash_boundary()
+        prompt_cache = [KVCache() for _ in range(16)] + [
+            ArraysCache(layer_id=index) for index in range(48)
+        ]
+        kit = _runtime_model_kit(prompt_cache)
+
+        blockers = boundary.validate_dflash_runtime_compatibility(kit)
+
+        self.assertTrue(
+            any("ragged cache" in blocker for blocker in blockers),
+            msg=(
+                "mixed KVCache + real Qwen3.6 ArraysCache layers must be "
+                f"fail-closed; got: {blockers}"
+            ),
+        )
+
+    def test_arrays_cache_with_lengths_array_remains_fail_closed(self):
+        """ArraysCache with non-None ``lengths`` (ragged variant) fails closed.
+
+        The ragged ``ArraysCache`` variant (with ``lengths`` and
+        ``left_padding`` set to actual arrays) must continue to fail closed
+        under the ragged-cache check. This guards against future
+        refactors that might relax the ragged-cache check and silently
+        allow ragged ArraysCache variants through.
+        """
+        boundary = _dflash_boundary()
+        prompt_cache = [ArraysCacheWithLengths()]
+        kit = _runtime_model_kit(prompt_cache)
+
+        blockers = boundary.validate_dflash_runtime_compatibility(kit)
+
+        self.assertTrue(
+            any("ragged cache" in blocker for blocker in blockers),
+            msg=(
+                "ArraysCache with non-None lengths must remain "
+                f"fail-closed; got: {blockers}"
+            ),
+        )
+
+    def test_batch_kv_cache_remains_fail_closed(self):
+        """BatchKVCache (batched-sequence ragged cache) remains fail-closed.
+
+        BatchKVCache is the explicit batched-sequence ragged cache shape.
+        DFlash sequential text never uses it; the validator must keep
+        it fail-closed even when a rollback-capable Qwen3_5 TextModel is
+        wired in.
+        """
+        boundary = _dflash_boundary()
+        prompt_cache = [BatchKVCache()]
+        kit = _runtime_model_kit(prompt_cache)
+
+        blockers = boundary.validate_dflash_runtime_compatibility(kit)
+
+        self.assertTrue(
+            any("ragged cache" in blocker for blocker in blockers),
+            msg=f"BatchKVCache must remain fail-closed; got: {blockers}",
+        )
+
+    def test_real_qwen36_arrays_cache_layer_count_matches_target(self):
+        """Mirror the Qwen3.6 prompt-cache layout: 16 KVCache + 48 ArraysCache.
+
+        The capped-smoke evidence (performance-future-work.md M14 entry)
+        shows the Qwen3.6 27B target produces exactly 64 prompt-cache
+        layers: 16 KVCache + 48 ArraysCache. This test guards against
+        regressions in the validator that would silently allow those 48
+        ArraysCache layers through.
+        """
+        boundary = _dflash_boundary()
+        prompt_cache_layers: list = []
+        # 16 full-attention KVCache layers (every full_attention_interval).
+        for _ in range(16):
+            prompt_cache_layers.append(KVCache())
+        # 48 GDN linear-attention ArraysCache layers (Qwen3.6 sequential).
+        for index in range(48):
+            prompt_cache_layers.append(ArraysCache(layer_id=index))
+        kit = _runtime_model_kit(prompt_cache_layers)
+
+        blockers = boundary.validate_dflash_runtime_compatibility(kit)
+
+        # At least one ragged-cache blocker must fire from the ArraysCache
+        # subset. Without the no-go, the validator would silently allow the
+        # 48 ArraysCache layers through and DFlash would corrupt GDN state.
+        self.assertTrue(
+            any("ragged cache" in blocker for blocker in blockers),
+            msg=(
+                "real Qwen3.6 16 KVCache + 48 ArraysCache layout must "
+                f"fail closed; got: {blockers}"
+            ),
+        )
 
 
 class TestDFlashRouting(unittest.TestCase):

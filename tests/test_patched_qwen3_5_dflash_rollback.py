@@ -372,5 +372,186 @@ class TestPatchedQwen3_5RollbackInvariants(unittest.TestCase):
                     self.assertIn(99, layer.history)
 
 
+class _RealQwen3ArraysCache:
+    """Mimic the real Qwen3.6 ArraysCache layout loaded by ModelKit.
+
+    The real mlx-lm ``ArraysCache`` (single-sequence GDN linear-attention
+    state) has ``cache`` as a list of arrays plus ``lengths`` and
+    ``left_padding`` attributes that default to ``None`` for sequential
+    use. The Qwen3.6 27B target loaded through ``ModelKit`` produces
+    exactly 48 of these layers (one per GDN linear-attention block) plus
+    16 KVCache layers.
+
+    The rollback hook implements truncation for ``history`` lists,
+    ``keys``/``values`` arrays, ``offset``/``_idx`` rewinds, and
+    ``lengths`` arrays. It does NOT truncate the ``cache[idx]`` arrays
+    that hold the actual GDN state in single-sequence use. The tests
+    below document this gap so future workers know the rollback hook
+    must be extended with GDN-aware ``cache[idx]`` array slicing before
+    the runtime compatibility check can safely allow ArraysCache layers.
+    """
+
+    def __init__(
+        self,
+        layer_id: int,
+        conv_kernel_size: int = 3,
+        hidden_dim: int = 4,
+    ):
+        self.layer_id = layer_id
+        # Qwen3.5/3.6 GDN layers store conv_state in cache[0] and the
+        # running gated-delta state in cache[1]. Both are mlx arrays
+        # mutated in-place during the forward pass.
+        self.cache = [
+            mx.zeros(
+                (1, conv_kernel_size, hidden_dim), dtype=mx.bfloat16
+            ),
+            mx.zeros((1, hidden_dim, hidden_dim), dtype=mx.bfloat16),
+        ]
+        # Real single-sequence ArraysCache has both attributes set to None.
+        self.lengths = None
+        self.left_padding = None
+        # No history list, no keys/values, no offset/_idx on the real
+        # ArraysCache shape used for sequential Qwen3.6 text.
+        self.history = None
+        self.keys = None
+        self.values = None
+        self.offset = None
+        self._idx = None
+
+
+class TestArraysCacheRollbackGapDocs(unittest.TestCase):
+    """Document the rollback hook gap for real Qwen3.6 ArraysCache.
+
+    Per feature ``m14-dflash-gdn-arrayscache-runtime-compatibility``:
+    until a follow-up feature adds GDN-aware ``cache[idx]`` slicing for
+    real ArraysCache layers, the validator stays fail-closed for the
+    Qwen3.6 GDN/ArraysCache layout. These tests pin the gap explicitly
+    so a future refactor that silently widens the rollback surface
+    cannot regress DFlash to a state where rejected proposal tokens
+    remain in the live GDN cache state.
+    """
+
+    def test_rollback_does_not_mutate_real_arrays_cache_cache_arrays(self):
+        """Real ArraysCache ``cache[idx]`` arrays are NOT touched.
+
+        The rollback hook must not silently truncate or rebuild GDN state
+        arrays. The current implementation is a no-op for the real Qwen3.6
+        ArraysCache shape (no ``history``, no ``keys``/``values``, no
+        ``offset``/``_idx``, no non-None ``lengths``), which is why the
+        runtime validator keeps ArraysCache fail-closed.
+        """
+        conv_kernel_size = 3
+        hidden_dim = 4
+        prompt_cache = [
+            _RealQwen3ArraysCache(
+                layer_id=0,
+                conv_kernel_size=conv_kernel_size,
+                hidden_dim=hidden_dim,
+            )
+        ]
+        gdn_states = [SimpleNamespace(base_history_len=2)]
+
+        # Capture the array ids before rollback to prove no-op behavior.
+        cache_array_ids_before = [
+            id(arr) for arr in prompt_cache[0].cache
+        ]
+        shapes_before = [tuple(arr.shape) for arr in prompt_cache[0].cache]
+
+        rollback_speculative_cache(
+            prompt_cache,
+            gdn_states,
+            accepted=1,
+            block_size=3,
+        )
+
+        # Real ArraysCache ``cache[idx]`` arrays must be unchanged: the
+        # rollback hook does not touch them. If a future refactor starts
+        # mutating these arrays, DFlash would risk corrupting GDN state
+        # without a tested safety net.
+        cache_array_ids_after = [
+            id(arr) for arr in prompt_cache[0].cache
+        ]
+        self.assertEqual(cache_array_ids_before, cache_array_ids_after)
+        shapes_after = [tuple(arr.shape) for arr in prompt_cache[0].cache]
+        self.assertEqual(shapes_before, shapes_after)
+
+    def test_rollback_does_not_set_lengths_or_left_padding_on_real_arrays_cache(
+        self,
+    ):
+        """Real ArraysCache ``lengths`` and ``left_padding`` stay None.
+
+        The hook must not assign ``lengths`` / ``left_padding`` arrays to
+        a real ArraysCache layer that did not have them. Setting either
+        attribute would change the cache mode from single-sequence to
+        ragged, which the validator already rejects. Documenting the
+        no-op behavior pins the gap.
+        """
+        prompt_cache = [_RealQwen3ArraysCache(layer_id=0)]
+        gdn_states = [SimpleNamespace(base_history_len=4)]
+
+        rollback_speculative_cache(
+            prompt_cache,
+            gdn_states,
+            accepted=2,
+            block_size=4,
+        )
+
+        self.assertIsNone(prompt_cache[0].lengths)
+        self.assertIsNone(prompt_cache[0].left_padding)
+
+    def test_rollback_is_a_noop_for_full_real_qwen36_cache_layout(self):
+        """Real Qwen3.6 layout (16 KVCache + 48 ArraysCache) is a no-op
+        for the ArraysCache subset.
+
+        The full Qwen3.6 prompt-cache layout is 16 KVCache + 48
+        ArraysCache. The KVCache subset gets sliced by the hook (because
+        the hook already supports KVCache shapes), but the ArraysCache
+        subset must remain untouched. This test pins that behavior so the
+        validator can stay fail-closed while this gap is documented.
+        """
+        # 16 KVCache layers (using the existing _KVCacheLikeLayer fake).
+        kv_layers = [
+            _KVCacheLikeLayer(layer_id=i, num_tokens=8) for i in range(16)
+        ]
+        # 48 ArraysCache layers (using the real Qwen3.6 shape).
+        arrays_layers = [
+            _RealQwen3ArraysCache(layer_id=i) for i in range(48)
+        ]
+        prompt_cache: list = kv_layers + arrays_layers
+        gdn_states = [
+            SimpleNamespace(base_history_len=4) for _ in prompt_cache
+        ]
+
+        # Snapshot the ArraysCache arrays before rollback.
+        arrays_before = [
+            [tuple(arr.shape) for arr in layer.cache]
+            for layer in arrays_layers
+        ]
+
+        rollback_speculative_cache(
+            prompt_cache,
+            gdn_states,
+            accepted=1,
+            block_size=4,
+        )
+
+        # KVCache subset is sliced to keep=6 (base=4 + accepted=1 + bonus=1).
+        for layer in kv_layers:
+            self.assertEqual(layer.offset, 6)
+            self.assertEqual(layer._idx, 6)
+            self.assertEqual(layer.keys.shape[-2], 6)
+            self.assertEqual(layer.values.shape[-2], 6)
+
+        # ArraysCache subset is unchanged (the rollback hook's gap).
+        arrays_after = [
+            [tuple(arr.shape) for arr in layer.cache]
+            for layer in arrays_layers
+        ]
+        self.assertEqual(arrays_before, arrays_after)
+        for layer in arrays_layers:
+            self.assertIsNone(layer.lengths)
+            self.assertIsNone(layer.left_padding)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

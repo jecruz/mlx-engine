@@ -1837,4 +1837,115 @@ Feature `m14-qwen35-textmodel-dflash-rollback` implements the missing `TextModel
 
 ### Status
 
-This feature resolves one of the two runtime compatibility blockers recorded in the M14 capped-smoke evidence above. The remaining blocker (the 48 `ArraysCache` ragged-cache layers) is scoped to a separate feature (`m14-dflash-gdn-arrayscache-runtime-compatibility`), which depends on this hook being present and tested. DFlash remains default-off and sequential-text-only until the ArraysCache compatibility feature lands and the capped smoke re-runs.
+This feature resolves one of the two runtime compatibility blockers recorded in the M14 capped-smoke evidence above. The remaining blocker (the 48 `ArraysCache` ragged-cache layers) is scoped to a separate feature (`m14_dflash_arrayscache_no_go`), which depends on this hook being present and tested. DFlash remains default-off and sequential-text-only until the ArraysCache compatibility feature lands and the capped smoke re-runs.
+
+
+## M14 Qwen3.6 GDN/ArraysCache runtime compatibility — precise no-go (2026-06-28)
+
+Feature ``m14_dflash_arrayscache_no_go`` investigates
+whether the ``m14-qwen35-textmodel-dflash-rollback`` hook makes ArraysCache
+rollback safe enough to relax the runtime compatibility check, and
+records a precise no-go explaining why the Qwen3.6 27B DFlash real smoke
+cannot proceed on this target without further rollback work.
+
+### Investigation summary
+
+- The capped smoke (`reports/20260628T052638.586203Z-shared-bench.json`)
+  reaches `validate_dflash_runtime_compatibility` with the Qwen3.6 27B
+  target loaded. The target produces exactly 64 prompt-cache layers:
+  16 `KVCache` (full attention) + 48 `ArraysCache` (GDN linear-attention
+  state).
+- `validate_dflash_runtime_compatibility` matches on the class name
+  `"ArraysCache"` and flags every layer as a ragged cache layer. The
+  check fires regardless of whether `lengths`/`left_padding` are None
+  (the real single-sequence shape) or non-None (the ragged batched
+  variant).
+- The `m14-qwen35-textmodel-dflash-rollback` hook (`PatchedQwen3_5TextModel.rollback_speculative_cache`)
+  supports `history` lists, `KVCache`-shaped layers (`keys`/`values` arrays
+  + `offset` + `_idx`), `lengths` arrays (via `mx.minimum`), generic
+  `offset`/`_idx` rewinding, and `None` cache entries.
+- The hook does NOT touch the real `ArraysCache.cache[idx]` arrays that
+  hold the actual GDN state in single-sequence Qwen3.6 sequential text.
+  The previous feature's tests used an `ArraysCache` fake with `lengths`
+  set to a non-None `mx.array([1])`, which does not match the real
+  Qwen3.6 sequential ArraysCache shape (`lengths=None`, `left_padding=None`,
+  state stored in `cache=[mx.array, mx.array]`).
+
+### Decision: keep `validate_dflash_runtime_compatibility` fail-closed
+
+Per the feature description's "otherwise" clause, the validator stays
+fail-closed for the Qwen3.6 GDN/ArraysCache layout because the rollback
+hook is not proven safe for the real ArraysCache shape. Silently
+allowing those 48 layers through DFlash would risk leaking rejected
+proposal tokens into the live GDN state, which is the exact failure
+mode the capped smoke must avoid.
+
+### Rollback gap documented by focused tests
+
+- `tests/test_dflash_boundary.py::TestDFlashArraysCacheNoGo` adds five
+  focused tests proving the runtime validator stays fail-closed for:
+  - the real Qwen3.6 ArraysCache shape (`lengths=None`, `cache=[arrays]`)
+  - mixed KVCache + ArraysCache layer combinations
+  - the ragged ArraysCache variant (`lengths` set to `mx.array`)
+  - `BatchKVCache` (batched-sequence ragged cache)
+  - the exact 16 KVCache + 48 ArraysCache layout the Qwen3.6 target loads
+- `tests/test_patched_qwen3_5_dflash_rollback.py::TestArraysCacheRollbackGapDocs`
+  adds three focused tests proving the rollback hook is a documented
+  no-op for the real Qwen3.6 ArraysCache shape:
+  - `cache[idx]` array ids and shapes are unchanged after rollback
+  - `lengths` and `left_padding` stay None (no ragged mode mutation)
+  - the full 16 KVCache + 48 ArraysCache layout shows the KVCache subset
+    being sliced while the ArraysCache subset is unchanged, pinning the
+    gap that prevents safely allowing ArraysCache through validation
+
+### Why no retry is warranted
+
+- The capped smoke has already reached `dflash_stream_generate` and
+  proven the runtime surface blockers are genuine (ragged-cache flag +
+  missing `rollback_speculative_cache`). The phase-aware preflight and
+  resource gate already pass (see
+  `.planning/dflash-resource-gate-evidence-current.json`).
+- The remaining ArraysCache gap requires a follow-up feature to extend
+  the rollback hook with GDN-aware `cache[idx]` array slicing and prove
+  it does not corrupt GDN state. That work is out of scope for this
+  no-go feature.
+- DFlash remains default-off, sequential-text-only, and fail-closed. No
+  LM Studio, no cheetara adapter, no standard autoregressive
+  `draft_model` path is used.
+
+### Verification
+
+- `.venv-py312/bin/python -m pytest -q tests/test_dflash_boundary.py tests/test_dflash_runtime.py tests/test_patched_qwen3_5_dflash_rollback.py`
+  → 57 passed, 34 subtests passed, 0 failed (was 49 passed; +8 new
+  ArraysCache no-go + rollback gap tests).
+- `.venv-py312/bin/python -m pytest -q <full M14 promotion pytest gate>`
+  → 292 passed, 16 skipped, 0 failed (was 284; +8 new tests).
+- `ruff check tests/test_dflash_boundary.py tests/test_patched_qwen3_5_dflash_rollback.py`
+  → All checks passed.
+
+### Changed files
+
+- `tests/test_dflash_boundary.py` — added `_ArraysCacheWithLengths`
+  (ragged variant of the existing test fake) and a new `ArraysCache`
+  class that mirrors the real Qwen3.6 single-sequence GDN state layout
+  (`lengths=None`, `left_padding=None`, `cache=[mx.array, mx.array]`).
+  Added `TestDFlashArraysCacheNoGo` with five focused tests proving the
+  validator remains fail-closed for every ArraysCache shape and the
+  exact 16 KVCache + 48 ArraysCache layout.
+- `tests/test_patched_qwen3_5_dflash_rollback.py` — added
+  `_RealQwen3ArraysCache` test fake mirroring the real Qwen3.6
+  ArraysCache shape and `TestArraysCacheRollbackGapDocs`
+  with three focused tests proving the rollback hook is a documented
+  no-op for the real ArraysCache shape.
+- `.planning/performance-future-work.md` — this no-go entry.
+
+### Status
+
+DFlash remains fail-closed and default-off for the Qwen3.6 27B real
+target. The capped smoke does not proceed on this target until a
+follow-up feature extends the rollback hook with GDN-aware `cache[idx]`
+array truncation and proves it does not corrupt GDN state. The
+validator, the rollback hook, and the smoke evidence are unchanged in
+behavior; only the test coverage and documentation have been added to
+pin the no-go so future workers cannot silently widen the ragged-cache
+surface.
