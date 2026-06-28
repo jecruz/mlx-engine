@@ -2105,3 +2105,70 @@ evidence is captured by the bench-worker. No new cache shape or route
 is silently widened; ragged, opaque, BatchKVCache, and RotatingKVCache
 layers remain fail-closed.
 
+## M14 capped real-model DFlash smoke (2026-06-28, `m14-dflash-capped-real-smoke`)
+
+Feature `m14-dflash-capped-real-smoke` runs the first capped real Qwen3.6 27B + z-lab DFlash drafter sequential text smoke through the direct `shared_bench.py` harness, against engine HEAD `fa634dc` (the commit that implemented the ArraysCache/GDN rollback hook on `PatchedQwen3_5TextModel`).
+
+### Smoke command
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --dflash \
+  --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 \
+  --dflash-max-draft-tokens 4 \
+  --prompt-suite-json prompt_suites/m14_dflash_capped_smoke.json \
+  --runs 1 --max-tokens 16 --temperature 0.0 --top-p 1.0 --include-output-text
+```
+
+### Smoke result (FAIL-CLOSED, one remaining blocker)
+
+- **Smoke report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T065034.848347Z-shared-bench.json`
+- **Runner returncode:** 0 (process exit 0 is NOT success; the row error must be inspected).
+- **Row error:** `DFlashUnavailableError: DFlash no-go: TextModel does not implement rollback_speculative_cache. Next steps: switch to a plain KVCache sequential path with a rollback-capable target model and keep DFlash default-off until a real sequential smoke passes.`
+- **Origin:** `mlx_engine/utils/dflash_runtime.py:174` inside `dflash_stream_generate`.
+- **Telemetry:** `opted_in=true`, `target_model_path=Qwen3.6-27B-MLX-8bit`, `drafter_model_path=z-lab Qwen3.5-27B-DFlash snapshot`, `max_draft_tokens=4`, `sequential_text_only=true`, `uses_native_runtime=true`, `fallback_status=fallback_preflight`, `accepted_proposal_tokens=0`, `rejected_proposal_tokens=0`.
+- **No assistant output emitted**; `output_preview=""`, `completion_tokens=null`, `prompt_tokens=null`.
+
+### Progress vs. the prior no-go
+
+Compared to the prior capped-smoke evidence (`dflash-capped-smoke-evidence.json` recorded against engine HEAD `d3f6d10`), the shape-strict `validate_dflash_runtime_compatibility` introduced in `fa634dc` now PASSES for the real Qwen3.6 27B target:
+
+- The Qwen3.6 27B target loads through `mlx_lm.utils.load` with `model.language_model = mlx_lm.models.qwen3_5.TextModel(...)`.
+- The prompt cache exposes the exact **16 `KVCache` + 48 `ArraysCache`** sequential layout (the only shape `_summarize_prompt_cache_layout` allows).
+- The `ragged ArraysCache` no-go blocker from `d3f6d10` is resolved at the validator level.
+
+The single remaining blocker is the **wrapper `TextModel` class** does not expose `rollback_speculative_cache`:
+
+- `mlx_lm.models.qwen3_5.TextModel` is the wrapper class instantiated by `model.language_model` (`mlx_lm/models/qwen3_5.py:278-307`). It holds `self.model = Qwen3_5TextModel(args)`.
+- `mlx_engine/model_kit/patches/qwen3_5.py:apply_patches()` only rebinds `mlx_lm.models.qwen3_5.Qwen3_5TextModel = PatchedQwen3_5TextModel` (line 1354). The inner `Qwen3_5TextModel` therefore inherits `rollback_speculative_cache` from `PatchedQwen3_5TextModel`, but the outer wrapper `TextModel` does not.
+- `validate_dflash_runtime_compatibility` resolves `lm = target_model.language_model if hasattr(target_model, "language_model") else target_model`, so `lm` is the wrapper `TextModel`, which is missing the hook.
+
+### Resource and route preflight (PASSED)
+
+- Available memory: `53.48 GiB` (>= 39.44 GiB required for pre-load).
+- Reserved ports 3180 / 3181 / 3182: empty.
+- Reserved port 12444: cloud-only LLMDYNAMIX listener (allowed); live probing shows `ollama@11434 /api/ps` reports 0 loaded models and `lm studio@4521` is not listening.
+- Phase-aware post-load preflight still passes (`target_resident=True` requires only incremental drafter + headroom, not the full target bytes).
+- No VLM / batched / distributed / adapter / loaded `draft_model` / SpecPrefill / `num_draft_tokens` combination detected.
+
+### Decision: RETRY-GATED — return to orchestrator for the wrapper TextModel hook
+
+The smoke has not produced valid output yet, so the feature remains **FAIL-CLOSED on the runtime compatibility surface**. Resource and preflight gates are clean, the ArraysCache/GDN shape check passes, and only the wrapper-class rollback hook is missing.
+
+To unblock the smoke, an implementation worker must add `rollback_speculative_cache` to `mlx_lm.models.qwen3_5.TextModel` (either by replacing `TextModel` with `PatchedQwen3_5TextModel` directly inside `apply_patches`, or by defining a thin delegating wrapper method). After that single change, the existing `dflash_stream_generate` path should reach the rollback hook on partial rejection and emit target-verified tokens.
+
+No promotion decision is recorded. DFlash remains default-off. The bench-worker promotion evidence feature (M14 F14.5) is still blocked behind the runtime compatibility surface.
+
+### Evidence paths
+
+- Smoke report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T065034.848347Z-shared-bench.json`
+- Updated smoke evidence: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-capped-smoke-evidence.json`
+- Resource gate precheck: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-smoke-precheck.json`
+- Phase-aware preflight evidence: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-phase-aware-preflight-evidence.json`
+
