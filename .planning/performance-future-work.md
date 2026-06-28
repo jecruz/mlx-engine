@@ -1447,3 +1447,53 @@ followed by `python3 quality_compare.py --candidate <report> --out <inspect>` to
 | Target path | `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit` (verified, 6 safetensors, vocab 248320, num_hidden_layers 64) |
 | Drafter path | `/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824` (verified, `architectures=["DFlashDraftModel"]`, `model_type=qwen3`, target_layer_ids `[1,10,18,27,35,44,52,61]`, vocab 248320, 6 layers) |
 
+## M14 DFlash resource gate: cloud-only LLMDYNAMIX refinement (2026-06-28)
+
+Feature `m14-dflash-cloud-only-llmdynamix-resource-gate` refines the M14 DFlash resource gate so a proven cloud-only LLMDYNAMIX listener on `127.0.0.1:12444` (or `localhost:12444`) no longer triggers the blanket reserved-port blocker. The gate now inspects process/model evidence and distinguishes cloud-only routing from local MLX/Metal-heavy contention. Cloud-only LLMDYNAMIX is allowed to remain running; local Qwen/LLMDYNAMIX model loads, other MLX/Metal-heavy services, and insufficient-memory states still fail closed before any heavyweight DFlash load starts.
+
+### What the gate now proves
+
+1. **Process discovery.** The gate uses `lsof -nP -iTCP:12444 -sTCP:LISTEN` to find the listener PID, then `ps` to capture the listener command plus every other `llmdynamix`-family process. LLMDYNAMIX commonly splits across a listener parent (`llmdynamix`) and a child engine (`llmdynamix-engine -config <path>`); only the child command line carries the `-config` flag that points to the actual merged-config.yaml.
+2. **Config discovery.** When an `llmdynamix-engine` process exposes a `-config` path, the gate reads that YAML and counts both cloud backend markers (`anthropic`, `openai`, `google`, `commandcode`, `cmd`, `openrouter`) and MLX/Metal-heavy local backend markers (`lm studio`, `ollama`, `mlx`, `vllm`, `swift_llm`). `puma.cpp`/`ocelot` and pure `llama.cpp` are NOT counted as MLX/Metal heavy because they run on CPU.
+3. **Live model probing.** When the LLMDYNAMIX config lists any MLX/Metal-heavy backend, the gate probes that backend's live model endpoint to confirm whether it is currently holding an MLX/Metal load. Ollama is probed via `/api/ps` (loaded models only); LM Studio is probed via `/v1/models`. A backend that reports zero loaded models does NOT block the gate. A backend that reports loaded models is treated as local-heavy and blocks the gate fail-closed.
+4. **Defensive fallthroughs.** A LLMDYNAMIX listener whose config cannot be read, whose backends cannot be parsed, or whose probes are inconclusive is treated as `LOCAL_MLX_METAL_HEAVY` so the preflight remains fail-closed by default. Listeners on ports `3180`/`3181`/`3182` retain the original "any listener is a blocker" behavior because those ports are reserved for the cheetara adapter slots that always consume MLX/Metal.
+5. **Evidence report.** Every probe result is captured in a structured `ListenerEvidence` dataclass (port, classification, PID, comm, command, cloud_backend_count, local_heavy_backend_count, config_path, notes). The full report flows into `DFlashReadinessReport.listener_evidence` so the gate's classification is auditable without trusting user claims.
+
+### Live probe result (this session, 2026-06-28)
+
+```
+$ lsof -nP -iTCP:12444 -sTCP:LISTEN
+COMMAND    PID        USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+llmdynami 2552 jeffreycruz    6u  IPv6 0x9ebd157683172571      0t0  TCP *:12444 (LISTEN)
+
+$ ps -ef | grep llmdynamix | grep -v grep
+  501  2552     1 ... /Users/jeffreycruz/Development/AI_TOOLS/llmdynamix/LLM Dynamix.app/Contents/MacOS/llmdynamix
+  501  3157  2552 ... /Users/jeffreycruz/Development/AI_TOOLS/llmdynamix/LLM Dynamix.app/Contents/Resources/llmdynamix-engine -config /Users/jeffreycruz/.llmdynamix/merged-config.yaml
+
+$ curl -fsS http://127.0.0.1:11434/api/ps   # Ollama (configured but no model loaded)
+{"models":[]}
+
+$ curl -fsS http://127.0.0.1:4521/v1/models  # LM Studio (configured but not listening)
+curl: (7) Failed to connect to 127.0.0.1 port 4521 ...
+```
+
+Gate output: `port=12444 class=cloud-only-llmdynamix allowed=True`. The LLMDYNAMIX config lists 16 MLX/Metal-heavy backend markers, but live probing shows `ollama@11434 /api/ps reports 0 loaded models; lm studio@4521 not listening`. Cloud-only routing is proven via process + config + live model discovery rather than user claim.
+
+### Validation contract assertion
+
+- `VAL-M14-007` (DFlash resource preflight allows cloud-only LLMDYNAMIX while blocking local contention) — **SATISFIED** for the allowed cloud-only case and for the blocked local-heavy case. The cloud-only assertion is satisfied by `probe_listener_evidence(12444)` returning `ListenerClassification.CLOUD_ONLY_LLMDYNAMIX` for the live machine state described above. The blocked case is satisfied by unit tests (`test_llmdynamix_with_loaded_local_ollama_is_blocked`, `test_unknown_listener_process_is_blocked`) and by the unchanged `LOCAL_MLX_METAL_HEAVY` path for actual MLX/Metal loads and the unchanged `UNKNOWN_HEAVY` path for unclassified listeners.
+
+### Files touched
+
+- `mlx_engine/utils/dflash_boundary.py` — added `ListenerClassification` enum, `ListenerEvidence` dataclass, process/config discovery helpers (`_port_is_listening`, `_lookup_listener_pid`, `_lookup_process_command`, `_list_llmdynamix_process_commands`, `_extract_llmdynamix_config_path`, `_extract_llmdynamix_local_backend_endpoints`, `_http_get_json`, `_probe_local_backend_loaded_models`), refined `_classify_llmdynamix_router` and `_classify_local_heavy_listener`, added `probe_listener_evidence` / `probe_all_listener_evidence` / `build_port_blocker` / `probe_reserved_listener_evidence`, threaded `listener_evidence` into `DFlashReadinessReport`, threaded it through `probe_dflash_readiness` and `validate_dflash_preload_compatibility`, narrowed `_LLMDYNAMIX_LOCAL_HEAVY_BACKEND_MARKERS` to MLX/Metal-specific markers, narrowed `_LOCAL_MLX_METAL_PROCESS_MARKERS` to MLX/Metal-specific processes.
+- `tests/test_dflash_boundary.py` — added `TestDFlashLLMDYNAMIXListenerClassification` with 8 focused tests (empty port allowed, cloud-only listener allowed, unloaded local backends allowed, loaded local Ollama blocked, unknown listener blocked, blockers skip cloud-only, readiness threads evidence, real-pair preflight passes with cloud-only evidence). Updated existing `test_preload_compatibility_rejects_incompatible_route_and_cache_mode` mock to include the new `listener_evidence` attribute.
+- `scripts/dflash_resource_gate_probe.py` — new probe script that records structured JSON evidence for the gate's classification without relying on user claims.
+- `.planning/dflash-resource-gate-evidence.json` — live probe output for this session, recorded for downstream validators.
+
+### Verification
+
+- `.venv-py312/bin/python -m pytest -q tests/test_dflash_boundary.py tests/test_dflash_runtime.py` → 30 passed, 0 failed.
+- `.venv-py312/bin/python -m pytest -q <full promotion pytest gate>` → 265 passed, 16 skipped, 0 failed.
+- `ruff check mlx_engine/utils/dflash_boundary.py tests/test_dflash_boundary.py scripts/dflash_resource_gate_probe.py` → All checks passed.
+- `.venv-py312/bin/python scripts/dflash_resource_gate_probe.py --output .planning/dflash-resource-gate-evidence.json` → `ready_for_dflash_smoke=True cloud_only_listener=True blocked_listener=False`.
+

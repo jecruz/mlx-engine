@@ -724,6 +724,7 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
                 route_blockers=(),
                 resource_blockers=(),
                 blockers=(),
+                listener_evidence=(),
             ),
         ):
             with self.assertRaisesRegex(
@@ -916,6 +917,387 @@ class TestDFlashRouting(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].tokens[0].id, 17)
         dflash_stream_generate.assert_called_once()
+
+
+def _write_llmdynamix_config(
+    base: Path,
+    *,
+    backends: list[dict[str, object]],
+) -> Path:
+    """Write a synthetic LLMDYNAMIX merged-config.yaml and return its path."""
+
+    config_path = base / "merged-config.yaml"
+    lines: list[str] = ["auth-dir: /tmp/.llmdynamix", "host: 127.0.0.1"]
+    for backend in backends:
+        url = backend["base_url"]
+        name = backend["name"]
+        lines.append("openai-compatibility:")
+        lines.append(f"  - base-url: {url}")
+        lines.append("    models:")
+        for model in backend.get("models", []):
+            lines.append(f"      - name: {model}")
+        lines.append(f"    name: {name}")
+    config_path.write_text("\n".join(lines) + "\n")
+    return config_path
+
+
+class TestDFlashLLMDYNAMIXListenerClassification(unittest.TestCase):
+    def test_empty_port_is_allowed(self):
+        boundary = _dflash_boundary()
+        with patch(
+            "mlx_engine.utils.dflash_boundary._port_is_listening",
+            return_value=False,
+        ):
+            evidence = boundary.probe_listener_evidence(port=12444)
+        self.assertEqual(evidence.classification, boundary.ListenerClassification.EMPTY)
+        self.assertTrue(evidence.is_allowed())
+
+    def test_cloud_only_llmdynamix_listener_is_allowed(self):
+        boundary = _dflash_boundary()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            config_path = _write_llmdynamix_config(
+                temp_dir,
+                backends=[
+                    {
+                        "base_url": "https://api.anthropic.com/v1",
+                        "name": "Anthropic",
+                        "models": ["claude-sonnet-4-6"],
+                    },
+                    {
+                        "base_url": "https://api.openai.com/v1",
+                        "name": "OpenAI",
+                        "models": ["gpt-5.4"],
+                    },
+                    {
+                        "base_url": "https://generativelanguage.googleapis.com/v1",
+                        "name": "Google",
+                        "models": ["gemini-2.5-flash-lite"],
+                    },
+                ],
+            )
+            with patch(
+                "mlx_engine.utils.dflash_boundary._port_is_listening",
+                return_value=True,
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
+                return_value=9001,
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._lookup_process_command",
+                return_value=(
+                    "llmdynamix",
+                    "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+                ),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
+                return_value=(
+                    (
+                        9001,
+                        "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+                    ),
+                    (
+                        9002,
+                        "/Applications/LLM Dynamix.app/Contents/Resources/"
+                        "llmdynamix-engine "
+                        f"-config {config_path}",
+                    ),
+                ),
+            ):
+                evidence = boundary.probe_listener_evidence(port=12444)
+
+        self.assertEqual(
+            evidence.classification,
+            boundary.ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
+        )
+        self.assertTrue(evidence.is_allowed())
+        self.assertGreaterEqual(evidence.cloud_backend_count, 3)
+        self.assertEqual(evidence.local_heavy_backend_count, 0)
+        self.assertEqual(evidence.config_path, config_path)
+        self.assertTrue(
+            any("cloud backend markers" in note for note in evidence.notes),
+            msg=f"expected cloud-only note, got: {evidence.notes}",
+        )
+
+    def test_llmdynamix_with_unloaded_local_backends_is_allowed(self):
+        boundary = _dflash_boundary()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            config_path = _write_llmdynamix_config(
+                temp_dir,
+                backends=[
+                    {
+                        "base_url": "https://api.anthropic.com/v1",
+                        "name": "Anthropic",
+                        "models": ["claude-sonnet-4-6"],
+                    },
+                    {
+                        "base_url": "http://127.0.0.1:11434/v1",
+                        "name": "Ollama",
+                        "models": ["gemma4:latest"],
+                    },
+                    {
+                        "base_url": "http://127.0.0.1:4521/v1",
+                        "name": "LM Studio",
+                        "models": ["qwen3.6-27b@q4_k_m"],
+                    },
+                ],
+            )
+            with patch(
+                "mlx_engine.utils.dflash_boundary._port_is_listening",
+                side_effect=lambda port: port in {12444, 11434},
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
+                return_value=9100,
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._lookup_process_command",
+                return_value=(
+                    "llmdynamix",
+                    "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+                ),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
+                return_value=(
+                    (
+                        9100,
+                        "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+                    ),
+                    (
+                        9101,
+                        "/Applications/LLM Dynamix.app/Contents/Resources/"
+                        "llmdynamix-engine "
+                        f"-config {config_path}",
+                    ),
+                ),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._http_get_json",
+                side_effect=[
+                    {"models": []},
+                    {"data": []},
+                ],
+            ):
+                evidence = boundary.probe_listener_evidence(port=12444)
+
+        self.assertEqual(
+            evidence.classification,
+            boundary.ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
+        )
+        self.assertTrue(evidence.is_allowed())
+        self.assertTrue(
+            any("live probing shows no loaded models" in note for note in evidence.notes),
+            msg=f"expected live-probing note, got: {evidence.notes}",
+        )
+
+    def test_llmdynamix_with_loaded_local_ollama_is_blocked(self):
+        boundary = _dflash_boundary()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            config_path = _write_llmdynamix_config(
+                temp_dir,
+                backends=[
+                    {
+                        "base_url": "https://api.anthropic.com/v1",
+                        "name": "Anthropic",
+                        "models": ["claude-sonnet-4-6"],
+                    },
+                    {
+                        "base_url": "http://127.0.0.1:11434/v1",
+                        "name": "Ollama",
+                        "models": ["qwen3.6-27b"],
+                    },
+                ],
+            )
+            with patch(
+                "mlx_engine.utils.dflash_boundary._port_is_listening",
+                side_effect=lambda port: port in {12444, 11434},
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
+                return_value=9200,
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._lookup_process_command",
+                return_value=(
+                    "llmdynamix",
+                    "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+                ),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
+                return_value=(
+                    (
+                        9200,
+                        "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+                    ),
+                    (
+                        9201,
+                        "/Applications/LLM Dynamix.app/Contents/Resources/"
+                        "llmdynamix-engine "
+                        f"-config {config_path}",
+                    ),
+                ),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._http_get_json",
+                return_value={
+                    "models": [
+                        {"name": "qwen3.6-27b", "size": 27_000_000_000},
+                    ]
+                },
+            ):
+                evidence = boundary.probe_listener_evidence(port=12444)
+
+        self.assertEqual(
+            evidence.classification,
+            boundary.ListenerClassification.LOCAL_MLX_METAL_HEAVY,
+        )
+        self.assertFalse(evidence.is_allowed())
+        self.assertTrue(
+            any("loaded model" in note for note in evidence.notes),
+            msg=f"expected loaded-model note, got: {evidence.notes}",
+        )
+
+    def test_unknown_listener_process_is_blocked(self):
+        boundary = _dflash_boundary()
+        with patch(
+            "mlx_engine.utils.dflash_boundary._port_is_listening",
+            return_value=True,
+        ), patch(
+            "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
+            return_value=9300,
+        ), patch(
+            "mlx_engine.utils.dflash_boundary._lookup_process_command",
+            return_value=("node", "node /tmp/random-server.js"),
+        ), patch(
+            "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
+            return_value=(),
+        ):
+            evidence = boundary.probe_listener_evidence(port=12444)
+
+        self.assertEqual(
+            evidence.classification,
+            boundary.ListenerClassification.UNKNOWN_HEAVY,
+        )
+        self.assertFalse(evidence.is_allowed())
+
+    def test_resource_blockers_skip_cloud_only_listener(self):
+        boundary = _dflash_boundary()
+        cloud_only_evidence = boundary.ListenerEvidence(
+            port=12444,
+            classification=boundary.ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
+        )
+        self.assertIsNone(boundary.build_port_blocker(cloud_only_evidence))
+
+        empty_evidence = boundary.ListenerEvidence(
+            port=12444,
+            classification=boundary.ListenerClassification.EMPTY,
+        )
+        self.assertIsNone(boundary.build_port_blocker(empty_evidence))
+
+        heavy_evidence = boundary.ListenerEvidence(
+            port=12444,
+            classification=boundary.ListenerClassification.LOCAL_MLX_METAL_HEAVY,
+            pid=4242,
+            comm="ollama",
+        )
+        blocker = boundary.build_port_blocker(heavy_evidence)
+        self.assertIsNotNone(blocker)
+        self.assertIn("127.0.0.1:12444", blocker)
+        self.assertIn("local MLX/Metal-heavy", blocker)
+
+    def test_probe_dflash_readiness_threads_listener_evidence(self):
+        boundary = _dflash_boundary()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            target_dir = _write_qwen_model_dir(
+                temp_dir,
+                "target",
+                "qwen3_5_text",
+                include_tokenizer_files=True,
+                vocab_size=DFLASH_EXPECTED_VOCAB_SIZE,
+                num_hidden_layers=64,
+            )
+            drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
+
+            fake_evidence = boundary.ListenerEvidence(
+                port=12444,
+                classification=boundary.ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
+                pid=9001,
+                notes=("synthetic cloud-only listener",),
+            )
+            with patch(
+                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                return_value=(True, ()),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                return_value=(fake_evidence,),
+            ), patch(
+                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                return_value=256 * 1024 * 1024 * 1024,
+            ):
+                report = boundary.probe_dflash_readiness(
+                    boundary.DFlashBoundaryOptions(
+                        enabled=True,
+                        target_model_path=target_dir,
+                        drafter_model_path=drafter_dir,
+                        max_draft_tokens=4,
+                    )
+                )
+
+        self.assertEqual(report.blockers, ())
+        self.assertEqual(report.listener_evidence, (fake_evidence,))
+
+    def test_real_pair_preflight_passes_with_cloud_only_listener_evidence(self):
+        boundary = _dflash_boundary()
+        fake_evidence = boundary.ListenerEvidence(
+            port=12444,
+            classification=boundary.ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
+            notes=("synthetic cloud-only listener",),
+        )
+        with patch(
+            "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+            return_value=(True, ()),
+        ), patch(
+            "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+            return_value=(fake_evidence,),
+        ), patch(
+            "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+            return_value=256 * 1024 * 1024 * 1024,
+        ):
+            report = boundary.validate_dflash_preload_compatibility(
+                options=boundary.DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=REAL_DFLASH_TARGET,
+                    drafter_model_path=REAL_DFLASH_DRAFTER,
+                    max_draft_tokens=4,
+                ),
+                loaded_model_path=REAL_DFLASH_TARGET,
+                is_vlm_route=False,
+                vocab_only=False,
+                distributed=False,
+                max_seq_nums=1,
+                kv_bits=None,
+                kv_group_size=None,
+                quantized_kv_start=None,
+                vlm_prompt_cache_storage_root=None,
+                vlm_prompt_cache_min_save_tokens=None,
+            )
+
+        self.assertEqual(report.blockers, ())
+        self.assertIn(fake_evidence, report.listener_evidence)
+
+
+class _FakeURLLibResponse:
+    def __init__(self, payload: bytes):
+        self._payload = payload
+
+    def read(self) -> bytes:
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def _make_urlopen_payload(payload: dict[str, object]) -> _FakeURLLibResponse:
+    return _FakeURLLibResponse(json.dumps(payload).encode("utf-8"))
 
 
 if __name__ == "__main__":

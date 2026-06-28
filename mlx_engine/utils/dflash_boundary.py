@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 import importlib.util
 import json
 import os
@@ -28,6 +29,7 @@ DFLASH_REQUIRED_TARGET_TOKENIZER_FILES = (
     "vocab.json",
 )
 DFLASH_RESOURCE_PORTS = (3180, 3181, 3182, 12444)
+DFLASH_LLMDYNAMIX_PORT = 12444
 DFLASH_AVAILABLE_MEMORY_HEADROOM_RATIO = 0.25
 DFLASH_AVAILABLE_MEMORY_HEADROOM_MIN_BYTES = 8 * 1024 * 1024 * 1024
 
@@ -37,6 +39,72 @@ _DFLASH_DEPENDENCY_MODULES = (
 )
 _SUPPORTED_MODEL_MARKERS = ("qwen",)
 _UNSUPPORTED_MODEL_MARKERS = ("moe", "a3b")
+
+# LLMDYNAMIX cloud-router detection
+_LLMDYNAMIX_PROCESS_MARKERS = ("llmdynamix",)
+_LLMDYNAMIX_CLOUD_BACKEND_MARKERS = (
+    "anthropic",
+    "openai",
+    "google",
+    "commandcode",
+    "cmd",
+    "openrouter",
+)
+# Only mark backends that consume MLX/Metal GPU memory as local-heavy. Pure
+# llama.cpp/puma.cpp backends run on CPU and do NOT contend for Metal GPU
+# resources, so they should NOT block a DFlash smoke.
+_LLMDYNAMIX_LOCAL_HEAVY_BACKEND_MARKERS = (
+    "lm studio",
+    "ollama",
+    "mlx",
+    "vllm",
+    "swift_llm",
+)
+# Process names that prove a real MLX/Metal-heavy local load.
+_LOCAL_MLX_METAL_PROCESS_MARKERS = (
+    "mlx_engine",
+    "mlx-lm",
+    "mlx_lm",
+    "mlx-vlm",
+    "mlx_vlm",
+    "lmstudio",
+    "lms ",
+    "/lms",
+    "vllm",
+    "swift_llm",
+)
+
+
+class ListenerClassification(str, Enum):
+    """How a reserved DFlash resource port listener should be classified."""
+
+    EMPTY = "empty"
+    CLOUD_ONLY_LLMDYNAMIX = "cloud-only-llmdynamix"
+    LOCAL_MLX_METAL_HEAVY = "local-mlx-metal-heavy"
+    UNKNOWN_HEAVY = "unknown-heavy"
+
+
+@dataclass(frozen=True, slots=True)
+class ListenerEvidence:
+    """Process evidence recorded for a reserved DFlash resource port."""
+
+    port: int
+    classification: ListenerClassification
+    pid: Optional[int] = None
+    comm: Optional[str] = None
+    command: Optional[str] = None
+    cloud_backend_count: int = 0
+    local_heavy_backend_count: int = 0
+    config_path: Optional[Path] = None
+    notes: tuple[str, ...] = ()
+
+    def is_allowed(self) -> bool:
+        """True iff this listener may coexist with a real-pair DFlash smoke."""
+
+        return self.classification in {
+            ListenerClassification.EMPTY,
+            ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +164,7 @@ class DFlashReadinessReport:
     route_blockers: tuple[str, ...] = ()
     resource_blockers: tuple[str, ...] = ()
     blockers: tuple[str, ...] = ()
+    listener_evidence: tuple[ListenerEvidence, ...] = ()
 
 
 class DFlashUnavailableError(ValueError):
@@ -336,16 +405,475 @@ def _parse_target_profile(
     )
 
 
-def _probe_reserved_port_conflicts() -> tuple[str, ...]:
-    blockers: list[str] = []
-    for port in DFLASH_RESOURCE_PORTS:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.settimeout(0.05)
-            if sock.connect_ex(("127.0.0.1", port)) == 0:
-                blockers.append(
-                    f"Reserved DFlash resource port 127.0.0.1:{port} is already in use"
+def _port_is_listening(port: int) -> bool:
+    """Return True if a TCP listener is bound to 127.0.0.1:port."""
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.05)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _lookup_listener_pid(port: int) -> Optional[int]:
+    """Return the PID of the listener bound to 127.0.0.1:port via lsof."""
+
+    try:
+        result = subprocess.run(
+            ["lsof", "-nP", "-iTCP:" + str(port), "-sTCP:LISTEN", "-Fpc"],
+            capture_output=True,
+            text=True,
+            timeout=1.0,
+        )
+    except Exception:  # pragma: no cover - defensive probe
+        return None
+    if result.returncode != 0 and not result.stdout.strip():
+        return None
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if line.startswith("p") and line[1:].isdigit():
+            return int(line[1:])
+    return None
+
+
+def _lookup_process_command(pid: int) -> tuple[Optional[str], Optional[str]]:
+    """Return (comm, full_command) for a PID via ps, or (None, None)."""
+
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True,
+            text=True,
+            timeout=1.0,
+        )
+    except Exception:  # pragma: no cover - defensive probe
+        comm = None
+    else:
+        comm = result.stdout.strip() if result.returncode == 0 else None
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "command="],
+            capture_output=True,
+            text=True,
+            timeout=1.0,
+        )
+    except Exception:  # pragma: no cover - defensive probe
+        return comm, None
+    command = result.stdout.strip() if result.returncode == 0 else None
+    return comm, command
+
+
+def _is_llmdynamix_router_process(comm: Optional[str], command: Optional[str]) -> bool:
+    """True iff the listener process is the LLMDYNAMIX cloud-router family."""
+
+    haystack = " ".join(filter(None, (comm, command))).lower()
+    return any(marker in haystack for marker in _LLMDYNAMIX_PROCESS_MARKERS)
+
+
+def _list_llmdynamix_process_commands() -> tuple[tuple[int, str], ...]:
+    """Return (pid, command) for every LLMDYNAMIX-family process on the host.
+
+    LLMDYNAMIX may be split across a listener parent (`llmdynamix`) and a child
+    engine (`llmdynamix-engine -config <path>`). We collect both because only
+    the child command line carries the actual config flag.
+    """
+
+    try:
+        result = subprocess.run(
+            ["ps", "-axo", "pid=,command="],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+        )
+    except Exception:  # pragma: no cover - defensive ps probe
+        return ()
+    if result.returncode != 0:
+        return ()
+    found: list[tuple[int, str]] = []
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        head, _, tail = line.partition(" ")
+        if not head.isdigit():
+            continue
+        lowered_tail = tail.lower()
+        if any(marker in lowered_tail for marker in _LLMDYNAMIX_PROCESS_MARKERS):
+            found.append((int(head), tail))
+    return tuple(found)
+
+
+def _extract_llmdynamix_config_path(command: Optional[str]) -> Optional[Path]:
+    """Pull a -config <path> argument out of an llmdynamix-engine command line."""
+
+    if not command:
+        return None
+    match = re.search(r"-config\s+(\S+)", command)
+    if not match:
+        return None
+    return Path(match.group(1)).expanduser()
+
+
+def _count_llmdynamix_backends(config_text: str) -> tuple[int, int]:
+    """Return (cloud_backend_count, local_heavy_backend_count) in a config."""
+
+    lowered = config_text.lower()
+    cloud_hits = sum(
+        lowered.count(marker) for marker in _LLMDYNAMIX_CLOUD_BACKEND_MARKERS
+    )
+    local_hits = sum(
+        lowered.count(marker) for marker in _LLMDYNAMIX_LOCAL_HEAVY_BACKEND_MARKERS
+    )
+    # Subtract cloud-only base-url fingerprints so CMD-API counts as cloud.
+    base_url_hits = len(re.findall(r"base-url\s*:\s*\S+", lowered))
+    if base_url_hits and cloud_hits:
+        cloud_hits = max(cloud_hits, base_url_hits - local_hits)
+    return cloud_hits, local_hits
+
+
+def _extract_llmdynamix_local_backend_endpoints(
+    config_text: str,
+) -> tuple[tuple[str, int], ...]:
+    """Return (name, port) pairs for local backends referenced by the config.
+
+    We only care about base-URLs that resolve to a local port on 127.0.0.1,
+    because that is the only place a local MLX/Metal load would actually run.
+    The YAML may list ``base-url`` before or after ``name``, so we first
+    collect all base-URL anchors and then match each ``name`` entry that
+    follows within the same provider block.
+    """
+
+    endpoints: list[tuple[str, int]] = []
+    provider_blocks = re.split(r"(?m)^\s*-\s*base-url:", config_text)
+    for block in provider_blocks[1:]:
+        url_match = re.match(r"\s*(\S+)", block)
+        if not url_match:
+            continue
+        url = url_match.group(1).strip()
+        parsed = re.match(r"https?://([^/:]+):(\d+)", url)
+        if not parsed:
+            continue
+        host = parsed.group(1).lower()
+        port = int(parsed.group(2))
+        if host not in {"127.0.0.1", "localhost", "0.0.0.0"}:
+            continue
+        # Provider names appear at column 4; model entries at column 6+.
+        name_match = re.search(r"(?m)^    name:\s*([^\n]+)$", block)
+        if not name_match:
+            continue
+        name = name_match.group(1).strip().lower()
+        if not any(
+            marker in name for marker in _LLMDYNAMIX_LOCAL_HEAVY_BACKEND_MARKERS
+        ):
+            continue
+        endpoints.append((name, port))
+    return tuple(endpoints)
+
+
+def _http_get_json(url: str) -> Optional[dict[str, Any]]:
+    """Fetch a JSON document from a localhost URL with a short timeout."""
+
+    import json as _json
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(url, timeout=1.0) as response:  # noqa: S310
+            raw = response.read().decode("utf-8", errors="replace")
+    except Exception:  # pragma: no cover - network/IO defensive
+        return None
+    try:
+        payload = _json.loads(raw)
+    except _json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _probe_local_backend_loaded_models(
+    name: str,
+    port: int,
+) -> tuple[bool, str]:
+    """Probe a local backend port for currently-loaded MLX/Metal models.
+
+    Returns (is_loaded, evidence_string). `is_loaded` is True only when the
+    backend reports that one or more models are currently resident in memory
+    (or actively serving). Empty `/api/ps` or `/v1/models` payloads indicate
+    that the backend is running but holding no heavy MLX/Metal load.
+
+    We prefer Ollama's `/api/ps` because `/v1/models` returns the entire
+    library, not just loaded models. For LM Studio and ocelot we fall back to
+    `/v1/models` because they don't expose a separate loaded-models endpoint
+    and they only advertise models that are actually resident.
+    """
+
+    if not _port_is_listening(port):
+        return False, f"{name}@{port} not listening"
+
+    lowered_name = name.lower()
+    prefer_api_ps = "ollama" in lowered_name
+
+    if prefer_api_ps:
+        url = f"http://127.0.0.1:{port}/api/ps"
+        label = f"{name}@{port} /api/ps"
+        payload = _http_get_json(url)
+        if payload is None:
+            return False, f"{name}@{port} /api/ps not reachable"
+        models = payload.get("models", [])
+        if isinstance(models, list) and len(models) > 0:
+            return True, f"{label} reports {len(models)} loaded model(s)"
+        return False, f"{label} reports 0 loaded models"
+
+    url = f"http://127.0.0.1:{port}/v1/models"
+    label = f"{name}@{port} /v1/models"
+    payload = _http_get_json(url)
+    if payload is None:
+        return False, f"{name}@{port} /v1/models not reachable"
+    data = payload.get("data", [])
+    if isinstance(data, list) and len(data) > 0:
+        return True, f"{label} reports {len(data)} loaded model(s)"
+    return False, f"{label} reports 0 loaded models"
+
+
+def _classify_llmdynamix_router(
+    port: int,
+    listener_pid: Optional[int],
+    listener_command: Optional[str],
+) -> ListenerEvidence:
+    """Classify an LLMDYNAMIX listener using process + config evidence."""
+
+    llmdynamix_processes = _list_llmdynamix_process_commands()
+    if not llmdynamix_processes:
+        return ListenerEvidence(
+            port=port,
+            classification=ListenerClassification.LOCAL_MLX_METAL_HEAVY,
+            pid=listener_pid,
+            command=listener_command,
+            notes=("No LLMDYNAMIX-family process command line could be read",),
+        )
+
+    config_path: Optional[Path] = None
+    config_holder_pid: Optional[int] = None
+    for proc_pid, proc_command in llmdynamix_processes:
+        candidate = _extract_llmdynamix_config_path(proc_command)
+        if candidate is not None:
+            config_path = candidate
+            config_holder_pid = proc_pid
+            break
+
+    if config_path is None or not config_path.exists():
+        return ListenerEvidence(
+            port=port,
+            classification=ListenerClassification.LOCAL_MLX_METAL_HEAVY,
+            pid=listener_pid,
+            command=listener_command,
+            notes=(
+                "LLMDYNAMIX config path could not be resolved from any "
+                "llmdynamix-family process command line",
+            ),
+        )
+
+    try:
+        config_text = config_path.read_text()
+    except OSError as exc:  # pragma: no cover - defensive file probe
+        return ListenerEvidence(
+            port=port,
+            classification=ListenerClassification.LOCAL_MLX_METAL_HEAVY,
+            pid=listener_pid,
+            command=listener_command,
+            config_path=config_path,
+            notes=(f"LLMDYNAMIX config read failed: {exc}",),
+        )
+
+    cloud_count, local_count = _count_llmdynamix_backends(config_text)
+    local_endpoints = _extract_llmdynamix_local_backend_endpoints(config_text)
+
+    if cloud_count > 0 and local_count == 0:
+        return ListenerEvidence(
+            port=port,
+            classification=ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
+            pid=listener_pid,
+            command=listener_command,
+            cloud_backend_count=cloud_count,
+            local_heavy_backend_count=0,
+            config_path=config_path,
+            notes=(
+                f"LLMDYNAMIX config at {config_path} "
+                f"(pid={config_holder_pid}) exposes only "
+                f"{cloud_count} cloud backend markers and no local MLX/Metal "
+                "backends",
+            ),
+        )
+
+    if local_endpoints:
+        loaded_evidence: list[str] = []
+        for name, endpoint_port in local_endpoints:
+            is_loaded, evidence_text = _probe_local_backend_loaded_models(
+                name, endpoint_port
+            )
+            loaded_evidence.append(evidence_text)
+            if is_loaded:
+                return ListenerEvidence(
+                    port=port,
+                    classification=ListenerClassification.LOCAL_MLX_METAL_HEAVY,
+                    pid=listener_pid,
+                    command=listener_command,
+                    cloud_backend_count=cloud_count,
+                    local_heavy_backend_count=local_count,
+                    config_path=config_path,
+                    notes=(
+                        f"LLMDYNAMIX config at {config_path} "
+                        f"(pid={config_holder_pid}) routes to {name}; "
+                        f"{evidence_text}",
+                    ),
                 )
+        return ListenerEvidence(
+            port=port,
+            classification=ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
+            pid=listener_pid,
+            command=listener_command,
+            cloud_backend_count=cloud_count,
+            local_heavy_backend_count=local_count,
+            config_path=config_path,
+            notes=(
+                f"LLMDYNAMIX config at {config_path} "
+                f"(pid={config_holder_pid}) lists {local_count} local "
+                "MLX/Metal backend markers, but live probing shows no loaded "
+                "models: " + "; ".join(loaded_evidence),
+            ),
+        )
+
+    if local_count > 0:
+        return ListenerEvidence(
+            port=port,
+            classification=ListenerClassification.LOCAL_MLX_METAL_HEAVY,
+            pid=listener_pid,
+            command=listener_command,
+            cloud_backend_count=cloud_count,
+            local_heavy_backend_count=local_count,
+            config_path=config_path,
+            notes=(
+                f"LLMDYNAMIX config at {config_path} "
+                f"(pid={config_holder_pid}) routes to {local_count} local "
+                "MLX/Metal backend markers",
+            ),
+        )
+    return ListenerEvidence(
+        port=port,
+        classification=ListenerClassification.LOCAL_MLX_METAL_HEAVY,
+        pid=listener_pid,
+        command=listener_command,
+        config_path=config_path,
+        notes=(
+            f"LLMDYNAMIX config at {config_path} has no recognized backend "
+            "markers",
+        ),
+    )
+
+
+def _classify_local_heavy_listener(
+    port: int,
+    comm: Optional[str],
+    command: Optional[str],
+) -> ListenerEvidence:
+    """Classify a listener that is not LLMDYNAMIX as local-heavy."""
+
+    pid = _lookup_listener_pid(port)
+    haystack = " ".join(filter(None, (comm, command))).lower()
+    if any(marker in haystack for marker in _LOCAL_MLX_METAL_PROCESS_MARKERS):
+        return ListenerEvidence(
+            port=port,
+            classification=ListenerClassification.LOCAL_MLX_METAL_HEAVY,
+            pid=pid,
+            comm=comm,
+            command=command,
+            notes=(
+                "Listener process matches a local MLX/Metal-heavy marker",
+            ),
+        )
+    return ListenerEvidence(
+        port=port,
+        classification=ListenerClassification.UNKNOWN_HEAVY,
+        pid=pid,
+        comm=comm,
+        command=command,
+        notes=(
+            "Listener process is not a recognized LLMDYNAMIX cloud-router",
+        ),
+    )
+
+
+def probe_listener_evidence(port: int = DFLASH_LLMDYNAMIX_PORT) -> ListenerEvidence:
+    """Return process/model evidence for the listener on the given port."""
+
+    if not _port_is_listening(port):
+        return ListenerEvidence(
+            port=port,
+            classification=ListenerClassification.EMPTY,
+        )
+    pid = _lookup_listener_pid(port)
+    comm, command = (None, None)
+    if pid is not None:
+        comm, command = _lookup_process_command(pid)
+    if _is_llmdynamix_router_process(comm, command):
+        return _classify_llmdynamix_router(port, pid, command)
+    return _classify_local_heavy_listener(port, comm, command)
+
+
+def probe_all_listener_evidence(
+    ports: tuple[int, ...] = DFLASH_RESOURCE_PORTS,
+) -> tuple[ListenerEvidence, ...]:
+    """Return listener evidence for every reserved DFlash resource port."""
+
+    return tuple(probe_listener_evidence(port) for port in ports)
+
+
+def build_port_blocker(evidence: ListenerEvidence) -> Optional[str]:
+    """Return a human-readable blocker string for a reserved port, or None."""
+
+    if evidence.classification == ListenerClassification.EMPTY:
+        return None
+    if evidence.classification == ListenerClassification.CLOUD_ONLY_LLMDYNAMIX:
+        return None
+    if evidence.classification == ListenerClassification.LOCAL_MLX_METAL_HEAVY:
+        if evidence.pid is not None:
+            return (
+                f"DFlash preflight refuses to coexist with local MLX/Metal-heavy "
+                f"listener on 127.0.0.1:{evidence.port} "
+                f"(pid={evidence.pid}, comm={evidence.comm!r})"
+            )
+        return (
+            f"DFlash preflight refuses to coexist with local MLX/Metal-heavy "
+            f"listener on 127.0.0.1:{evidence.port}"
+        )
+    if evidence.pid is not None:
+        return (
+            f"DFlash preflight cannot classify listener on 127.0.0.1:{evidence.port} "
+            f"(pid={evidence.pid}, comm={evidence.comm!r}); fail closed"
+        )
+    return (
+        f"DFlash preflight cannot classify listener on 127.0.0.1:{evidence.port}; "
+        "fail closed"
+    )
+
+
+def _probe_reserved_port_conflicts() -> tuple[str, ...]:
+    """Return fail-closed blockers for non-empty reserved resource ports.
+
+    Reserved ports that hold a cloud-only LLMDYNAMIX listener are NOT blockers,
+    because the LLMDYNAMIX binary is a router/proxy that does not directly load
+    MLX/Metal model weights. Local MLX/Metal-heavy listeners and unknown
+    listeners still fail closed before any heavyweight DFlash load starts.
+    """
+
+    blockers: list[str] = []
+    for evidence in probe_all_listener_evidence():
+        blocker = build_port_blocker(evidence)
+        if blocker is not None:
+            blockers.append(blocker)
     return tuple(blockers)
+
+
+def probe_reserved_listener_evidence() -> tuple[ListenerEvidence, ...]:
+    """Public alias for the listener evidence used in the resource gate."""
+
+    return probe_all_listener_evidence()
 
 
 def _probe_available_memory_bytes() -> int | None:
@@ -481,9 +1009,16 @@ def probe_dflash_readiness(
                     f"found {_format_gib(available_bytes)}",
                 )
 
-    port_blockers = _probe_reserved_port_conflicts()
-    if port_blockers:
-        resource_blockers = (*resource_blockers, *port_blockers)
+    listener_evidence = probe_all_listener_evidence()
+    port_blockers_list = [
+        blocker
+        for blocker in (
+            build_port_blocker(evidence) for evidence in listener_evidence
+        )
+        if blocker is not None
+    ]
+    if port_blockers_list:
+        resource_blockers = (*resource_blockers, *port_blockers_list)
 
     blockers.extend(resource_blockers)
 
@@ -495,6 +1030,7 @@ def probe_dflash_readiness(
         target_profile=target_profile,
         resource_blockers=resource_blockers,
         blockers=_dedupe_blockers(blockers),
+        listener_evidence=listener_evidence,
     )
 
 
@@ -569,6 +1105,7 @@ def validate_dflash_preload_compatibility(
         route_blockers=tuple(route_blockers),
         resource_blockers=readiness.resource_blockers,
         blockers=blockers,
+        listener_evidence=readiness.listener_evidence,
     )
     if blockers:
         raise DFlashUnavailableError(
