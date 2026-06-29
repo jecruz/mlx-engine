@@ -1,0 +1,16 @@
+==========
+Files: [] 
+
+Prompt: <|im_start|>user
+Reply with the single word ok.<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+ok
+==========
+Prompt: 19 tokens, 5.333 tokens-per-sec
+Generation: 2 tokens, 41.424 tokens-per-sec
+Peak memory: 34.027 GB

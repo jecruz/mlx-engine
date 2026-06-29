@@ -1,0 +1,36 @@
+=== M16 reference DFlash A/B ===
+Date (UTC): Mon Jun 29 22:16:06 UTC 2026
+Target: /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit
+Drafter: /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824
+Max tokens: 16, Temperature: 0.0, Seed: 0, Draft block size: 8
+Prompts: 3
+--- baseline (no DFlash) ---
+[baseline prompt1] exit=0 wall=16.732608s prompt_tok=19 gen_tok=2 gen_tps=41.424 peak_gb=34.027
+[baseline prompt2] exit=0 wall=14.721667s prompt_tok=26 gen_tok=2 gen_tps=41.331 peak_gb=34.034
+[baseline prompt3] exit=0 wall=16.448418s prompt_tok=23 gen_tok=15 gen_tps=24.439 peak_gb=34.030
+--- candidate (reference DFlash) ---
+[dflash prompt1] exit=0 wall=17.537109s prompt_tok=19 gen_tok=2 gen_tps=9.259 peak_gb=38.253
+[dflash prompt2] exit=0 wall=18.670596s prompt_tok=26 gen_tok=2 gen_tps=11.989 peak_gb=39.334
+[dflash prompt3] exit=0 wall=18.397123s prompt_tok=23 gen_tok=15 gen_tps=38.972 peak_gb=38.879
+--- done ---
+Evidence directory: /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m16-reference-dflash-benchmark
+total 144
+drwxr-xr-x@ 19 jeffreycruz  staff   608 Jun 29 18:17 .
+drwxr-xr-x@ 22 jeffreycruz  staff   704 Jun 29 18:14 ..
+-rw-r--r--@  1 jeffreycruz  staff  1168 Jun 29 18:17 ab-run.log
+-rw-r--r--@  1 jeffreycruz  staff   345 Jun 29 18:16 baseline-20260629T221606Z-prompt1.json
+-rw-r--r--@  1 jeffreycruz  staff   252 Jun 29 18:16 baseline-20260629T221606Z-prompt1.log
+-rw-r--r--@  1 jeffreycruz  staff   356 Jun 29 18:16 baseline-20260629T221606Z-prompt2.json
+-rw-r--r--@  1 jeffreycruz  staff   262 Jun 29 18:16 baseline-20260629T221606Z-prompt2.log
+-rw-r--r--@  1 jeffreycruz  staff   368 Jun 29 18:16 baseline-20260629T221606Z-prompt3.json
+-rw-r--r--@  1 jeffreycruz  staff   286 Jun 29 18:16 baseline-20260629T221606Z-prompt3.log
+-rw-r--r--@  1 jeffreycruz  staff   595 Jun 29 18:17 dflash-20260629T221606Z-prompt1.json
+-rw-r--r--@  1 jeffreycruz  staff   547 Jun 29 18:17 dflash-20260629T221606Z-prompt1.log
+-rw-r--r--@  1 jeffreycruz  staff   608 Jun 29 18:17 dflash-20260629T221606Z-prompt2.json
+-rw-r--r--@  1 jeffreycruz  staff   558 Jun 29 18:17 dflash-20260629T221606Z-prompt2.log
+-rw-r--r--@  1 jeffreycruz  staff   622 Jun 29 18:17 dflash-20260629T221606Z-prompt3.json
+-rw-r--r--@  1 jeffreycruz  staff   583 Jun 29 18:17 dflash-20260629T221606Z-prompt3.log
+-rw-r--r--@  1 jeffreycruz  staff   354 Jun 29 18:14 packages.txt
+-rwxr-xr-x@  1 jeffreycruz  staff  4501 Jun 29 18:16 run_ab.sh
+-rw-r--r--@  1 jeffreycruz  staff  2871 Jun 29 18:15 smoke-dflash-20260629T221506Z.log
+-rw-r--r--@  1 jeffreycruz  staff   547 Jun 29 18:15 smoke-dflash-20260629T221517Z.log

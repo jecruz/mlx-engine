@@ -1,0 +1,16 @@
+==========
+Files: [] 
+
+Prompt: <|im_start|>user
+List the first 5 prime numbers separated by commas.<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+2, 3, 5, 7, 11
+==========
+Prompt: 23 tokens, 6.276 tokens-per-sec
+Generation: 15 tokens, 24.439 tokens-per-sec
+Peak memory: 34.030 GB

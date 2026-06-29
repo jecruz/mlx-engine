@@ -1,0 +1,16 @@
+==========
+Files: [] 
+
+Prompt: <|im_start|>user
+What is 2 + 2? Reply with a single digit.<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+4
+==========
+Prompt: 26 tokens, 7.267 tokens-per-sec
+Generation: 2 tokens, 41.331 tokens-per-sec
+Peak memory: 34.034 GB

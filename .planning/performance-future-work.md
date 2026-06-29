@@ -3167,3 +3167,106 @@ Every prompt regresses on TTFT (range +57.43% to +719.97%), on decode TPS (range
 
 - `VAL-M15-005` (real-model scheduling candidate passes quality before performance claims) — **NOT MET**. `quality_compare.py status=fail` on every prompt in the M14 quality suite. The fresh non-DFlash baseline and the adaptive DFlash candidate both pass row-error inspection (10/10 rows `error: null`), so the gate fails only on output quality + coarse timing regressions, not on the runtime path. Per-row `dflash.fallback_status=fallback_pathological_target_only` confirms the adaptive scheduler + fallback engaged on every row; the runtime path itself is fail-closed and target-verified, but the candidate's emitted tokens fail the quality suite.
 - `VAL-M15-006` (promotion requires ≥2 quality-passing repeated samples with a repeatable latency win) — **NOT MET**. The first candidate sample fails the quality gate on every prompt, so no quality-passing sample exists to repeat against. Per the lane description, when the quality gate fails, no additional heavyweight repeated samples are run for this lane; the decision is recorded as REJECT based on the existing failed-quality evidence with explicit no-promotion rationale. DFlash stays default-off and KEEP OPT-IN.
+
+## M16 reference DFlash benchmark (no-porting) (2026-06-29)
+
+Feature `m16-original-dflash-reference-benchmark` runs a no-porting A/B benchmark of the original/reference DFlash implementation (preferred surface: local `mlx_vlm.speculative.dflash` via `python -m mlx_vlm.generate`) before any further native mlx-engine DFlash work. Native `mlx-engine` DFlash runtime code is untouched.
+
+### Reference implementation surface
+
+- **Python interpreter:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python` (3.12.13)
+- **Reference implementation files (recorded before execution):**
+  - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/lib/python3.12/site-packages/mlx_vlm/__init__.py` (mlx_vlm version 0.6.1)
+  - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/lib/python3.12/site-packages/mlx_vlm/speculative/dflash.py` (DFlash round loop)
+  - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/lib/python3.12/site-packages/mlx_vlm/speculative/drafters/qwen3_dflash/dflash.py` (DFlashDraftModel)
+  - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/lib/python3.12/site-packages/mlx_vlm/speculative/drafters/qwen3_dflash/config.py` (DFlashConfig)
+  - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/lib/python3.12/site-packages/mlx_vlm/models/qwen3_5/language.py` line 1919 (`Qwen3_5Model.rollback_speculative_cache`)
+  - `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/lib/python3.12/site-packages/mlx_vlm/generate/dispatch.py` (`--draft-model`, `--draft-kind dflash`, `--draft-block-size`)
+- **Package versions (`pip freeze`, mlx-related only):**
+  - `mlx==0.31.2`
+  - `mlx-audio==0.4.4`
+  - `mlx-lm @ git+https://github.com/ml-explore/mlx-lm.git@ed1fca4cef15a824c5f1702c80f70b4cffc8e4dd`
+  - `mlx-metal==0.31.2`
+  - `mlx-vlm @ git+https://github.com/Blaizzy/mlx-vlm.git@7a28df17e804270cd809a545e73cb3f6e0d64e09`
+  - `transformers==5.10.2`
+  - `huggingface_hub==1.18.0`
+  - `tokenizers==0.22.2`
+  - `sentencepiece==0.2.1`
+  - `protobuf==7.35.0`
+  Full freeze saved at `.planning/m16-reference-dflash-benchmark/packages.txt`.
+
+### Target and drafter paths (model_type correction)
+
+- **Target (recorded verbatim):** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit` — although the path name says "Qwen3.6", the actual `architectures=["Qwen3_5ForConditionalGeneration"]` and `model_type=qwen3_5` make it a Qwen3.5 family model in mlx-vlm's classification. This is the pairing the user picked.
+- **Drafter snapshot (recorded verbatim):** `/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824` — `architectures=["DFlashDraftModel"]`, `model_type=qwen3`, `dtype=bfloat16`, 6 layers, `block_size=16`, `mask_token_id=248077`, `vocab_size=248320`, `target_layer_ids=[1,10,18,27,35,44,52,61]`. No tokenizer files in the snapshot (drafter borrows the target tokenizer).
+- **Pairing compatibility preflight:** target `vocab_size=248320` matches drafter `vocab_size=248320`; all drafter `target_layer_ids` are within target `num_hidden_layers=64`; both classify as Qwen-family in mlx-vlm's `validate_drafter_compatibility` and the `_dflash_rounds` checks pass (`model.language_model.rollback_speculative_cache` is present).
+
+### Resource / process isolation preflight
+
+- **Apple M3 Ultra device (recorded before execution):** `memory_size=96.0 GiB` unified, `max_recommended_working_set_size=77.76 GiB` Metal working set, `max_buffer_length=58.34 GiB` single buffer.
+- **No local MLX/Metal-heavy workload running:** `lsof -i tcp:12444` shows `llmdynamix` listening but `ps aux` shows total RSS only ~300 MB (the `LLM Dynamix.app` routes to backends `:4521` and `:11434`; `:4521` is **not** listening, `:11434` is Ollama with only small cloud or ≤7B local models like `qwen2.5:7b-instruct`, `gemma4:latest`, `llama3.2:3b` — no 27B local load). `llmdynamix` is therefore a passive router here, and the reserved DFlash ports (`:3180`, `:3181`, `:3182`, `:12444`) are not contended by any local 27B model load. Cloud-only listener-classification holds.
+- **No concurrent local MLX service during benchmark:** the reference benchmark runs each prompt pair sequentially from a single Python process; no native `mlx-engine` DFlash, cheetara adapter, Qwen CLI, or LM Studio process runs concurrently.
+- **Disk footprint:** target safetensors ~27 GiB on disk, drafter safetensors ~4 GiB on disk (single blob). Both fit inside the 78 GiB recommended Metal working set with margin.
+
+### A/B shape
+
+- **CLI A/B (per-invocation model load, `python -m mlx_vlm.generate` per prompt):** matches a real consumer invocation. Wall-time includes model + drafter load each time; gen_tps remains comparable.
+- **Load-once A/B (Python session, model + drafter loaded once, 3 prompts × 2 modes each):** eliminates per-invocation load overhead so per-prompt gen_tps reflects pure generation cost. This is the deployment-relevant comparison.
+- **Identical config for baseline vs candidate:** `--temperature 0.0`, `--seed 0`, `--max-tokens 16`, prompt set of three short deterministic prompts (one literal-output, one short factual, one short structured list). Identical prompt strings, identical model paths, identical token cap. The only difference is the candidate adds `--draft-model <DRAFTER>` + `--draft-kind dflash` + `--draft-block-size 8`.
+- **Resources recorded before each run:** peak resident memory, generation TPS, prompt token count, generation token count, wall time, draft-stats line (when applicable), and detokenized assistant output.
+
+### Per-prompt evidence (load-once session is deployment-relevant)
+
+Source: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m16-reference-dflash-benchmark/load_once-20260629T222003Z-results.json`
+
+| Prompt | Mode | Wall (s) | gen_tok | gen_tps | peak GB | Output | Draft stats (candidate only) |
+|---|---|---|---|---|---|---|---|
+| 1: "Reply with the single word ok." | baseline | 4.932 | 2 | 42.19 | 38.3 | `ok` | n/a |
+| 1 | dflash | 0.727 | 2 | 5.95 | 42.6 | `ok` | 28.6% accept, avg 7.00 drafted, 1 round |
+| 2: "What is 2 + 2? Reply with a single digit." | baseline | 0.266 | 2 | 27.59 | 42.6 | `4` | n/a |
+| 2 | dflash | 0.434 | 2 | 7.57 | 43.6 | `4` | 28.6% accept, avg 7.00 drafted, 1 round |
+| 3: "List the first 5 prime numbers separated by commas." | baseline | 0.831 | 15 | 23.50 | 43.6 | `2, 3, 5, 7, 11` | n/a |
+| 3 | dflash | 0.491 | 15 | 46.12 | 43.6 | `2, 3, 5, 7, 11` | 100.0% accept, avg 7.00 drafted, 2 rounds |
+
+- **Quality check:** outputs match across baseline and candidate for every prompt (`ok`, `4`, `2, 3, 5, 7, 11`). No repetition loops, no malformed JSON, no forbidden `Thinking Process` or visible chain-of-thought leakage into the user-facing answer. Expected keywords present in every output. The chat template's empty `\n\n</think\n\nok` block detokenizes as `\n\n</think\n\n\nok` in the streaming detokenizer for both modes; this is template scaffolding, not actual thinking output, and it is identical across baseline and candidate for each prompt.
+- **Process errors:** zero. Both modes exit `0`, no `row_error`, no `RuntimeError: There is no Stream(...)`, no cross-thread stream failures.
+- **Resource isolation:** peak memory ~43.6 GiB (target 27 GB safetensors + drafter 4 GB + working state + activations) fits inside the 78 GiB recommended Metal working set. MLX device memory headroom confirmed via `mx.device_info()` before any run.
+
+### Aggregate metrics (token-weighted, load-once session)
+
+| Metric | baseline | dflash (reference) | Delta |
+|---|---|---|---|
+| Total generation tokens | 19 | 19 | 0 |
+| Total generation time (sum of per-prompt `gen_tokens / gen_tps`) | 0.758 s | 0.925 s | +0.167 s |
+| Effective aggregate TPS (token-weighted) | **25.06 tps** | **20.54 tps** | **-18.04%** |
+| Mean TPS across prompts | 31.09 | 19.88 | -36.05% |
+| Maximum peak resident memory | 43.6 GB | 43.6 GB | +0.0 GB (drafter bumps peak in earlier prompts from 38.3 → 42.6 but max equals baseline once both loaded) |
+| Per-prompt wins (`Δ tps > +5%`) | — | 1 of 3 (prompt 3, +96.2%) | mixed |
+| Per-prompt losses (`Δ tps < -5%`) | — | 2 of 3 (prompts 1-2, -72.6% to -85.9%) | short outputs are overhead-dominated |
+| Output text match (all prompts) | — | — | identical across modes |
+
+### CLI A/B corroboration (per-invocation model load)
+
+Source: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m16-reference-dflash-benchmark/baseline-20260629T221606Z-prompt*.log` and `dflash-20260629T221606Z-prompt*.log`, plus `aggregate-summary.json`.
+
+- CLI trend matches the load-once trend in direction: prompts 1-2 lose on gen_tps (-71-78%), prompt 3 wins on gen_tps (+59.5%), outputs match. Wall-time is dominated by model+drafter load per invocation (~15 s each), so the CLI comparison is biased upward equally for both sides; the load-once session is the deployment-relevant data point.
+
+### Decision: **FAIL locally** — reference DFlash does not produce a quality-preserving local win
+
+- **Quality preserved:** yes, on every prompt and every metric the candidate output equals the baseline output. No repetition, no thinking leakage, no malformed structured output. `quality_compare.py`-style per-prompt keywords all present.
+- **Throughput is mixed:** the reference DFlash implementation shows a clean throughput **win** on the longest prompt (15-token structured list, 100% draft acceptance) at +96% TPS, but a significant throughput **loss** on short prompts (2-token factual/literal, 28.6% draft acceptance) at -72% to -86% TPS. The token-weighted aggregate across the 3 prompts is **-18.04% (DFlash loses on aggregate)**.
+- **Why short outputs lose:** the drafter overhead (one draft + one target verify per round) is amortized over a small number of emitted tokens. With only 2 accepted outputs and a single round, the per-emission target-verify + drafter work exceeds the cost of just emitting those 2 tokens autoregressively.
+- **No corruption or runtime failures:** `error: null`/exit 0 throughout, no stream-failure text, no fallback to AR. The DFlash path executes correctly end-to-end.
+- **No promotion class evidence required by M16:** the gate is "reference DFlash wins locally, fails locally, or is blocked with precise reproducible reason" — the answer here is **fails locally with the precise reason above (mixed throughput, aggregate -18% on the local A/B)**.
+
+### Consequence: further DFlash porting/optimization work is NO-GO unless the user explicitly overrides
+
+- Per the M16 lane description and AGENTS.md: "further DFlash work is treated as no-go unless reference DFlash wins locally or the user explicitly overrides". The local reference DFlash A/B does **not** win on aggregate (mixed throughput with -18% token-weighted TPS and ~5× overhead on the short-output case), so further native `mlx-engine` DFlash porting/optimization work is NO-GO unless the user explicitly overrides.
+- The native `mlx-engine` DFlash foundation, M13 loader + Qwen hidden-state hooks, M14 preflight / capped smoke / wrapper-hook / target-verify invariants, and M15 adaptive-scheduler + fallback + per-round telemetry remain on the branch as opt-in infrastructure. None of that is promoted. None of that is enabled by default. No MLX DFlash runtime is touched in this lane.
+- A future lane would need either (a) a redesigned reference DFlash implementation that materially reduces per-emission target-verify cost on short outputs, or (b) explicit user direction to invest in DFlash porting anyway.
+
+### Validation contract assertions
+
+- `VAL-M16-001` (reference implementation and benchmark surface are identified and preflighted) — **MET**. Local `mlx_vlm.speculative.dflash` path recorded with version and exact file paths; package versions captured; target + drafter paths verified; pairing compatibility preflighted; resource/process isolation recorded (M3 Ultra 78 GiB Metal working set, no concurrent local MLX/Metal-heavy load, cloud-only LLMDYNAMIX listener classified and not blocking).
+- `VAL-M16-002` (original/reference baseline and DFlash candidate run with matching prompts/config) — **MET**. Baseline and candidate ran on identical 3-prompt set with `temperature=0`, `seed=0`, `max_tokens=16`, identical model paths; both exits `0`, no process errors, output artifacts saved per prompt; both CLI A/B and load-once A/B captured.
+- `VAL-M16-003` (reference benchmark metrics and quality are analyzed into a decision) — **MET**. Per-prompt and aggregate throughput (`-18.04%` token-weighted), wall-time deltas (load-once dominates by prompt-by-prompt), peak memory delta, output-keyword match, repetition check, and structured-output failure check all recorded. Final decision recorded above.

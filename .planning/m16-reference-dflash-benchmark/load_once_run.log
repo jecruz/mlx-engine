@@ -1,0 +1,40 @@
+=== M16 load-once A/B ===
+Target: /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit
+Drafter: /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824
+Max tokens: 16, Temperature: 0.0, Seed: 0
+Draft block size: 8
+Prompts: 3
+
+[load] Loading target model ...
+[load] Target loaded in 8.0s
+[load] Loading drafter (dflash) ...
+[load] Drafter loaded in 1.6s, kind=dflash
+
+[run] baseline prompt1: 'Reply with the single word ok.'
+  -> wall=4.932s, gen_tok=2, gen_tps=42.19, peak=38.3 GB
+     out='ok'
+
+[run] dflash   prompt1: 'Reply with the single word ok.'
+  -> wall=0.727s, gen_tok=2, gen_tps=5.95, peak=42.6 GB
+     out='ok'
+     draft_stats=2.00 accepted tokens/round (1.00 accepted drafts/round after bonus, 28.6% acceptance, avg draft 7.00) over 1 rounds
+
+[run] baseline prompt2: 'What is 2 + 2? Reply with a single digit.'
+  -> wall=0.266s, gen_tok=2, gen_tps=27.59, peak=42.6 GB
+     out='4'
+
+[run] dflash   prompt2: 'What is 2 + 2? Reply with a single digit.'
+  -> wall=0.434s, gen_tok=2, gen_tps=7.57, peak=43.6 GB
+     out='4'
+     draft_stats=2.00 accepted tokens/round (1.00 accepted drafts/round after bonus, 28.6% acceptance, avg draft 7.00) over 1 rounds
+
+[run] baseline prompt3: 'List the first 5 prime numbers separated by commas.'
+  -> wall=0.831s, gen_tok=15, gen_tps=23.50, peak=43.6 GB
+     out='2, 3, 5, 7, 11'
+
+[run] dflash   prompt3: 'List the first 5 prime numbers separated by commas.'
+  -> wall=0.491s, gen_tok=15, gen_tps=46.12, peak=43.6 GB
+     out='2, 3, 5, 7, 11'
+     draft_stats=7.00 accepted tokens/round (6.00 accepted drafts/round after bonus, 100.0% acceptance, avg draft 7.00) over 2 rounds
+
+Saved /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m16-reference-dflash-benchmark/load_once-20260629T222003Z-results.json

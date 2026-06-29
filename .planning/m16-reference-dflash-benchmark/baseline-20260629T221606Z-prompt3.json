@@ -1,0 +1,1 @@
+{"mode":"baseline","prompt_id":3,"prompt":"List the first 5 prime numbers separated by commas.","max_tokens":16,"temperature":0.0,"seed":0,"wall_time_s":16.448418,"prompt_tokens":23,"generation_tokens":15,"generation_tps":24.439,"peak_memory_gb":34.030,"exit_code":0,"output_text":"Generation: 15 tokens, 24.439 tokens-per-sec\nPeak memory: 34.030 GB","draft_stats":}

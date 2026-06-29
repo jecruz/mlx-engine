@@ -1,0 +1,99 @@
+{
+  "per_prompt": [
+    {
+      "prompt_id": 1,
+      "prompt": "Reply with the single word ok.",
+      "baseline": {
+        "wall_time_s": 4.93201754198526,
+        "generation_tokens": 2,
+        "generation_tps": 42.19283150294725,
+        "peak_memory_gb": 38.284152956,
+        "output_text": "ok"
+      },
+      "dflash": {
+        "wall_time_s": 0.7266092089994345,
+        "generation_tokens": 2,
+        "generation_tps": 5.953969846866729,
+        "peak_memory_gb": 42.566401084,
+        "output_text": "ok",
+        "draft_stats": "2.00 accepted tokens/round (1.00 accepted drafts/round after bonus, 28.6% acceptance, avg draft 7.00) over 1 rounds"
+      },
+      "delta_tps": -36.23886165608052,
+      "delta_pct": -85.8886696275626,
+      "outputs_match": true
+    },
+    {
+      "prompt_id": 2,
+      "prompt": "What is 2 + 2? Reply with a single digit.",
+      "baseline": {
+        "wall_time_s": 0.2661761660128832,
+        "generation_tokens": 2,
+        "generation_tps": 27.587966817355145,
+        "peak_memory_gb": 42.566401084,
+        "output_text": "4"
+      },
+      "dflash": {
+        "wall_time_s": 0.4344887920015026,
+        "generation_tokens": 2,
+        "generation_tps": 7.57238132648028,
+        "peak_memory_gb": 43.645389776,
+        "output_text": "4",
+        "draft_stats": "2.00 accepted tokens/round (1.00 accepted drafts/round after bonus, 28.6% acceptance, avg draft 7.00) over 1 rounds"
+      },
+      "delta_tps": -20.015585490874866,
+      "delta_pct": -72.55186880347915,
+      "outputs_match": true
+    },
+    {
+      "prompt_id": 3,
+      "prompt": "List the first 5 prime numbers separated by commas.",
+      "baseline": {
+        "wall_time_s": 0.8311386670102365,
+        "generation_tokens": 15,
+        "generation_tps": 23.504369637576414,
+        "peak_memory_gb": 43.645389776,
+        "output_text": "2, 3, 5, 7, 11"
+      },
+      "dflash": {
+        "wall_time_s": 0.49052741698687896,
+        "generation_tokens": 15,
+        "generation_tps": 46.12316828707926,
+        "peak_memory_gb": 43.645389776,
+        "output_text": "2, 3, 5, 7, 11",
+        "draft_stats": "7.00 accepted tokens/round (6.00 accepted drafts/round after bonus, 100.0% acceptance, avg draft 7.00) over 2 rounds"
+      },
+      "delta_tps": 22.618798649502846,
+      "delta_pct": 96.23231338798465,
+      "outputs_match": true
+    }
+  ],
+  "aggregate": {
+    "baseline": {
+      "n_prompts": 3,
+      "total_generation_tokens": 19,
+      "total_gen_time_s": 0.7580759999982547,
+      "effective_aggregate_tps": 25.063450102685934,
+      "mean_tps_across_prompts": 31.095055985959604,
+      "max_peak_mem_gb": 43.645389776
+    },
+    "dflash": {
+      "n_prompts": 3,
+      "total_generation_tokens": 19,
+      "total_gen_time_s": 0.92524420900736,
+      "effective_aggregate_tps": 20.535119069141736,
+      "mean_tps_across_prompts": 19.883173153475422,
+      "max_peak_mem_gb": 43.645389776
+    }
+  },
+  "decision": {
+    "outputs_match_all_prompts": true,
+    "dflash_wins_prompts": 1,
+    "dflash_loses_prompts": 2,
+    "dflash_mixed_prompts": 0,
+    "aggregate_tps_baseline": 25.06,
+    "aggregate_tps_dflash": 20.54,
+    "aggregate_delta_pct": -18.04,
+    "peak_mem_delta_gb": 0.0
+  },
+  "decision_summary": "reference DFlash FAILS to win locally \u2014 mixed throughput with aggregate loss"
+}

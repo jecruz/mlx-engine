@@ -1,0 +1,45 @@
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m16-reference-dflash-benchmark/aggregate.py:26: SyntaxWarning: "\|" is an invalid escape sequence. Such sequences will not work in the future. Did you mean "\\|"? A raw string is also an option.
+  output_text = body.rsplit("<|im_start\|>assistant\n", 1)[-1].strip()
+Wrote /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m16-reference-dflash-benchmark/aggregate-summary.json
+
+=== PER-PROMPT ===
+
+prompt 1: 'Reply with the single word ok.'
+  baseline: wall=16.7s, gen_tok=2, gen_tps=41.42, peak=34.0 GB
+          out='<think>\n\n</think>\n\n\nok'
+  dflash:   wall=17.5s, gen_tok=2, gen_tps=9.26, peak=38.3 GB
+          out='<think>\n\n</think>\n\n\nok'
+          draft_stats=3.00 accepted tokens/round (2.00 accepted drafts/round, 28.6% of drafted, avg draft 7.00) over 1 rounds
+  Δ tps: -32.16 (-77.6%), outputs_match=True
+
+prompt 2: 'What is 2 + 2? Reply with a single digit.'
+  baseline: wall=14.7s, gen_tok=2, gen_tps=41.33, peak=34.0 GB
+          out='<think>\n\n</think>\n\n\n4'
+  dflash:   wall=18.7s, gen_tok=2, gen_tps=11.99, peak=39.3 GB
+          out='<think>\n\n</think>\n\n\n4'
+          draft_stats=3.00 accepted tokens/round (2.00 accepted drafts/round, 28.6% of drafted, avg draft 7.00) over 1 rounds
+  Δ tps: -29.34 (-71.0%), outputs_match=True
+
+prompt 3: 'List the first 5 prime numbers separated by commas.'
+  baseline: wall=16.4s, gen_tok=15, gen_tps=24.44, peak=34.0 GB
+          out='<think>\n\n</think>\n\n\n2, 3, 5, 7, 11'
+  dflash:   wall=18.4s, gen_tok=15, gen_tps=38.97, peak=38.9 GB
+          out='<think>\n\n</think>\n\n\n2, 3, 5, 7, 11'
+          draft_stats=8.00 accepted tokens/round (7.00 accepted drafts/round, 100.0% of drafted, avg draft 7.00) over 2 rounds
+  Δ tps: +14.53 (+59.5%), outputs_match=True
+
+=== AGGREGATE ===
+  baseline: avg_tps=35.73, total_tok=19, total_wall=47.90s, max_peak=34.0 GB, min_peak=34.0 GB
+  dflash: avg_tps=20.07, total_tok=19, total_wall=54.60s, max_peak=39.3 GB, min_peak=38.3 GB
+
+=== DECISION FACTORS ===
+  outputs_match_all_prompts: True
+  non_empty_all_outputs: True
+  keyword_expected_present_all_prompts: True
+  no_visible_thinking_leak: False
+  no_repetition_loops: True
+  dflash_wins_prompts: 1
+  dflash_loses_prompts: 2
+  dflash_mixed_prompts: 0
+
+DECISION: reference DFlash fails locally (quality regression detected)
