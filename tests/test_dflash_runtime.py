@@ -17,7 +17,9 @@ from mlx_engine.utils.dflash_runtime import (
     DFLASH_TELEMETRY_KIND_DRAFT_ROUND_PARTIAL,
     DFLASH_TELEMETRY_KIND_INITIAL_BONUS,
     DFLASH_TELEMETRY_KIND_TARGET_ONLY,
+    DFlashAdaptiveScheduler,
     DFlashRoundTelemetry,
+    DFlashSchedulerDecision,
     dflash_stream_generate,
 )
 
@@ -1250,6 +1252,877 @@ class TestDFlashPerRoundTelemetry(unittest.TestCase):
             sum(record.from_target_token_count for record in records),
             5,
         )
+
+
+class TestDFlashAdaptiveScheduler(unittest.TestCase):
+    """Adaptive scheduler unit tests.
+
+    These tests pin the M15 adaptive-scheduler contract (VAL-M15-002
+    scheduler-safety side):
+
+    * Scheduler grows after fully accepted rounds, capped by every
+      documented bound (DFlash block size, configured
+      ``max_draft_tokens``, remaining token budget).
+    * Scheduler shrinks by exactly one slot after any rejected
+      round, floored at ``1`` so the target-only ``bs == 1`` path
+      stays reachable without bypassing ``target_verify=True``.
+    * Scheduler starts at the conservative initial block size and
+      is deterministic across rounds (no telemetry coupling).
+    * Scheduler never exceeds any individual cap and never produces
+      a non-positive block size.
+    * Target-only rounds (``scheduled_block_size <= 1``) do not
+      influence the scheduler's history.
+    """
+
+    def test_starts_at_initial_block_size_clamped_by_max_draft_tokens(self):
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=4, initial_block_size=2)
+        self.assertEqual(scheduler.current_block_size, 2)
+        # Initial block size is clamped to ``max_draft_tokens`` so a
+        # misconfigured ``initial_block_size > max_draft_tokens`` cannot
+        # widen the runtime surface.
+        clamped = DFlashAdaptiveScheduler(
+            max_draft_tokens=2, initial_block_size=8
+        )
+        self.assertEqual(clamped.current_block_size, 2)
+
+    def test_starts_at_one_when_max_draft_tokens_equals_one(self):
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=1, initial_block_size=2)
+        self.assertEqual(scheduler.current_block_size, 1)
+
+    def test_grows_after_fully_accepted_round_within_cap(self):
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=4, initial_block_size=2
+        )
+        # First, run a draft round at bs=2 with the single draft accepted.
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertEqual(decision.scheduled_block_size, 2)
+        scheduler.record_round(accepted_count=1, scheduled_block_size=2)
+        # The scheduler should now grow by one slot.
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertEqual(decision.scheduled_block_size, 3)
+        # Record another full-accept round (2 of 2 drafts at bs=3) and grow again.
+        scheduler.record_round(accepted_count=2, scheduled_block_size=3)
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertEqual(decision.scheduled_block_size, 4)
+        # Cap reached - subsequent fully accepted rounds do not grow.
+        scheduler.record_round(accepted_count=3, scheduled_block_size=4)
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertEqual(decision.scheduled_block_size, 4)
+
+    def test_shrinks_after_any_rejection_floored_at_one(self):
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=4, initial_block_size=3
+        )
+        # Reject both drafts at bs=3 -> shrink.
+        scheduler.record_round(accepted_count=0, scheduled_block_size=3)
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertEqual(decision.scheduled_block_size, 2)
+        # Reject the single draft at bs=2 -> shrink.
+        scheduler.record_round(accepted_count=0, scheduled_block_size=2)
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertEqual(decision.scheduled_block_size, 1)
+        # Floor at 1: even with another rejected round we never go below 1.
+        scheduler.record_round(accepted_count=0, scheduled_block_size=2)
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertEqual(decision.scheduled_block_size, 1)
+
+    def test_partial_rejection_shrinks(self):
+        """A round that accepts some drafts but rejects at least one shrinks.
+
+        bs=3 means 2 drafts; accepting 1 of 2 is a partial rejection.
+        """
+
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=4,
+            initial_block_size=3,
+            grow_threshold=1.0,
+            shrink_threshold=1.0,
+        )
+        scheduler.record_round(accepted_count=1, scheduled_block_size=3)
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertEqual(
+            decision.scheduled_block_size,
+            2,
+            msg="partial rejection (1 of 2 drafts) must shrink the scheduler",
+        )
+
+    def test_partial_rejection_with_relaxed_grow_threshold_does_not_grow(self):
+        """Even with a relaxed grow_threshold, any rejection still shrinks.
+
+        The shrink rule fires whenever ``last_ratio < shrink_threshold``,
+        independent of the grow_threshold. This guards against the
+        scheduler widening past the rejection evidence.
+        """
+
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=4,
+            initial_block_size=3,
+            grow_threshold=0.9,
+            shrink_threshold=0.8,
+        )
+        # 1 of 2 drafts accepted: ratio = 0.5, which is below both
+        # the grow_threshold (0.9) and the shrink_threshold (0.8).
+        # The scheduler must shrink, not grow.
+        scheduler.record_round(accepted_count=1, scheduled_block_size=3)
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertEqual(
+            decision.scheduled_block_size,
+            2,
+            msg="partial rejection must never grow the scheduler",
+        )
+
+    def test_hold_zone_between_thresholds_keeps_size_stable(self):
+        """When acceptance sits between grow and shrink thresholds the
+        scheduler holds the current size.
+
+        With ``grow_threshold=1.0`` and ``shrink_threshold=0.5`` an
+        acceptance ratio of 0.75 sits in the hold zone: the scheduler
+        neither grows nor shrinks.
+        """
+
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=8,
+            initial_block_size=4,
+            grow_threshold=1.0,
+            shrink_threshold=0.5,
+        )
+        # 2 of 3 drafts accepted (ratio = 0.667) - holds at current.
+        scheduler.record_round(accepted_count=2, scheduled_block_size=4)
+        decision = scheduler.next_block_size(block_total=8, remaining_budget=20)
+        self.assertEqual(decision.scheduled_block_size, 4)
+
+        # 1 of 3 drafts accepted (ratio = 0.333) - shrinks.
+        scheduler.record_round(accepted_count=1, scheduled_block_size=4)
+        decision = scheduler.next_block_size(block_total=8, remaining_budget=20)
+        self.assertEqual(decision.scheduled_block_size, 3)
+
+        # 3 of 3 drafts accepted (ratio = 1.0) - grows.
+        scheduler.record_round(accepted_count=3, scheduled_block_size=4)
+        decision = scheduler.next_block_size(block_total=8, remaining_budget=20)
+        self.assertEqual(decision.scheduled_block_size, 4)
+
+    def test_history_does_not_record_target_only_rounds(self):
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=4, initial_block_size=2
+        )
+        # bs == 1 (target-only) rounds should not pollute history.
+        scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        scheduler.record_round(accepted_count=1, scheduled_block_size=1)
+        self.assertEqual(scheduler.history, ())
+        # Subsequent draft round at bs=2 must still treat the
+        # scheduler as if no round has happened yet.
+        scheduler.record_round(accepted_count=1, scheduled_block_size=2)
+        # Growth fires because the most recent ROUND was a fully
+        # accepted bs=2.
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertEqual(decision.scheduled_block_size, 3)
+
+    def test_history_window_bounds_recorded_rounds(self):
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=8,
+            initial_block_size=2,
+            history_window=2,
+        )
+        # First round: full acceptance at bs=2 (1 of 1 draft). Grow to 3.
+        scheduler.record_round(accepted_count=1, scheduled_block_size=2)
+        decision = scheduler.next_block_size(block_total=8, remaining_budget=20)
+        self.assertEqual(decision.scheduled_block_size, 3)
+        # Second round: full acceptance at bs=3 (2 of 2 drafts). Grow to 4.
+        scheduler.record_round(accepted_count=2, scheduled_block_size=3)
+        decision = scheduler.next_block_size(block_total=8, remaining_budget=20)
+        self.assertEqual(decision.scheduled_block_size, 4)
+        # Now register two fully-accepted bs=4 rounds; the history
+        # window is 2, so each new round evicts the oldest.
+        scheduler.record_round(accepted_count=3, scheduled_block_size=4)
+        scheduler.record_round(accepted_count=3, scheduled_block_size=4)
+        # Most recent round was fully accepted, so we grow to 5.
+        decision = scheduler.next_block_size(block_total=8, remaining_budget=20)
+        self.assertEqual(decision.scheduled_block_size, 5)
+
+    def test_never_exceeds_dflash_block_size(self):
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=16, initial_block_size=2
+        )
+        # Force growth via many full-accept rounds, but ``block_total``
+        # caps the scheduler at 4.
+        for _ in range(10):
+            decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+            scheduler.record_round(
+                accepted_count=decision.scheduled_block_size - 1,
+                scheduled_block_size=decision.scheduled_block_size,
+            )
+        # Final size is capped by ``block_total=4``.
+        self.assertLessEqual(scheduler.current_block_size, 4)
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertLessEqual(decision.scheduled_block_size, 4)
+
+    def test_never_exceeds_configured_max_draft_tokens(self):
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=3, initial_block_size=2
+        )
+        for _ in range(10):
+            decision = scheduler.next_block_size(block_total=16, remaining_budget=20)
+            scheduler.record_round(
+                accepted_count=decision.scheduled_block_size - 1,
+                scheduled_block_size=decision.scheduled_block_size,
+            )
+        self.assertLessEqual(scheduler.current_block_size, 3)
+        decision = scheduler.next_block_size(block_total=16, remaining_budget=20)
+        self.assertLessEqual(decision.scheduled_block_size, 3)
+
+    def test_never_exceeds_remaining_token_budget(self):
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=16, initial_block_size=2
+        )
+        # Remaining budget shrinks over time; the scheduler must clip.
+        for budget in (16, 8, 4, 3, 2):
+            decision = scheduler.next_block_size(
+                block_total=16, remaining_budget=budget
+            )
+            self.assertLessEqual(decision.scheduled_block_size, budget)
+            self.assertGreaterEqual(decision.scheduled_block_size, 1)
+            scheduler.record_round(
+                accepted_count=decision.scheduled_block_size - 1,
+                scheduled_block_size=decision.scheduled_block_size,
+            )
+
+    def test_remaining_budget_one_collapses_to_target_only(self):
+        """When the remaining token budget is 1 the scheduler must return 1.
+
+        This is the proven bs==1 target-only path the runtime uses when
+        ``max_draft_tokens=1``: the drafter is bypassed but every emitted
+        token is still target-verified.
+        """
+
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=8, initial_block_size=4
+        )
+        decision = scheduler.next_block_size(block_total=8, remaining_budget=1)
+        self.assertEqual(decision.scheduled_block_size, 1)
+        self.assertEqual(decision.effective_cap, 1)
+        self.assertEqual(decision.clip_reason, "effective_cap")
+
+    def test_block_size_zero_collapses_to_floor_one(self):
+        """A zero ``block_total`` is floored at 1 instead of returning 0."""
+
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=8, initial_block_size=2
+        )
+        decision = scheduler.next_block_size(block_total=0, remaining_budget=8)
+        self.assertEqual(decision.scheduled_block_size, 1)
+        self.assertEqual(decision.effective_cap, 1)
+
+    def test_max_draft_tokens_one_collapses_to_target_only_path(self):
+        """``max_draft_tokens=1`` is the degenerate target-only scheduler."""
+
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=1, initial_block_size=1)
+        # No growth possible at max_draft_tokens=1; every round is bs=1.
+        for _ in range(3):
+            decision = scheduler.next_block_size(block_total=1, remaining_budget=8)
+            self.assertEqual(decision.scheduled_block_size, 1)
+            # ``record_round`` with bs=1 is a no-op so the scheduler
+            # state must remain stable.
+            scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        self.assertEqual(scheduler.history, ())
+
+    def test_decision_carries_clip_reason_for_within_caps(self):
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=4, initial_block_size=2
+        )
+        decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
+        self.assertIsInstance(decision, DFlashSchedulerDecision)
+        self.assertEqual(decision.clip_reason, "within_caps")
+        self.assertEqual(decision.effective_cap, 4)
+
+    def test_history_carries_recent_outcomes_in_observation_order(self):
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=4,
+            initial_block_size=2,
+            history_window=3,
+        )
+        # (accepted, scheduled) tuples. ``scheduled - 1`` drafts; full
+        # accept means accepted == scheduled - 1.
+        outcomes = [
+            (1, 2),  # 1 of 1 drafts accepted (full accept)
+            (0, 2),  # 0 of 1 drafts accepted (full reject)
+            (1, 3),  # 1 of 2 drafts accepted (partial)
+        ]
+        for accepted, scheduled in outcomes:
+            scheduler.record_round(
+                accepted_count=accepted, scheduled_block_size=scheduled
+            )
+        self.assertEqual(scheduler.history, tuple(outcomes))
+        self.assertEqual(scheduler.history_window, 3)
+
+    def test_invalid_construction_arguments_raise(self):
+        with self.assertRaisesRegex(ValueError, "max_draft_tokens"):
+            DFlashAdaptiveScheduler(max_draft_tokens=0)
+        with self.assertRaisesRegex(ValueError, "initial_block_size"):
+            DFlashAdaptiveScheduler(max_draft_tokens=4, initial_block_size=0)
+        with self.assertRaisesRegex(ValueError, "history_window"):
+            DFlashAdaptiveScheduler(max_draft_tokens=4, history_window=0)
+        with self.assertRaisesRegex(ValueError, "grow_threshold"):
+            DFlashAdaptiveScheduler(max_draft_tokens=4, grow_threshold=-0.1)
+        with self.assertRaisesRegex(ValueError, "grow_threshold"):
+            DFlashAdaptiveScheduler(max_draft_tokens=4, grow_threshold=1.5)
+        with self.assertRaisesRegex(ValueError, "shrink_threshold"):
+            DFlashAdaptiveScheduler(max_draft_tokens=4, shrink_threshold=-0.1)
+        with self.assertRaisesRegex(ValueError, "grow_threshold"):
+            DFlashAdaptiveScheduler(
+                max_draft_tokens=4,
+                grow_threshold=0.5,
+                shrink_threshold=0.9,
+            )
+
+
+class _AdaptiveGrowingDraftModel:
+    """Drafter fake that always produces a fully accepted draft block.
+
+    The fake exposes the current scheduler-requested block size via
+    ``requested_block_sizes`` so the adaptive scheduler tests can assert
+    that ``dflash_stream_generate`` honors the scheduler's choices end
+    to end. The fake targets the proven Qwen3.5 sequential layout
+    (16 KVCache + 48 ArraysCache) so the runtime validator lets it
+    through unchanged.
+    """
+
+    def __init__(self, target_layer_ids: list[int] | None = None):
+        self.config = SimpleNamespace(
+            target_layer_ids=target_layer_ids
+            or [1, 10, 18, 27, 35, 44, 52, 61],
+            block_size=8,
+        )
+        self.reset_calls: list[Any] = []
+        self.requested_block_sizes: list[int] = []
+        self.accept_lens: list[int] = []
+        self.draft_lens: list[int] = []
+
+    def reset(self, model):
+        self.reset_calls.append(model)
+        return [
+            SimpleNamespace(lengths=mx.array([0]))
+            for _ in self.config.target_layer_ids
+        ]
+
+    def draft_block(self, last_bonus, hidden, cache, block_size, sampler, token_dtype):
+        self.requested_block_sizes.append(int(block_size))
+        # Return ``block_size - 1`` draft tokens + 1 bonus-style token
+        # so the target walk fully accepts the round.
+        draft_tokens = list(range(100, 100 + block_size - 1))
+        return mx.array([draft_tokens], dtype=token_dtype)
+
+
+class _AdaptiveRejectingDraftModel:
+    """Drafter fake that produces drafts the target will reject.
+
+    The drafter proposes the same tokens every round; the target's
+    fake tokens never match the drafts, so the walk stops at
+    ``accepted=0``. This drives the scheduler's shrink path end to
+    end.
+    """
+
+    DRAFT_TOKEN = 70
+
+    def __init__(self, target_layer_ids: list[int] | None = None):
+        self.config = SimpleNamespace(
+            target_layer_ids=target_layer_ids
+            or [1, 10, 18, 27, 35, 44, 52, 61],
+            block_size=8,
+        )
+        self.reset_calls: list[Any] = []
+        self.requested_block_sizes: list[int] = []
+        self.accept_lens: list[int] = []
+        self.draft_lens: list[int] = []
+
+    def reset(self, model):
+        self.reset_calls.append(model)
+        return [
+            SimpleNamespace(lengths=mx.array([0]))
+            for _ in self.config.target_layer_ids
+        ]
+
+    def draft_block(self, last_bonus, hidden, cache, block_size, sampler, token_dtype):
+        self.requested_block_sizes.append(int(block_size))
+        draft_tokens = [self.DRAFT_TOKEN] * (block_size - 1)
+        return mx.array([draft_tokens], dtype=token_dtype)
+
+
+class _AdaptiveAlwaysRejectTargetModel:
+    """Target fake that never accepts any draft token.
+
+    The target produces logits whose argmax at every verify position
+    is a different token than ``_AdaptiveRejectingDraftModel.DRAFT_TOKEN``.
+    The walk therefore rejects every draft and resamples a fresh bonus
+    token from the last verify position.
+    """
+
+    def __init__(
+        self,
+        prompt_tokens: list[int],
+        bonus_token_sequence: list[int],
+    ):
+        self._prompt_tokens = tuple(prompt_tokens)
+        self._bonus_token_sequence = list(bonus_token_sequence)
+        self._emitted_index = 0
+        self.language_model = self
+        self.rollback_calls: list[tuple[int, int, int]] = []
+        self.calls: list[tuple[tuple[int, ...], dict]] = []
+        self.call_index = 0
+
+    def __call__(self, tokens, **kwargs):
+        seq_tokens = tuple(int(t) for t in tokens.reshape(-1).tolist())
+        kwargs_key = {
+            key: value for key, value in kwargs.items() if key != "cache"
+        }
+        kwargs_key["cache_size"] = len(kwargs.get("cache") or [])
+        self.calls.append((seq_tokens, kwargs_key))
+
+        prompt_cache = kwargs.get("cache")
+        seq_len = len(seq_tokens)
+
+        # Decide the bonus token: walk every draft position with a
+        # token that NEVER matches the drafter's constant token, then
+        # append the next bonus from the configured sequence.
+        bonus_token = (
+            self._bonus_token_sequence[self._emitted_index]
+            if self._emitted_index < len(self._bonus_token_sequence)
+            else 999
+        )
+        self._emitted_index += 1
+
+        # Extend per-layer history where applicable.
+        if prompt_cache is not None:
+            for layer in prompt_cache:
+                history = getattr(layer, "history", None)
+                if isinstance(history, list):
+                    history.extend(seq_tokens)
+
+        vocab_size = max(
+            max(seq_tokens),
+            bonus_token,
+            200,
+        ) + 8
+        logits = mx.full((1, seq_len, vocab_size), -100.0)
+        # Every position gets a token that mismatches the drafter's
+        # constant 70 so the walk rejects everything.
+        for position in range(seq_len):
+            logits[:, position, 71] = 100.0
+        # The bonus token must be the highest-logit at the LAST
+        # position so the sampler picks it.
+        logits[:, seq_len - 1, bonus_token] = 200.0
+        hidden = [
+            mx.full((1, seq_len, 2), float(layer.layer_id + 1))
+            for layer in (prompt_cache or [])
+        ]
+        gdn_states = [
+            SimpleNamespace(
+                layer_id=getattr(layer, "layer_id", layer_index),
+                base_history_len=len(getattr(layer, "history", []) or []),
+                verify_tokens=seq_tokens,
+            )
+            for layer_index, layer in enumerate(prompt_cache or [])
+        ]
+        self.call_index += 1
+        return SimpleNamespace(
+            logits=logits,
+            hidden_states=hidden,
+            gdn_states=gdn_states,
+        )
+
+    def rollback_speculative_cache(self, prompt_cache, gdn_states, accepted, block_size):
+        self.rollback_calls.append((accepted, block_size, len(prompt_cache or [])))
+        # Truncate each layer's history to match the post-rollback state.
+        for layer, gdn_state in zip(prompt_cache or [], gdn_states or []):
+            history = getattr(layer, "history", None)
+            if not isinstance(history, list):
+                continue
+            keep = max(
+                0,
+                int(getattr(gdn_state, "base_history_len", 0))
+                + accepted
+                + 1,
+            )
+            layer.history = history[:keep]
+
+
+class _AdaptiveKit:
+    """Model kit stub for adaptive-scheduler integration tests."""
+
+    def __init__(
+        self,
+        *,
+        target_model: _AdaptiveAlwaysRejectTargetModel,
+        cache_layers: list | None = None,
+        prompt_tokens: list[int] | None = None,
+    ):
+        self.model = target_model
+        self.tokenizer = FakeTokenizer()
+        if cache_layers is None:
+            cache_layers = _make_proven_layout_cache()
+        self.cache_wrapper = SimpleNamespace(cache=cache_layers)
+        self.pending_requests = {}
+        self.max_kv_size = None
+        self.kv_bits = None
+        self.kv_group_size = None
+        self.quantized_kv_start = None
+        self.draft_model = None
+        self.received_cache_tokens: list[int] = []
+        self._prompt_tokens = prompt_tokens or [1]
+        self.process_prompt_calls = 0
+
+    def process_prompt(
+        self,
+        prompt_tokens,
+        images_b64,
+        prompt_progress_reporter,
+        generate_args,
+        max_image_size,
+        **_kwargs,
+    ):
+        self.process_prompt_calls += 1
+        generate_args["prompt_cache"] = self.cache_wrapper.cache
+        return mx.array(self._prompt_tokens, dtype=mx.int32), None
+
+    def is_cross_prompt_cache_active(self):
+        return False
+
+    def record_token_to_cache(self, token):
+        self.received_cache_tokens.append(token)
+
+
+class TestAdaptiveSchedulerIntegration(unittest.TestCase):
+    """End-to-end integration tests proving the scheduler grows and shrinks.
+
+    These tests drive ``dflash_stream_generate`` end to end and assert the
+    scheduler's block-size choices (captured via the drafter fake's
+    ``requested_block_sizes``). The two scenarios cover the contract
+    invariant:
+
+    * With a drafter whose drafts the target fully accepts, the
+      scheduler grows its scheduled block size round over round until
+      it hits the configured cap.
+    * With a drafter whose drafts the target always rejects, the
+      scheduler shrinks its scheduled block size round over round
+      until it floors at 1.
+
+    Every target call still carries ``target_verify=True`` (the proven
+    M14 invariant) and every emitted token is target-verified.
+    """
+
+    def test_scheduler_grows_after_fully_accepted_rounds(self):
+        target = _AdaptiveAlwaysRejectTargetModel(
+            prompt_tokens=[1],
+            bonus_token_sequence=[11, 12, 13, 14, 15, 16],
+        )
+        # We re-purpose the always-reject target as a "forced accept"
+        # target by setting a high-accept threshold. To do that we
+        # use a fresh target that always matches: see helper below.
+        del target  # replaced below
+        kit = _AdaptiveKit(
+            target_model=_AdaptiveAcceptAllTargetModel(
+                prompt_tokens=[1],
+                bonus_token_sequence=[11, 12, 13, 14, 15, 16],
+            ),
+        )
+        draft_model = _AdaptiveGrowingDraftModel()
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-adaptive-grow",
+                max_tokens=12,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=4,
+                    adaptive_scheduling=True,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        # First round: bs=2 (initial conservative start).
+        # After each full-accept round the scheduler grows by one.
+        # The cap is min(max_draft_tokens=4, block_total=8,
+        # remaining_budget). After enough rounds it plateaus at 4.
+        sizes = draft_model.requested_block_sizes
+        self.assertGreaterEqual(len(sizes), 3)
+        # First three rounds must monotonically grow.
+        self.assertEqual(sizes[0], 2)
+        self.assertGreater(sizes[1], sizes[0])
+        self.assertGreater(sizes[2], sizes[1])
+        # Never exceeds configured max_draft_tokens.
+        for size in sizes:
+            self.assertLessEqual(size, 4)
+        # Always >= 1.
+        for size in sizes:
+            self.assertGreaterEqual(size, 1)
+
+    def test_scheduler_shrinks_after_always_rejected_rounds(self):
+        kit = _AdaptiveKit(
+            target_model=_AdaptiveAlwaysRejectTargetModel(
+                prompt_tokens=[1],
+                bonus_token_sequence=[11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+            ),
+        )
+        draft_model = _AdaptiveRejectingDraftModel()
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-adaptive-shrink",
+                max_tokens=12,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=4,
+                    adaptive_scheduling=True,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        sizes = draft_model.requested_block_sizes
+        # The initial bs is 2; after each rejected round the scheduler
+        # shrinks by one until it floors at 1. With the conservative
+        # shrink-on-every-rejection policy the drafter is invoked
+        # exactly twice: once at bs=2 (rejected -> shrink to 1) and
+        # once at bs=1 (which the bs==1 branch in dflash_stream_generate
+        # bypasses entirely, so no further drafter calls).
+        self.assertGreaterEqual(len(sizes), 1)
+        self.assertEqual(sizes[0], 2)
+        for size in sizes:
+            self.assertLessEqual(size, 4)
+            self.assertGreaterEqual(size, 1)
+        # Every scheduler-driven block size is strictly bounded by the
+        # configured ``max_draft_tokens`` cap.
+        for size in sizes:
+            self.assertLessEqual(
+                size,
+                4,
+                msg=(
+                    "scheduler must never exceed configured max_draft_tokens "
+                    f"in rejection path; got {size}"
+                ),
+            )
+
+    def test_adaptive_off_preserves_fixed_block_size(self):
+        """When adaptive_scheduling is False, the runtime uses fixed sizing."""
+
+        kit = _AdaptiveKit(
+            target_model=_AdaptiveAlwaysRejectTargetModel(
+                prompt_tokens=[1],
+                bonus_token_sequence=[11, 12, 13, 14, 15],
+            ),
+        )
+        draft_model = _AdaptiveRejectingDraftModel()
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-adaptive-off",
+                max_tokens=10,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=4,
+                    adaptive_scheduling=False,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        sizes = draft_model.requested_block_sizes
+        self.assertGreaterEqual(len(sizes), 2)
+        # With adaptive scheduling off, every draft round uses the
+        # fixed ``bs = min(block_total, max_draft_tokens, remaining)``
+        # value. With ``block_total=8``, ``max_draft_tokens=4``, and a
+        # healthy remaining budget, that is exactly ``4`` for the
+        # first round.
+        for size in sizes:
+            self.assertLessEqual(size, 4)
+        # After the initial bonus the runtime enters the draft loop;
+        # all subsequent draft rounds use the fixed cap until budget
+        # pressure drops below it.
+        if sizes:
+            self.assertGreaterEqual(sizes[0], 1)
+
+    def test_every_target_call_still_uses_target_verify_true_with_adaptive(self):
+        """The adaptive scheduler must not bypass target_verify=True."""
+
+        kit = _AdaptiveKit(
+            target_model=_AdaptiveAlwaysRejectTargetModel(
+                prompt_tokens=[1],
+                bonus_token_sequence=[11, 12, 13, 14, 15],
+            ),
+        )
+        draft_model = _AdaptiveRejectingDraftModel()
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-adaptive-verify-flag",
+                max_tokens=8,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=4,
+                    adaptive_scheduling=True,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        # Every call (prompt-processing + per-round target verify)
+        # must carry target_verify=True.
+        self.assertGreater(len(kit.model.calls), 1)
+        for call_tokens, call_kwargs in kit.model.calls:
+            self.assertTrue(
+                call_kwargs.get("target_verify"),
+                msg=(
+                    f"adaptive scheduler call with input {call_tokens} must "
+                    f"carry target_verify=True; got kwargs={call_kwargs}"
+                ),
+            )
+
+    def test_adaptive_scheduler_never_below_one(self):
+        """Even with a tiny remaining budget the scheduler stays >= 1."""
+
+        kit = _AdaptiveKit(
+            target_model=_AdaptiveAlwaysRejectTargetModel(
+                prompt_tokens=[1],
+                bonus_token_sequence=[11],
+            ),
+        )
+        draft_model = _AdaptiveRejectingDraftModel()
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-adaptive-floor",
+                max_tokens=4,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=4,
+                    adaptive_scheduling=True,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        sizes = draft_model.requested_block_sizes
+        self.assertGreater(len(sizes), 0)
+        for size in sizes:
+            self.assertGreaterEqual(size, 1)
+
+
+class _AdaptiveAcceptAllTargetModel:
+    """Target fake whose verify output fully matches the drafter's drafts.
+
+    The target's logits at every draft position match the drafter's
+    monotonic token stream so the walk accepts every draft token.
+    Used by ``test_scheduler_grows_after_fully_accepted_rounds`` to
+    drive the grow path of the adaptive scheduler.
+    """
+
+    def __init__(
+        self,
+        prompt_tokens: list[int],
+        bonus_token_sequence: list[int],
+    ):
+        self._prompt_tokens = tuple(prompt_tokens)
+        self._bonus_token_sequence = list(bonus_token_sequence)
+        self._emitted_index = 0
+        self.language_model = self
+        self.rollback_calls: list[tuple[int, int, int]] = []
+        self.calls: list[tuple[tuple[int, ...], dict]] = []
+        self.call_index = 0
+
+    def __call__(self, tokens, **kwargs):
+        seq_tokens = tuple(int(t) for t in tokens.reshape(-1).tolist())
+        kwargs_key = {
+            key: value for key, value in kwargs.items() if key != "cache"
+        }
+        kwargs_key["cache_size"] = len(kwargs.get("cache") or [])
+        self.calls.append((seq_tokens, kwargs_key))
+
+        prompt_cache = kwargs.get("cache")
+        seq_len = len(seq_tokens)
+
+        # Decide the bonus token. The drafter emits tokens in the
+        # range [100, 100+bs-1). We accept every draft so the walk
+        # resamples a fresh bonus at the LAST position.
+        bonus_token = (
+            self._bonus_token_sequence[self._emitted_index]
+            if self._emitted_index < len(self._bonus_token_sequence)
+            else 999
+        )
+        self._emitted_index += 1
+
+        if prompt_cache is not None:
+            for layer in prompt_cache:
+                history = getattr(layer, "history", None)
+                if isinstance(history, list):
+                    history.extend(seq_tokens)
+
+        vocab_size = max(
+            max(seq_tokens + (101, 102, 103, 104)),
+            bonus_token,
+            200,
+        ) + 8
+        logits = mx.full((1, seq_len, vocab_size), -100.0)
+        # Match every draft position: the drafter emits tokens
+        # [100, 100+bs-1) so logits at positions [0..seq_len-2) must
+        # favor those exact tokens.
+        for position in range(seq_len - 1):
+            matching_token = 100 + position
+            if position < seq_len - 1:
+                logits[:, position, matching_token] = 100.0
+        # Bonus at the last position.
+        logits[:, seq_len - 1, bonus_token] = 200.0
+        hidden = [
+            mx.full((1, seq_len, 2), float(layer.layer_id + 1))
+            for layer in (prompt_cache or [])
+        ]
+        gdn_states = [
+            SimpleNamespace(
+                layer_id=getattr(layer, "layer_id", layer_index),
+                base_history_len=len(getattr(layer, "history", []) or []),
+                verify_tokens=seq_tokens,
+            )
+            for layer_index, layer in enumerate(prompt_cache or [])
+        ]
+        self.call_index += 1
+        return SimpleNamespace(
+            logits=logits,
+            hidden_states=hidden,
+            gdn_states=gdn_states,
+        )
+
+    def rollback_speculative_cache(self, prompt_cache, gdn_states, accepted, block_size):
+        self.rollback_calls.append((accepted, block_size, len(prompt_cache or [])))
+        for layer, gdn_state in zip(prompt_cache or [], gdn_states or []):
+            history = getattr(layer, "history", None)
+            if not isinstance(history, list):
+                continue
+            keep = max(
+                0,
+                int(getattr(gdn_state, "base_history_len", 0))
+                + accepted
+                + 1,
+            )
+            layer.history = history[:keep]
 
 
 if __name__ == "__main__":

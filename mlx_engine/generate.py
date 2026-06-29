@@ -321,6 +321,7 @@ def load_model(
     dflash_target_model: str | Path | None = None,
     dflash_drafter_model: str | Path | None = None,
     dflash_max_draft_tokens: int | None = None,
+    dflash_adaptive_scheduling: bool | None = None,
 ) -> LoadedModelKit:
     """
     Load a language model or vision-language model from the specified path.
@@ -395,6 +396,7 @@ def load_model(
         dflash_target_model,
         dflash_drafter_model,
         dflash_max_draft_tokens,
+        dflash_adaptive_scheduling,
     )
     if dflash_options.enabled:
         validate_dflash_preload_compatibility(
@@ -690,6 +692,7 @@ def create_generator(
         kwargs.pop("dflash_target_model", None),
         kwargs.pop("dflash_drafter_model", None),
         kwargs.pop("dflash_max_draft_tokens", None),
+        kwargs.pop("dflash_adaptive_scheduling", None),
     )
     suffix_decoding_options = resolve_suffix_decoding_options(
         kwargs.get("suffix_decoding_toggle"),

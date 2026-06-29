@@ -20,6 +20,7 @@ DFLASH_ENV = "MLX_ENGINE_DFLASH"
 DFLASH_TARGET_MODEL_ENV = "MLX_ENGINE_DFLASH_TARGET_MODEL"
 DFLASH_DRAFTER_MODEL_ENV = "MLX_ENGINE_DFLASH_DRAFTER_MODEL"
 DFLASH_MAX_DRAFT_TOKENS_ENV = "MLX_ENGINE_DFLASH_MAX_DRAFT_TOKENS"
+DFLASH_ADAPTIVE_SCHEDULING_ENV = "MLX_ENGINE_DFLASH_ADAPTIVE_SCHEDULING"
 DEFAULT_DFLASH_MAX_DRAFT_TOKENS = 4
 DFLASH_EXPECTED_DTYPE = "bfloat16"
 DFLASH_REQUIRED_TARGET_TOKENIZER_FILES = (
@@ -115,6 +116,7 @@ class DFlashBoundaryOptions:
     target_model_path: Path | None = None
     drafter_model_path: Path | None = None
     max_draft_tokens: int = DEFAULT_DFLASH_MAX_DRAFT_TOKENS
+    adaptive_scheduling: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.enabled, bool):
@@ -133,6 +135,8 @@ class DFlashBoundaryOptions:
             or self.max_draft_tokens < 1
         ):
             raise ValueError("dflash_max_draft_tokens must be a positive integer")
+        if not isinstance(self.adaptive_scheduling, bool):
+            raise ValueError("dflash adaptive_scheduling must be a boolean")
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +201,7 @@ def resolve_dflash_options(
     dflash_target_model: str | Path | None,
     dflash_drafter_model: str | Path | None,
     dflash_max_draft_tokens: int | None,
+    dflash_adaptive_scheduling: bool | None = None,
 ) -> DFlashBoundaryOptions:
     """Resolve public DFlash kwargs/env into validated boundary options."""
 
@@ -215,11 +220,17 @@ def resolve_dflash_options(
         if dflash_max_draft_tokens is None
         else dflash_max_draft_tokens
     )
+    adaptive_scheduling = (
+        _env_flag(DFLASH_ADAPTIVE_SCHEDULING_ENV)
+        if dflash_adaptive_scheduling is None
+        else dflash_adaptive_scheduling
+    )
     return DFlashBoundaryOptions(
         enabled=True,
         target_model_path=_coerce_path(target_model_path),
         drafter_model_path=_coerce_path(drafter_model_path),
         max_draft_tokens=max_draft_tokens,
+        adaptive_scheduling=adaptive_scheduling,
     )
 
 
