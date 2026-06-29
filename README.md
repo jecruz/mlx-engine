@@ -135,6 +135,16 @@ OPT-IN / NO PROMOTION; see the 20260629T205452 shared-bench, quality-compare,
 and `.planning/dflash-adaptive-quality-performance-decision-20260629T205452Z.json`
 artifacts for the closeout evidence.
 
+M16 closeout tested original/reference DFlash locally through the `mlx_vlm`
+reference implementation, not the native `mlx-engine` DFlash runtime. The
+load-once A/B found baseline effective generation TPS `25.06` versus reference
+DFlash `20.54`, a `-18.04%` regression, with `1/3` prompt wins and `2/3`
+losses. Outputs matched and quality was preserved, but reference DFlash failed
+as a general optimization, so further DFlash porting/optimization is NO-GO
+unless the user explicitly overrides. Evidence lives under
+`.planning/m16-reference-dflash-benchmark/`; see commits `8cf32d6` and
+`1229cc5` for the M16 closeout and lint-fix evidence chain.
+
 ## Development Setup
 
 ### Pre-commit Hooks
