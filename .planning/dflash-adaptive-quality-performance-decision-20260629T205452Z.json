@@ -1,0 +1,219 @@
+{
+  "feature_id": "m15-dflash-quality-performance-decision",
+  "decision": "REJECT",
+  "decision_recorded_at": "2026-06-29T20:54:52Z",
+  "engine_head": "5151f89",
+  "harness_head": "49387ee",
+  "adaptive_scheduling_enabled": true,
+  "preconditions": {
+    "m15_dflash_low_acceptance_fallback_complete": true,
+    "m14_quality_suite_available": true,
+    "m14_baseline_invocation_shape_available": true,
+    "resource_preflight_allows_heavyweight_real_pair_validation": true
+  },
+  "preflight": {
+    "ready_for_dflash_smoke": true,
+    "cloud_only_listener": true,
+    "blocked_listener": false,
+    "evidence": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-m15-quality.json"
+  },
+  "baseline_report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205152.968472Z-shared-bench.json",
+  "baseline_reused_existing": false,
+  "baseline_reuse_justification": "Captured a fresh baseline this run to guarantee identical machine state with the candidate (M14 baseline 20260628T090101.820031Z is 24h old and pre-dates the M15 fallback commit 5151f89; the new baseline re-confirms engine HEAD behavior is unchanged on the non-DFlash path with 10/10 rows error-free and decode_tps in 22.9-31.3 range, very close to M14 baseline).",
+  "candidate_report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205452.027134Z-shared-bench.json",
+  "quality_compare_report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205452.027134Z-quality-compare.json",
+  "quality_inspect_report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205452.027134Z-quality-inspect.json",
+  "row_error_inspection": {
+    "baseline_total_rows": 10,
+    "baseline_clean_rows": 10,
+    "baseline_errors": [],
+    "candidate_total_rows": 10,
+    "candidate_clean_rows": 10,
+    "candidate_errors": []
+  },
+  "quality_compare_status": "fail",
+  "quality_compare_failed_prompts": [
+    "m14_dflash_short_factual",
+    "m14_dflash_brief_summary",
+    "m14_dflash_code_function",
+    "m14_dflash_json_output",
+    "m14_dflash_math_calc"
+  ],
+  "quality_compare_findings_per_prompt": {
+    "m14_dflash_short_factual": {
+      "compare_status": "fail",
+      "ttft_change_pct": 719.97,
+      "decode_tps_change_pct": -52.76,
+      "total_change_pct": 788.52,
+      "candidate_row_findings": [
+        "candidate row 1: completion tokens 16 >= 1, but text repeats 'assistant\\n\\n<think>' suffix; keyword 'ok' hit but visible-thinking leak via 'thinking' / '</think>' substring",
+        "candidate row 2: same keyword hit, same visible-thinking leak"
+      ],
+      "baseline_row_findings": []
+    },
+    "m14_dflash_brief_summary": {
+      "compare_status": "fail",
+      "ttft_change_pct": 73.33,
+      "decode_tps_change_pct": -18.14,
+      "total_change_pct": 139.69,
+      "candidate_row_findings": [
+        "candidate row 1: repeated 5-gram count 6 exceeds 3 (loops on 'The answer is: The answer is:')",
+        "candidate row 2: repeated 5-gram count 4 exceeds 3 + repeated line ratio 0.571 >= 0.500 (loops on 'Paris is capital of France.user\\n\\nassistant')"
+      ],
+      "baseline_row_findings": []
+    },
+    "m14_dflash_code_function": {
+      "compare_status": "fail",
+      "ttft_change_pct": 67.77,
+      "decode_tps_change_pct": -15.11,
+      "total_change_pct": 126.75,
+      "candidate_row_findings": [
+        "candidate row 1: forbidden substrings 'Thinking Process' / 'thinking' found (visible-thinking leak)",
+        "candidate row 2: same forbidden substring leak"
+      ],
+      "baseline_row_findings": []
+    },
+    "m14_dflash_json_output": {
+      "compare_status": "fail",
+      "ttft_change_pct": 69.47,
+      "decode_tps_change_pct": -11.75,
+      "total_change_pct": 67.68,
+      "candidate_row_findings": [
+        "candidate row 1: missing prompt keywords: risk, mitigation, owner; invalid exact JSON object: Extra data; repeated line ratio 0.769 >= 0.500",
+        "candidate row 2: same missing keywords, same invalid JSON, same repeated line ratio"
+      ],
+      "baseline_row_findings": []
+    },
+    "m14_dflash_math_calc": {
+      "compare_status": "fail",
+      "ttft_change_pct": 57.43,
+      "decode_tps_change_pct": -7.22,
+      "total_change_pct": 17.44,
+      "candidate_row_findings": [
+        "candidate row 1: missing prompt keyword 38.9",
+        "candidate row 2: missing prompt keyword 38.9"
+      ],
+      "baseline_row_findings": []
+    }
+  },
+  "per_prompt_latency_deltas_candidate_minus_baseline": {
+    "m14_dflash_short_factual": {
+      "baseline_avg_ttft_s": 0.551,
+      "candidate_avg_ttft_s": 4.515,
+      "baseline_avg_decode_tps": 30.250,
+      "candidate_avg_decode_tps": 14.289,
+      "baseline_avg_total_s": 0.650,
+      "candidate_avg_total_s": 5.775
+    },
+    "m14_dflash_brief_summary": {
+      "baseline_avg_ttft_s": 0.486,
+      "candidate_avg_ttft_s": 0.843,
+      "baseline_avg_decode_tps": 24.583,
+      "candidate_avg_decode_tps": 20.125,
+      "baseline_avg_total_s": 1.015,
+      "candidate_avg_total_s": 2.433
+    },
+    "m14_dflash_code_function": {
+      "baseline_avg_ttft_s": 0.495,
+      "candidate_avg_ttft_s": 0.831,
+      "baseline_avg_decode_tps": 23.449,
+      "candidate_avg_decode_tps": 19.906,
+      "baseline_avg_total_s": 2.500,
+      "candidate_avg_total_s": 5.668
+    },
+    "m14_dflash_json_output": {
+      "baseline_avg_ttft_s": 0.494,
+      "candidate_avg_ttft_s": 0.837,
+      "baseline_avg_decode_tps": 23.340,
+      "candidate_avg_decode_tps": 20.598,
+      "baseline_avg_total_s": 3.279,
+      "candidate_avg_total_s": 5.498
+    },
+    "m14_dflash_math_calc": {
+      "baseline_avg_ttft_s": 0.505,
+      "candidate_avg_ttft_s": 0.795,
+      "baseline_avg_decode_tps": 22.928,
+      "candidate_avg_decode_tps": 21.272,
+      "baseline_avg_total_s": 2.599,
+      "candidate_avg_total_s": 3.052
+    }
+  },
+  "per_row_dflash_telemetry": {
+    "m14_dflash_short_factual": {
+      "round_count_run_1": 14,
+      "draft_rounds_run_1": 3,
+      "target_only_rounds_run_1": 10,
+      "rollback_rounds_run_1": 2,
+      "accepted_run_1": 2,
+      "rejected_run_1": 2,
+      "target_verify_ms_run_1": 37.2,
+      "fallback_status_run_1": "fallback_pathological_target_only",
+      "fallback_trigger_round_run_1": 8
+    },
+    "m14_dflash_brief_summary": {
+      "round_count_run_1": 31,
+      "draft_rounds_run_1": 3,
+      "target_only_rounds_run_1": 27,
+      "rollback_rounds_run_1": 2,
+      "accepted_run_1": 1,
+      "rejected_run_1": 3,
+      "target_verify_ms_run_1": 77.8,
+      "fallback_status_run_1": "fallback_pathological_target_only",
+      "fallback_trigger_round_run_1": 8
+    },
+    "m14_dflash_code_function": {
+      "round_count_run_1": 96,
+      "draft_rounds_run_1": 1,
+      "target_only_rounds_run_1": 94,
+      "rollback_rounds_run_1": 1,
+      "accepted_run_1": 0,
+      "rejected_run_1": 1,
+      "target_verify_ms_run_1": 220.4,
+      "fallback_status_run_1": "fallback_pathological_target_only",
+      "fallback_trigger_round_run_1": 6
+    },
+    "m14_dflash_json_output": {
+      "round_count_run_1": 95,
+      "draft_rounds_run_1": 3,
+      "target_only_rounds_run_1": 91,
+      "rollback_rounds_run_1": 2,
+      "accepted_run_1": 1,
+      "rejected_run_1": 3,
+      "target_verify_ms_run_1": 222.8,
+      "fallback_status_run_1": "fallback_pathological_target_only",
+      "fallback_trigger_round_run_1": 8
+    },
+    "m14_dflash_math_calc": {
+      "round_count_run_1": 43,
+      "draft_rounds_run_1": 7,
+      "target_only_rounds_run_1": 35,
+      "rollback_rounds_run_1": 4,
+      "accepted_run_1": 5,
+      "rejected_run_1": 5,
+      "target_verify_ms_run_1": 100.2,
+      "fallback_status_run_1": "fallback_pathological_target_only",
+      "fallback_trigger_round_run_1": 12
+    }
+  },
+  "second_repeated_sample_collected": false,
+  "second_sample_skipped_reason": "Lane description forbids additional heavyweight repeated samples when quality_compare status=fail on every prompt. No quality-passing sample exists to repeat against, so the >=2 quality-passing requirement cannot be satisfied regardless of the second sample's metric movement.",
+  "decision_rationale": [
+    "quality_compare.py status=fail on all 5 deterministic prompts (m14_dflash_short_factual, m14_dflash_brief_summary, m14_dflash_code_function, m14_dflash_json_output, m14_dflash_math_calc).",
+    "Every prompt fails both output-quality thresholds (repeated 5-gram > 3, repeated line ratio >= 0.5, missing keywords, forbidden thinking substrings, invalid JSON) and timing thresholds (TTFT +57-720%, decode TPS -7-52%, total +17-788%).",
+    "Adaptive scheduling+fallback is stable (no row errors, every row carries fallback_status=fallback_pathological_target_only, target_verify=True preserved on every emission, sequential_text_only=true) but the drafter is invoked so rarely (draft_rounds 1-7 across 14-96 total rounds) that the per-emission target verify cost dominates the latency profile and the target_correction logic still introduces output-quality loops.",
+    "There is no metric in which the adaptive DFlash candidate produces a repeatable latency win over the non-DFlash baseline; every metric on every prompt regresses.",
+    "The M14 closeout (2026-06-28) already closed the prior fixed-block-size lanes as REJECT; the adaptive scheduling+fallback lane cannot close the per-emission target-verify overhead with this prompt mix, so the M15 quality/performance evaluation closes as REJECT as well.",
+    "DFlash remains default-off and KEEP OPT-IN per AGENTS.md and the M14 closeout rationale. No promotion lane opens from this evidence."
+  ],
+  "operational_outcome": {
+    "dflash_default_off": true,
+    "dflash_opt_in_path_unchanged": true,
+    "promotion": false,
+    "no_additional_heavyweight_samples_for_m15": true
+  },
+  "fulfills_assertion_ids": ["VAL-M15-005", "VAL-M15-006"],
+  "fulfills_assertion_statuses": {
+    "VAL-M15-005": "satisfied — quality_compare.py status recorded (status=fail); row-error inspection completed for both baseline and candidate reports (10/10 rows error-free); no JSON/math/repetition regression masked by the gate (every regression is surfaced by the gate).",
+    "VAL-M15-006": "satisfied — second repeated sample not collected (lane description forbids it after status=fail); decision REJECT recorded with evidence paths; explicit default-off rationale captured; DFlash stays opt-in."
+  }
+}

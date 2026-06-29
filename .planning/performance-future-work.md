@@ -3040,3 +3040,130 @@ Subsequent rounds continue to use the existing `target_only` kind because the pe
 ### Decision
 
 The fallback lane is **implementation only**. No real-model benchmark runs are recorded here; the M15 quality/performance gate (`m15-dflash-quality-performance-decision`) remains the gate that decides promote/keep/opt-in/reject from repeated quality-passing samples. The fallback is a default-off opt-in inside `adaptive_scheduling=True` and does not change any other M15 path.
+
+## M15 DFlash adaptive scheduling quality/performance decision — REJECT (2026-06-29)
+
+Feature `m15-dflash-quality-performance-decision` (this run) is the M15 closeout gate. The lane description is explicit: "Run the M15 adaptive/fallback DFlash candidate through the real Qwen3.6 + z-lab DFlash quality and performance gate. Use direct `shared_bench.py` reports and `quality_compare.py` only. Inspect every baseline and candidate row error. Promotion requires `quality_compare.py status=pass` and at least two quality-passing repeated samples with a repeatable latency win over the non-DFlash baseline; otherwise record KEEP OPT-IN/REJECT and keep DFlash default-off." After the M15 telemetry (commit `35f8ecf`), adaptive scheduler (commit `310f23d`), and low-acceptance fallback (commit `5151f89`) landed, this worker re-ran the M14 quality gate with `MLX_ENGINE_DFLASH_ADAPTIVE_SCHEDULING=1`, the Qwen3.6 27B target plus z-lab Qwen3.5 DFlash drafter, and the same `prompt_suites/m14_dflash_quality_gate.json` suite as the M14 lanes. **The quality gate fails** on all 5 prompts and **every latency metric regresses** on every prompt; the adaptive scheduling + pathological-target-only fallback engages on every row but cannot close the per-emission target-verify overhead or the target-correction output-quality drift.
+
+### Invocations (verbatim)
+
+Fresh non-DFlash baseline (DFlash off, captured this run to match current engine HEAD including the M15 fallback commit `5151f89`):
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --prompt-suite-json prompt_suites/m14_dflash_quality_gate.json \
+  --runs 2 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text \
+  --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+```
+
+Adaptive DFlash candidate (`MLX_ENGINE_DFLASH_ADAPTIVE_SCHEDULING=1`, `--dflash-max-draft-tokens 4` as the per-round ceiling):
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. MLX_ENGINE_DFLASH_ADAPTIVE_SCHEDULING=1 python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --dflash \
+  --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 \
+  --dflash-max-draft-tokens 4 \
+  --prompt-suite-json prompt_suites/m14_dflash_quality_gate.json \
+  --runs 2 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text \
+  --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports
+```
+
+### Reports captured
+
+- **Fresh non-DFlash baseline report (this run):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205152.968472Z-shared-bench.json`. Captured this run instead of reusing the M14 baseline (`20260628T090101.820031Z`) to guarantee identical machine state with the candidate (the M14 baseline is 24h old and pre-dates the M15 fallback commit). All 10 rows `error: null`, baseline decode_tps in 22.9-31.3 range, very close to the M14 baseline (TTFT 0.486-0.551, total 0.65-3.28s).
+- **Adaptive DFlash candidate report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205452.027134Z-shared-bench.json`. All 10 rows `error: null`, every row carries `dflash.opted_in: true`, `dflash.uses_native_runtime: true`, `dflash.sequential_text_only: true`, `dflash.fallback_status: fallback_pathological_target_only`, `dflash.fallback_reason: pathological_target_only`, `dflash.fallback_trigger_round` between 6 and 12. Per-row telemetry (`round_count`, `draft_round_count`, `target_only_round_count`, `rollback_round_count`, accepted/rejected tokens, target_verify / drafter / rollback / emission elapsed seconds) is recorded by the M15 telemetry aggregator on every row.
+- **Quality compare (adaptive candidate vs fresh baseline):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205452.027134Z-quality-compare.json`. `status=fail`, `failed_prompts=["m14_dflash_short_factual","m14_dflash_brief_summary","m14_dflash_code_function","m14_dflash_json_output","m14_dflash_math_calc"]` (all 5 prompts).
+- **Quality inspect (single-report, adaptive candidate alone):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205452.027134Z-quality-inspect.json`. `status=fail`, `failed_prompts=["m14_dflash_brief_summary","m14_dflash_code_function","m14_dflash_json_output","m14_dflash_math_calc"]` (4 prompts fail on absolute quality checks; `m14_dflash_short_factual` passes the absolute check because the `ok` keyword hit covers the 1-token min-completion threshold, but the row still emits trailing thinking tags that the compare JSON flags as visible-thinking leakage).
+- **Structured evidence:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-adaptive-quality-performance-decision-20260629T205452Z.json`. Captures the per-prompt baseline vs candidate latency deltas, the per-row DFlash telemetry summary, the per-prompt quality findings, the no-second-sample justification, and the `fulfills_assertion_statuses` mapping for `VAL-M15-005` / `VAL-M15-006`.
+
+### Row-error inspection (mandatory before accepting the gate)
+
+- **Baseline report (`20260629T205152.968472Z`):** all 10 rows (5 prompts × 2 runs) have `error: null`, no `RuntimeError`, no cross-thread stream failure, every `dflash.fallback_status=default_off` (DFlash off), every expected keyword hits.
+- **Candidate report (`20260629T205452.027134Z`):** all 10 rows have `error: null`, every row carries `dflash.fallback_status=fallback_pathological_target_only` (the runtime-engaged fallback path, distinct from `fallback_preflight` and `fallback_unsupported_surface`), every row reports `dflash.uses_native_runtime=true` and `dflash.sequential_text_only=true`, no VLM / batched / distributed / adapter / preflight fallback. Zero row-level errors and zero preflight failures, so the gate fails only on quality and timing regressions, not on the runtime path.
+- **Row-level keyword retention (candidate):** `ok: True` (short_factual), `capital: True` (brief_summary), `add: True, return: True` (code_function), `38.9: False` (math_calc, both runs miss the expected keyword), `risk: False, mitigation: False, owner: False` (json_output, all three expected keys missing on both runs). The math and JSON prompts lose the expected keywords outright.
+- **Row-level output defects (candidate):** `m14_dflash_brief_summary` rows 1/2 emit `The capital of France.\nThe answer is: The answer is: The answer is: ...` and `Paris is capital of France.user\n\nassistant\nassistant\nuser<|...` (repeated 5-gram 6 and 4, repeated line ratio 0.0 and 0.571). `m14_dflash_code_function` rows 1/2 emit the correct `def add(a, b): return a + b` Python function followed by `user\nassistant\n<think>\nHere's a thinking process: ...` (forbidden substring `Thinking Process` / `thinking`). `m14_dflash_json_output` rows 1/2 emit `{\n  "model": "NVIDIA A100",\n  "framework": "PyTorch",\n  "batchsize": 32,\n  "precision": "FP16"\n}\n</think>\n{\n  "hardwaremodel": ...` (wrong keys, repeated line ratio 0.769). `m14_dflash_math_calc` rows 1/2 emit `$$ \frac{100\%} $$\nThe percentage decrease is calculated as:\n$$ \frac{\text{Original Value} - \text{New Value}}{\text{Original Value}} \times 100$$ ...` (the literal `38.9` answer never appears).
+
+### Per-row adaptive-scheduling + fallback telemetry (candidate report, run 1)
+
+| Prompt | round_count | draft_rounds | target_only_rounds | rollback_rounds | accepted | rejected | target_verify_ms | fallback_status | fallback_trigger_round |
+|---|---:|---:|---:|---:|---:|---:|---:|---|---:|
+| `m14_dflash_short_factual` | 14 | 3 | 10 | 2 | 2 | 2 | 37.2 | `fallback_pathological_target_only` | 8 |
+| `m14_dflash_brief_summary` | 31 | 3 | 27 | 2 | 1 | 3 | 77.8 | `fallback_pathological_target_only` | 8 |
+| `m14_dflash_code_function` | 96 | 1 | 94 | 1 | 0 | 1 | 220.4 | `fallback_pathological_target_only` | 6 |
+| `m14_dflash_json_output` | 95 | 3 | 91 | 2 | 1 | 3 | 222.8 | `fallback_pathological_target_only` | 8 |
+| `m14_dflash_math_calc` | 43 | 7 | 35 | 4 | 5 | 5 | 100.2 | `fallback_pathological_target_only` | 12 |
+
+The adaptive scheduler shrinks the per-round block size aggressively after every partial rejection, and the pathological-target-only fallback detector trips by round 6-12 on every prompt. Once engaged, the runtime collapses to the proven `bs == 1` target-only path with `target_verify=True` preserved on every emission (default-off invariants intact). The drafter is invoked at most 7 times across 96 total rounds on `code_function`, and the remaining 89-94 rounds pay a full target-verify forward pass per emitted token. The fallback successfully avoids the broken-output defects of the prior `max_draft_tokens=4` lane (no JSON keys exploding to `" "`-repeats, no Python code with `python\npython\n` loops), but it pays for that safety with the per-emission target-verify overhead that dominates total time on every prompt.
+
+### Per-prompt latency attribution (candidate vs fresh baseline, run 1 / run 2 means)
+
+| Prompt | Baseline avg TTFT (s) | Candidate avg TTFT (s) | Δ TTFT (%) | Baseline avg TPS | Candidate avg TPS | Δ TPS (%) | Baseline avg total (s) | Candidate avg total (s) | Δ total (%) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `m14_dflash_short_factual` | 0.551 | 4.515 | **+719.97%** | 30.250 | 14.289 | **-52.76%** | 0.650 | 5.775 | **+788.52%** |
+| `m14_dflash_brief_summary` | 0.486 | 0.843 | +73.33% | 24.583 | 20.125 | -18.14% | 1.015 | 2.433 | +139.69% |
+| `m14_dflash_code_function` | 0.495 | 0.831 | +67.77% | 23.449 | 19.906 | -15.11% | 2.500 | 5.668 | +126.75% |
+| `m14_dflash_json_output` | 0.494 | 0.837 | +69.47% | 23.340 | 20.598 | -11.75% | 3.279 | 5.498 | +67.68% |
+| `m14_dflash_math_calc` | 0.505 | 0.795 | +57.43% | 22.928 | 21.272 | -7.22% | 2.599 | 3.052 | +17.44% |
+
+Every prompt regresses on TTFT (range +57.43% to +719.97%), on decode TPS (range -7.22% to -52.76%), and on total latency (range +17.44% to +788.52%). The `short_factual` row 1 candidate hits a cold-prefill penalty (9.71s with TTFT 8.03s) on top of the per-emission target-verify overhead, but the median TTFT and total already regress even before that cold outlier is included.
+
+### Quality compare summary
+
+`quality_compare.py --baseline reports/20260629T205152.968472Z-shared-bench.json --candidate reports/20260629T205452.027134Z-shared-bench.json` returned **`status=fail`**, `failed_prompts=[…all 5 prompts…]`, `global_findings=[]`. The compare JSON records per-prompt findings:
+
+- `m14_dflash_short_factual`: total +788.52%, warm TTFT median regression >5%, warm total median regression >5%, decode TPS -52.76% (threshold -20%); absolute candidate rows still hit the `ok` keyword but emit a trailing `assistant\n\n<think>\n</think>` block that the compare JSON treats as a visible-thinking leak.
+- `m14_dflash_brief_summary`: total +139.69%, warm TTFT median +135.12%, warm total median +174.03%; repeated 5-gram 6 and 4 (threshold 3); repeated line ratio 0.571 (threshold 0.500).
+- `m14_dflash_code_function`: total +126.75%, warm TTFT median regression >5%, warm total median regression >5%; forbidden substring `Thinking Process` / `thinking` found on both candidate rows.
+- `m14_dflash_json_output`: total +67.68%, warm TTFT median regression >5%, warm total median regression >5%; missing keywords `risk`, `mitigation`, `owner`; invalid exact JSON object (`Extra data`); repeated line ratio 0.769 (threshold 0.500).
+- `m14_dflash_math_calc`: total +17.44%, warm TTFT median regression >5%, warm total median regression >5%; missing keyword `38.9` on both candidate rows.
+
+### Decision: **REJECT** — no promotion, no default-on, keep DFlash default-off and KEEP OPT-IN
+
+- `quality_compare.py status == "pass"` is **not** satisfied. The candidate fails every prompt on coarse timing regressions (TTFT +57-720%, decode TPS -7-52%, total +17-788%, all outside the 5% / 20% promotion thresholds) and on absolute output-quality defects (missing keywords, forbidden thinking substrings, invalid JSON, repeated 5-gram loops, repeated line ratios). The adaptive scheduling + fallback lane cannot close the per-emission target-verify overhead on this prompt mix and cannot stop the target-correction logic from drifting into repeated-token loops / wrong JSON keys / wrong math answers on the structured prompts.
+- `VAL-M15-005` (real-model scheduling candidate passes quality before performance claims) — **NOT MET**. `quality_compare.py status=fail` on every prompt.
+- `VAL-M15-006` (promotion requires ≥2 quality-passing repeated samples with a repeatable latency win) — **NOT MET**. No quality-passing sample exists, so the ≥2 quality-passing requirement cannot be satisfied regardless of the second sample's metric movement.
+- A second repeated candidate sample is **not collected**. The lane description says "if quality passes, at least two repeated candidate samples are captured and latency deltas are recorded"; quality does not pass, so the second heavyweight repeated sample is not collected per the feature's `expectedBehavior` ("Otherwise, recorded KEEP OPT-IN/REJECT decision with report paths, quality/performance evidence, and explicit default-off rationale").
+
+**Explicit no-promotion rationale (per lane description):**
+
+1. **Quality gate did not pass.** `quality_compare.py status=fail` on every prompt. The adaptive scheduler's pathological-target-only fallback successfully prevents the broken-output defects of the prior `max_draft_tokens=4` lane (no JSON-key `" "`-repeats, no Python `python\npython\n` loops) but it still drifts on the structured / math / JSON prompts (missing keywords, forbidden thinking substrings, invalid JSON, repeated line ratios) and it regresses every latency metric.
+2. **Every metric regresses.** There is no TTFT win, no decode TPS win, no total-latency win, no per-emit speed win to compensate for the failed quality gate. Even the prompts where the adaptive scheduler invokes the drafter the most (`math_calc` with 7 draft rounds across 43 rounds) still regress every metric vs the non-DFlash baseline.
+3. **The M14 closeout REJECT stands.** The M14 lane closed three consecutive quality-gate attempts (`max_draft_tokens=4`, `max_draft_tokens=1` pre-loop-fix, `max_draft_tokens=1` post-loop-fix) as REJECT because the per-emission target-verify cost dominates on this prompt mix and no `max_draft_tokens` setting produces a speed win. The M15 adaptive scheduling + fallback lane is the user-approved follow-up but cannot close that gap: the fallback correctly collapses to the target-only path (the safe behavior), but the target-only path itself is uniformly slower than vanilla autoregressive decoding because every emission triggers a full target-verify round trip on the 27B target.
+4. **No further heavyweight samples for M15.** Per the lane description and AGENTS.md, when the quality gate fails, no additional heavyweight repeated samples are run. This lane reuses the AGENTS.md no-promotion rationale and locks the M15 evaluation at REJECT.
+5. **AGENTS.md and lane description both support REJECT closure.** AGENTS.md says "M15 DFlash scheduling optimization … Do not promote unless quality passes and at least two repeated samples show a repeatable latency win." The lane description says "Promotion requires `quality_compare.py status=pass` and at least two quality-passing repeated samples with a repeatable latency win over the non-DFlash baseline; otherwise record KEEP OPT-IN/REJECT and keep DFlash default-off." Neither condition is met; the lane closes as REJECT for the M15 quality/performance evaluation.
+
+**Operational outcome of REJECT:**
+
+- DFlash stays default-off and opt-in. No flag is flipped, no default-on change is made, no promotion lane is opened.
+- The M15 adaptive scheduler (`310f23d`) and low-acceptance / pathological-target-only fallback (`5151f89`) remain on the branch as opt-in infrastructure alongside the M13 native DFlash foundation and the M14 runtime-loop / target-verify / wrapper-hook fixes. Those are correctness primitives, not promotion evidence.
+- The `VAL-M15-001` per-round telemetry, `VAL-M15-002` adaptive scheduler safety bounds, `VAL-M15-003` pathological low-acceptance fallback, and `VAL-M15-004` fail-closed unsupported-surface invariants were each captured and tested in their respective implementation lanes. `VAL-M15-005` and `VAL-M15-006` close here as **NOT MET** (quality gate fails; no quality-passing repeated sample exists).
+- A future lane would need to redesign the per-emission target-verify overhead (not just the scheduling block size) before re-entering this evaluation. The current evidence chain (M14 three-lane REJECT + this M15 adaptive-scheduling REJECT) demonstrates the runtime path executes correctly but cannot beat the non-DFlash baseline on the M14 quality suite.
+
+### Evidence chain (cite order for any future M15 review)
+
+| Artifact | Path | Status |
+|---|---|---|
+| Fresh non-DFlash baseline (this run) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205152.968472Z-shared-bench.json` | 10/10 rows `error: null`; `dflash.fallback_status=default_off` |
+| Adaptive DFlash candidate (this run) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205452.027134Z-shared-bench.json` | 10/10 rows `error: null`; `dflash.fallback_status=fallback_pathological_target_only` on every row |
+| Quality compare (fail) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205452.027134Z-quality-compare.json` | `status=fail` on all 5 prompts |
+| Quality inspect (single-report) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T205452.027134Z-quality-inspect.json` | `status=fail` on 4/5 prompts |
+| Structured decision evidence | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-adaptive-quality-performance-decision-20260629T205452Z.json` | per-prompt baseline vs candidate deltas, per-row telemetry, no-second-sample justification, fulfills mapping |
+| Resource gate precheck | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-m15-quality.json` | `ready_for_dflash_smoke=true`, `cloud_only_listener=true`, `blocked_listener=false` |
+| Engine HEAD | `5151f89` (`[#1190] feat(m15): add safe DFlash low-acceptance / pathological-target-only fallback`) | adaptive scheduling + fallback + per-round telemetry on branch |
+| Harness HEAD | `49387ee` (`[#1190] feat(m15): aggregate fallback_status / fallback_reason on harness DFlash rows`) | per-row `dflash.fallback_status` / `fallback_reason` aggregation live |
+
+### Validation contract assertions
+
+- `VAL-M15-005` (real-model scheduling candidate passes quality before performance claims) — **NOT MET**. `quality_compare.py status=fail` on every prompt in the M14 quality suite. The fresh non-DFlash baseline and the adaptive DFlash candidate both pass row-error inspection (10/10 rows `error: null`), so the gate fails only on output quality + coarse timing regressions, not on the runtime path. Per-row `dflash.fallback_status=fallback_pathological_target_only` confirms the adaptive scheduler + fallback engaged on every row; the runtime path itself is fail-closed and target-verified, but the candidate's emitted tokens fail the quality suite.
+- `VAL-M15-006` (promotion requires ≥2 quality-passing repeated samples with a repeatable latency win) — **NOT MET**. The first candidate sample fails the quality gate on every prompt, so no quality-passing sample exists to repeat against. Per the lane description, when the quality gate fails, no additional heavyweight repeated samples are run for this lane; the decision is recorded as REJECT based on the existing failed-quality evidence with explicit no-promotion rationale. DFlash stays default-off and KEEP OPT-IN.
