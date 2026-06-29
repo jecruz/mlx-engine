@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
+import time
 
 import mlx.core as mx
 from mlx_vlm.speculative.common import (
@@ -47,6 +49,46 @@ from mlx_engine.utils.token import Token
 from mlx_engine.utils.top_logprobs import summarize_top_logprobs
 
 
+# Per-round DFlash telemetry kinds. The harness and any consumer that wires
+# ``telemetry_collector`` can switch on these values without ambiguity.
+DFLASH_TELEMETRY_KIND_INITIAL_BONUS = "initial_bonus"
+DFLASH_TELEMETRY_KIND_TARGET_ONLY = "target_only"
+DFLASH_TELEMETRY_KIND_DRAFT_ROUND_ACCEPTED = "draft_round_accepted"
+DFLASH_TELEMETRY_KIND_DRAFT_ROUND_PARTIAL = "draft_round_partial"
+
+
+@dataclass(frozen=True, slots=True)
+class DFlashRoundTelemetry:
+    """Per-round DFlash scheduling and timing telemetry record.
+
+    Each round that consumes scheduling budget emits exactly one record so
+    reports can attribute latency to drafter work, target verification,
+    rollback, and emission independently of the surrounding token stream.
+    The ``kind`` field classifies the round so callers can recognize the
+    four documented round shapes (initial bonus sample, target-only
+    ``max_draft_tokens=1``, fully accepted draft round, and partially
+    rejected draft round that triggers ``rollback_speculative_cache``).
+
+    The dataclass is intentionally side-effect free so callers can store,
+    diff, and aggregate records without needing to replay the generator.
+    """
+
+    round_index: int
+    kind: str
+    scheduled_block_size: int
+    draft_count: int
+    accepted_count: int
+    rejected_count: int
+    target_verify_input_length: int
+    rollback_occurred: bool
+    drafter_elapsed_s: float
+    target_verify_elapsed_s: float
+    rollback_elapsed_s: float
+    emission_elapsed_s: float
+    from_draft_token_count: int
+    from_target_token_count: int
+
+
 def load_dflash_drafter_model(
     target_model: Any,
     dflash_drafter_path: str | Path,
@@ -60,6 +102,23 @@ def load_dflash_drafter_model(
             "DFlash drafter snapshot did not load as DFlashDraftModel"
         )
     return draft_model
+
+
+def _emit_dflash_round_telemetry(
+    telemetry_collector: Optional[Callable[[DFlashRoundTelemetry], None]],
+    record: DFlashRoundTelemetry,
+) -> None:
+    """Invoke ``telemetry_collector`` if it is supplied.
+
+    The collector is purely opt-in. When ``telemetry_collector`` is
+    ``None`` the runtime records no overhead beyond the dataclass
+    construction itself, preserving the existing default-off behavior
+    and the M15 invariant that no scheduling decision depends on
+    telemetry.
+    """
+
+    if telemetry_collector is not None:
+        telemetry_collector(record)
 
 
 def _apply_logits_processors(
@@ -158,8 +217,21 @@ def dflash_stream_generate(
     proposal_observer: Optional[
         Callable[[Sequence[int], Sequence[int]], None]
     ] = None,
+    telemetry_collector: Optional[
+        Callable[[DFlashRoundTelemetry], None]
+    ] = None,
 ) -> Iterator[GenerationResult]:
-    """Stream DFlash draft/verify generation for sequential text."""
+    """Stream DFlash draft/verify generation for sequential text.
+
+    ``telemetry_collector`` (optional) is invoked once per scheduling
+    round with a ``DFlashRoundTelemetry`` record describing the round's
+    scheduled block size, draft/accepted/rejected counts, target verify
+    input length, rollback occurrence, and per-stage timings (drafter,
+    target verify, rollback, emission). The collector is purely
+    opt-in: when ``None`` the runtime records no overhead beyond the
+    timing reads, so default-off behavior and scheduling decisions
+    remain unchanged.
+    """
 
     if isinstance(model_kit, DistributedModelKit):
         raise DFlashUnavailableError(
@@ -304,6 +376,7 @@ def dflash_stream_generate(
         return None
 
     try:
+        initial_target_verify_start = time.perf_counter()
         with mx.stream(generation_stream):
             verify_out = getattr(model_kit, "model", model_kit)(
                 prompt_tokens_array[None]
@@ -315,6 +388,7 @@ def dflash_stream_generate(
                 gdn_sink=[],
                 target_verify=True,
             )
+        initial_target_verify_elapsed_s = time.perf_counter() - initial_target_verify_start
         logits = _apply_logits_processors(
             logits_processors,
             prompt_tokens_array,
@@ -327,6 +401,7 @@ def dflash_stream_generate(
         first_bonus_token = int(first_bonus.item())
         emitted_history.append(first_bonus_token)
 
+        emission_start = time.perf_counter()
         first_result = _emit_token(
             first_bonus_token,
             logprobs[0, -1],
@@ -334,6 +409,35 @@ def dflash_stream_generate(
         )
         if first_result is not None:
             yield first_result
+        initial_emission_elapsed_s = time.perf_counter() - emission_start
+        # Round 0 covers the prompt-processing bonus. The drafter is
+        # never invoked here and no rollback is required; the only
+        # measurement of consequence is the prompt target-verify call
+        # (which scales with prompt length) plus the bonus emission.
+        prompt_tokens_length = (
+            prompt_tokens_array.shape[-1]
+            if hasattr(prompt_tokens_array, "shape")
+            else len(prompt_tokens_array)
+        )
+        _emit_dflash_round_telemetry(
+            telemetry_collector,
+            DFlashRoundTelemetry(
+                round_index=0,
+                kind=DFLASH_TELEMETRY_KIND_INITIAL_BONUS,
+                scheduled_block_size=1,
+                draft_count=0,
+                accepted_count=0,
+                rejected_count=0,
+                target_verify_input_length=int(prompt_tokens_length),
+                rollback_occurred=False,
+                drafter_elapsed_s=0.0,
+                target_verify_elapsed_s=initial_target_verify_elapsed_s,
+                rollback_elapsed_s=0.0,
+                emission_elapsed_s=initial_emission_elapsed_s,
+                from_draft_token_count=0,
+                from_target_token_count=1,
+            ),
+        )
         if len(token_buffer) == 0 and text == "":
             pass
         if len(emitted_history) >= max_tokens:
@@ -352,7 +456,9 @@ def dflash_stream_generate(
 
         hidden = mx.concatenate(verify_out.hidden_states, axis=-1)
         emitted = len(emitted_history)
+        round_index = 0
         while emitted < max_tokens:
+            round_index += 1
             block_total = _dflash_block_total(draft_model, dflash_options.max_draft_tokens)
             bs = min(block_total, dflash_options.max_draft_tokens, max_tokens - emitted + 1)
             if bs < 1:
@@ -377,6 +483,7 @@ def dflash_stream_generate(
                 verify_input = mx.array(
                     [[emitted_history[-1]]], dtype=mx.int32
                 )
+                target_only_verify_start = time.perf_counter()
                 with mx.stream(generation_stream):
                     verify_out = target_model(
                         verify_input,
@@ -386,6 +493,9 @@ def dflash_stream_generate(
                         gdn_sink=[],
                         target_verify=True,
                     )
+                target_only_verify_elapsed_s = (
+                    time.perf_counter() - target_only_verify_start
+                )
                 logprobs = verify_out.logits - mx.logsumexp(
                     verify_out.logits, axis=-1, keepdims=True
                 )
@@ -395,17 +505,39 @@ def dflash_stream_generate(
                 _record_speculative_round(draft_model, 0, 0)
                 emitted_history.append(new_bonus)
                 emitted += 1
+                emission_start = time.perf_counter()
                 maybe_result = _emit_token(
                     new_bonus,
                     logprobs[0, -1],
                     from_draft=False,
                 )
+                target_only_emission_elapsed_s = time.perf_counter() - emission_start
                 if maybe_result is not None:
                     yield maybe_result
+                _emit_dflash_round_telemetry(
+                    telemetry_collector,
+                    DFlashRoundTelemetry(
+                        round_index=round_index,
+                        kind=DFLASH_TELEMETRY_KIND_TARGET_ONLY,
+                        scheduled_block_size=1,
+                        draft_count=0,
+                        accepted_count=0,
+                        rejected_count=0,
+                        target_verify_input_length=1,
+                        rollback_occurred=False,
+                        drafter_elapsed_s=0.0,
+                        target_verify_elapsed_s=target_only_verify_elapsed_s,
+                        rollback_elapsed_s=0.0,
+                        emission_elapsed_s=target_only_emission_elapsed_s,
+                        from_draft_token_count=0,
+                        from_target_token_count=1,
+                    ),
+                )
                 if emitted % 256 == 0:
                     mx.clear_cache()
                 continue
 
+            drafter_start = time.perf_counter()
             draft_tokens = draft_model.draft_block(
                 emitted_history[-1],
                 hidden,
@@ -414,12 +546,14 @@ def dflash_stream_generate(
                 sampler,
                 mx.int32,
             )
+            drafter_elapsed_s = time.perf_counter() - drafter_start
             if proposal_observer is not None:
                 proposal_observer(
                     tuple(emitted_history), tuple(draft_tokens.reshape(-1).tolist())
                 )
             mx.async_eval(draft_tokens)
 
+            draft_round_verify_start = time.perf_counter()
             with mx.stream(generation_stream):
                 verify_input = mx.concatenate(
                     [mx.array([[emitted_history[-1]]], dtype=mx.int32), draft_tokens],
@@ -433,6 +567,9 @@ def dflash_stream_generate(
                     gdn_sink=[],
                     target_verify=True,
                 )
+            draft_round_verify_elapsed_s = (
+                time.perf_counter() - draft_round_verify_start
+            )
             logits = _apply_logits_processors(
                 logits_processors,
                 verify_input,
@@ -452,8 +589,15 @@ def dflash_stream_generate(
             hidden = mx.concatenate(verify_out.hidden_states, axis=-1)
             hidden = hidden[:, : len(new_tokens), :]
 
+            emission_start = time.perf_counter()
+            from_draft_count = 0
+            from_target_count = 0
             for index, token in enumerate(new_tokens):
                 from_draft = index < accepted
+                if from_draft:
+                    from_draft_count += 1
+                else:
+                    from_target_count += 1
                 maybe_result = _emit_token(
                     token,
                     logprobs[0, index],
@@ -465,8 +609,12 @@ def dflash_stream_generate(
                     yield maybe_result
                 if emitted >= max_tokens:
                     break
+            draft_round_emission_elapsed_s = time.perf_counter() - emission_start
 
-            if accepted < bs - 1:
+            rollback_occurred = accepted < bs - 1
+            rollback_elapsed_s = 0.0
+            if rollback_occurred:
+                rollback_start = time.perf_counter()
                 rollback = getattr(lm, "rollback_speculative_cache", None)
                 if rollback is None:
                     raise DFlashUnavailableError(
@@ -477,6 +625,32 @@ def dflash_stream_generate(
                 )
                 with mx.stream(generation_stream):
                     rollback(prompt_cache, aligned_gdn_states, accepted, bs)
+                rollback_elapsed_s = time.perf_counter() - rollback_start
+
+            kind = (
+                DFLASH_TELEMETRY_KIND_DRAFT_ROUND_ACCEPTED
+                if accepted >= bs - 1
+                else DFLASH_TELEMETRY_KIND_DRAFT_ROUND_PARTIAL
+            )
+            _emit_dflash_round_telemetry(
+                telemetry_collector,
+                DFlashRoundTelemetry(
+                    round_index=round_index,
+                    kind=kind,
+                    scheduled_block_size=bs,
+                    draft_count=bs - 1,
+                    accepted_count=accepted,
+                    rejected_count=max(0, (bs - 1) - accepted),
+                    target_verify_input_length=int(bs),
+                    rollback_occurred=rollback_occurred,
+                    drafter_elapsed_s=drafter_elapsed_s,
+                    target_verify_elapsed_s=draft_round_verify_elapsed_s,
+                    rollback_elapsed_s=rollback_elapsed_s,
+                    emission_elapsed_s=draft_round_emission_elapsed_s,
+                    from_draft_token_count=from_draft_count,
+                    from_target_token_count=from_target_count,
+                ),
+            )
 
             if emitted % 256 == 0:
                 mx.clear_cache()

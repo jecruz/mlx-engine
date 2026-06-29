@@ -12,7 +12,14 @@ from mlx_engine.utils.dflash_boundary import (
     DFlashBoundaryOptions,
     DFlashUnavailableError,
 )
-from mlx_engine.utils.dflash_runtime import dflash_stream_generate
+from mlx_engine.utils.dflash_runtime import (
+    DFLASH_TELEMETRY_KIND_DRAFT_ROUND_ACCEPTED,
+    DFLASH_TELEMETRY_KIND_DRAFT_ROUND_PARTIAL,
+    DFLASH_TELEMETRY_KIND_INITIAL_BONUS,
+    DFLASH_TELEMETRY_KIND_TARGET_ONLY,
+    DFlashRoundTelemetry,
+    dflash_stream_generate,
+)
 
 
 class FakeTokenizer:
@@ -924,6 +931,324 @@ class TestDFlashRuntime(unittest.TestCase):
         self.assertEqual(
             kit.model.calls[0][1]["capture_layer_ids"],
             target_layer_ids,
+        )
+
+
+class TestDFlashPerRoundTelemetry(unittest.TestCase):
+    """Per-round DFlash telemetry must classify and time every scheduling round.
+
+    These tests pin the M15 telemetry contract:
+    * Each round produces exactly one ``DFlashRoundTelemetry`` record
+      with the correct ``kind`` and the four documented timing buckets
+      (drafter, target verify, rollback, emission).
+    * The initial bonus, target-only ``bs=1``, fully accepted draft,
+      and partially rejected draft rounds are all recorded.
+    * When ``telemetry_collector`` is omitted the runtime records no
+      overhead beyond the perf-counter reads, preserving default-off
+      behavior and proving that scheduling decisions do not depend on
+      telemetry.
+    """
+
+    def test_initial_bonus_telemetry_has_prompt_length_target_verify_input(self):
+        """Round 0 telemetry classifies the prompt-processing bonus round and
+        carries ``target_verify_input_length == prompt length``."""
+
+        next_tokens = [11, 12, 13, 14, 15]
+        kit = _TargetOnlyKit(next_tokens=next_tokens, prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+        records: list[DFlashRoundTelemetry] = []
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-telemetry-initial-bonus",
+                max_tokens=4,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+                telemetry_collector=records.append,
+            )
+        )
+
+        kinds = [record.kind for record in records]
+        self.assertEqual(kinds[0], DFLASH_TELEMETRY_KIND_INITIAL_BONUS)
+        initial = records[0]
+        self.assertEqual(initial.round_index, 0)
+        self.assertEqual(initial.scheduled_block_size, 1)
+        self.assertEqual(initial.draft_count, 0)
+        self.assertEqual(initial.accepted_count, 0)
+        self.assertEqual(initial.rejected_count, 0)
+        self.assertFalse(initial.rollback_occurred)
+        self.assertEqual(initial.target_verify_input_length, 1)
+        self.assertEqual(initial.from_draft_token_count, 0)
+        self.assertEqual(initial.from_target_token_count, 1)
+        self.assertGreaterEqual(initial.target_verify_elapsed_s, 0.0)
+        self.assertGreaterEqual(initial.emission_elapsed_s, 0.0)
+        self.assertEqual(initial.drafter_elapsed_s, 0.0)
+        self.assertEqual(initial.rollback_elapsed_s, 0.0)
+
+    def test_target_only_rounds_record_block_size_one_no_drafts(self):
+        """Every bs=1 round is classified ``target_only`` with no drafts and no rollback."""
+
+        kit = _TargetOnlyKit(next_tokens=[11, 12, 13, 14, 15], prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+        records: list[DFlashRoundTelemetry] = []
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-telemetry-target-only",
+                max_tokens=5,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+                telemetry_collector=records.append,
+            )
+        )
+
+        # 1 prompt bonus + 4 bs=1 rounds == 5 records total.
+        kinds = [record.kind for record in records]
+        self.assertEqual(
+            kinds,
+            [
+                DFLASH_TELEMETRY_KIND_INITIAL_BONUS,
+                DFLASH_TELEMETRY_KIND_TARGET_ONLY,
+                DFLASH_TELEMETRY_KIND_TARGET_ONLY,
+                DFLASH_TELEMETRY_KIND_TARGET_ONLY,
+                DFLASH_TELEMETRY_KIND_TARGET_ONLY,
+            ],
+        )
+        for record in records[1:]:
+            self.assertEqual(record.scheduled_block_size, 1)
+            self.assertEqual(record.draft_count, 0)
+            self.assertEqual(record.accepted_count, 0)
+            self.assertEqual(record.rejected_count, 0)
+            self.assertFalse(record.rollback_occurred)
+            self.assertEqual(record.target_verify_input_length, 1)
+            self.assertEqual(record.from_draft_token_count, 0)
+            self.assertEqual(record.from_target_token_count, 1)
+            self.assertEqual(record.drafter_elapsed_s, 0.0)
+            self.assertEqual(record.rollback_elapsed_s, 0.0)
+            self.assertGreaterEqual(record.target_verify_elapsed_s, 0.0)
+            self.assertGreaterEqual(record.emission_elapsed_s, 0.0)
+
+    def test_fully_accepted_draft_round_records_zero_rejected_and_no_rollback(self):
+        """All-accept draft round: accepted == block_size - 1, rejected=0, rollback_occurred=False."""
+
+        # First bonus: 11; then draft block of [12, 13, 14] all match the spec.
+        draft_tokens = [12, 13, 14]
+        spec_input_tokens = [11, 12, 13, 14]
+        spec_output_tokens = [12, 13, 14, 99]
+        kit = FakeKit(
+            draft_tokens,
+            spec_input_tokens,
+            spec_output_tokens,
+        )
+        draft_model = FakeDraftModel(draft_tokens)
+        records: list[DFlashRoundTelemetry] = []
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-telemetry-all-accepted",
+                # ``accepted + 2`` keeps the loop to exactly one draft
+                # round (1 initial bonus + 1 draft round) so the fake
+                # model's spec_input assertion does not fire on a
+                # follow-up round.
+                max_tokens=5,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=len(draft_tokens) + 1,
+                ),
+                dflash_draft_model=draft_model,
+                telemetry_collector=records.append,
+            )
+        )
+
+        # 2 records: 1 initial bonus + 1 fully accepted draft round.
+        self.assertEqual(len(records), 2)
+        # Find the first non-initial record and confirm it is a
+        # fully accepted draft round.
+        draft_records = [
+            record for record in records if record.kind != DFLASH_TELEMETRY_KIND_INITIAL_BONUS
+        ]
+        self.assertEqual(len(draft_records), 1)
+        first_draft = draft_records[0]
+        self.assertEqual(first_draft.kind, DFLASH_TELEMETRY_KIND_DRAFT_ROUND_ACCEPTED)
+        self.assertEqual(first_draft.scheduled_block_size, len(draft_tokens) + 1)
+        self.assertEqual(first_draft.draft_count, len(draft_tokens))
+        self.assertEqual(first_draft.accepted_count, len(draft_tokens))
+        self.assertEqual(first_draft.rejected_count, 0)
+        self.assertFalse(first_draft.rollback_occurred)
+        self.assertEqual(first_draft.target_verify_input_length, len(draft_tokens) + 1)
+        self.assertEqual(first_draft.from_draft_token_count, len(draft_tokens))
+        self.assertEqual(first_draft.from_target_token_count, 1)
+        self.assertGreaterEqual(first_draft.drafter_elapsed_s, 0.0)
+        self.assertGreaterEqual(first_draft.target_verify_elapsed_s, 0.0)
+        self.assertEqual(first_draft.rollback_elapsed_s, 0.0)
+
+    def test_partial_rejection_records_rejected_count_and_rollback_timing(self):
+        """Partial rejection: the drafter's middle proposal mismatches, so the
+        runtime emits a ``draft_round_partial`` record with rejected>0 and
+        rollback timing >= 0."""
+
+        draft_tokens = [12, 13, 14]
+        spec_input_tokens = [11, 12, 13, 14]
+        # Mismatch on position 1 (draft=13 vs target=21). Walk accepts
+        # the first draft token, then resamples a bonus=21. new_tokens
+        # = [12, 21], emitted_history length grows by 2.
+        spec_output_tokens = [12, 21, 99, 98]
+        kit = FakeKit(
+            draft_tokens,
+            spec_input_tokens,
+            spec_output_tokens,
+        )
+        draft_model = FakeDraftModel(draft_tokens)
+        records: list[DFlashRoundTelemetry] = []
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-telemetry-partial-rejection",
+                # bs = min(block_total, max_draft_tokens, max_tokens - emitted + 1)
+                #     = min(_, 3, 3 - 1 + 1) = 3 with these knobs.
+                # After initial bonus emitted=1, the single draft round
+                # emits 2 new_tokens (12, 21) so emitted reaches
+                # max_tokens and the loop exits before any further
+                # verify call.
+                max_tokens=3,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=3,
+                ),
+                dflash_draft_model=draft_model,
+                telemetry_collector=records.append,
+            )
+        )
+
+        # 2 records: 1 initial bonus + 1 partial rejection.
+        self.assertEqual(len(records), 2)
+        partial_records = [
+            record for record in records if record.kind == DFLASH_TELEMETRY_KIND_DRAFT_ROUND_PARTIAL
+        ]
+        self.assertEqual(
+            len(partial_records),
+            1,
+            msg=f"expected exactly one partial-rejection record, got records={records}",
+        )
+        partial = partial_records[0]
+        # bs = 3 (forced by max_draft_tokens=3 and max_tokens=3).
+        # draft_count = bs - 1 = 2 (the planned draft slots for the round).
+        self.assertEqual(partial.scheduled_block_size, 3)
+        self.assertEqual(partial.draft_count, 2)
+        self.assertEqual(partial.accepted_count, 1)
+        self.assertEqual(partial.rejected_count, 1)
+        self.assertTrue(partial.rollback_occurred)
+        self.assertEqual(partial.target_verify_input_length, 3)
+        self.assertEqual(partial.from_draft_token_count, 1)
+        self.assertEqual(partial.from_target_token_count, 1)
+        self.assertGreaterEqual(partial.rollback_elapsed_s, 0.0)
+        self.assertGreaterEqual(partial.drafter_elapsed_s, 0.0)
+        self.assertGreaterEqual(partial.target_verify_elapsed_s, 0.0)
+
+    def test_telemetry_collector_absent_keeps_default_off_observable_behavior(self):
+        """Omitting ``telemetry_collector`` must not alter emitted tokens or drafter/rollback stats."""
+
+        kit = _TargetOnlyKit(next_tokens=[11, 12, 13], prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+
+        results = list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-telemetry-no-collector",
+                max_tokens=3,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+                # Note: telemetry_collector intentionally omitted.
+            )
+        )
+
+        emitted_ids = [token.id for result in results for token in result.tokens]
+        self.assertEqual(emitted_ids, [11, 12, 13])
+        self.assertEqual(
+            [token.from_draft for result in results for token in result.tokens],
+            [False, False, False],
+        )
+        # Drafter was never invoked (proves default-off / no-scheduling-change).
+        self.assertEqual(draft_model.draft_block_calls, [])
+        # No rollback calls (no drafts to reject).
+        self.assertEqual(kit.model.rollback_calls, [])
+
+    def test_multi_round_mixed_telemetry_aggregates_correctly(self):
+        """Streaming across multiple rounds emits one record per round with the
+        right kind for each round shape (initial bonus + multiple bs=1)."""
+
+        next_tokens = [11, 12, 13, 14, 15]
+        kit = _TargetOnlyKit(next_tokens=next_tokens, prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+        records: list[DFlashRoundTelemetry] = []
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-telemetry-multi-round-aggregate",
+                max_tokens=5,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+                telemetry_collector=records.append,
+            )
+        )
+
+        # round_index must be a strictly increasing sequence starting at 0.
+        self.assertEqual(
+            [record.round_index for record in records],
+            list(range(len(records))),
+        )
+        # 1 initial bonus + 4 bs=1 rounds == 5 records total.
+        self.assertEqual(len(records), 5)
+        # only the first record may be classified as initial bonus.
+        self.assertEqual(records[0].kind, DFLASH_TELEMETRY_KIND_INITIAL_BONUS)
+        self.assertTrue(
+            all(record.kind == DFLASH_TELEMETRY_KIND_TARGET_ONLY for record in records[1:])
+        )
+        # accepted_proposal_tokens_total sums to 0 since bs=1 rounds have no drafts.
+        self.assertEqual(sum(record.accepted_count for record in records), 0)
+        self.assertEqual(sum(record.rejected_count for record in records), 0)
+        self.assertEqual(
+            sum(record.from_draft_token_count for record in records),
+            0,
+        )
+        self.assertEqual(
+            sum(record.from_target_token_count for record in records),
+            5,
         )
 
 
