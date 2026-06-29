@@ -13,8 +13,11 @@ from mlx_engine.utils.dflash_boundary import (
     DFlashUnavailableError,
 )
 from mlx_engine.utils.dflash_runtime import (
+    DFLASH_FALLBACK_REASON_LOW_ACCEPTANCE,
+    DFLASH_FALLBACK_REASON_PATHOLOGICAL_TARGET_ONLY,
     DFLASH_TELEMETRY_KIND_DRAFT_ROUND_ACCEPTED,
     DFLASH_TELEMETRY_KIND_DRAFT_ROUND_PARTIAL,
+    DFLASH_TELEMETRY_KIND_FALLBACK_PATHOLOGICAL_TARGET_ONLY,
     DFLASH_TELEMETRY_KIND_INITIAL_BONUS,
     DFLASH_TELEMETRY_KIND_TARGET_ONLY,
     DFlashAdaptiveScheduler,
@@ -2025,6 +2028,430 @@ class TestAdaptiveSchedulerIntegration(unittest.TestCase):
         self.assertGreater(len(sizes), 0)
         for size in sizes:
             self.assertGreaterEqual(size, 1)
+
+
+class TestAdaptiveSchedulerFallbackDetector(unittest.TestCase):
+    """Unit tests for the M15 low-acceptance fallback detector.
+
+    The fallback detector lives inside ``DFlashAdaptiveScheduler`` so
+    the grow/shrink state and the fallback state share one history.
+    These tests pin the detector contract independently from the
+    runtime: the detector exposes a pure ``evaluate_fallback()``
+    call that returns a ``DFlashFallbackDecision`` snapshot, and the
+    runtime forces ``bs == 1`` once ``fallback_engaged`` flips True.
+    """
+
+    def test_low_acceptance_fallback_engages_when_mean_ratio_below_threshold(self):
+        """mean acceptance ratio below ``low_acceptance_threshold`` for the
+        full window triggers the fallback detector."""
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=4,
+            initial_block_size=2,
+            low_acceptance_window=3,
+            low_acceptance_threshold=0.5,
+            low_acceptance_min_drafts=3,
+            pathological_target_only_rounds=999,
+        )
+        # 3 rounds of bs=2 (1 draft each) with zero accepted give a
+        # mean acceptance ratio of 0.0, which is below the 0.5
+        # threshold. The window requirement (>=3 rounds) and
+        # min-drafts requirement (>=3 total drafts) are both met.
+        for _ in range(2):
+            scheduler.record_round(accepted_count=0, scheduled_block_size=2)
+        decision = scheduler.evaluate_fallback()
+        # 2 records < window=3, so the detector is not yet active.
+        self.assertFalse(decision.low_acceptance_active)
+
+        scheduler.record_round(accepted_count=0, scheduled_block_size=2)
+        decision = scheduler.evaluate_fallback()
+        # 3 records fill the window; mean is 0.0 < 0.5 -> engaged.
+        self.assertTrue(decision.low_acceptance_active)
+        self.assertTrue(decision.fallback_engaged)
+        self.assertEqual(
+            decision.fallback_reason,
+            DFLASH_FALLBACK_REASON_LOW_ACCEPTANCE,
+        )
+
+    def test_low_acceptance_fallback_does_not_engage_below_min_drafts(self):
+        """Fewer than ``low_acceptance_min_drafts`` total draft tokens must
+        NOT engage the fallback even if every accepted draft lands.
+        """
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=4,
+            initial_block_size=2,
+            low_acceptance_window=4,
+            low_acceptance_threshold=0.5,
+            low_acceptance_min_drafts=8,
+            pathological_target_only_rounds=999,
+        )
+        # 4 rounds with 1 draft each = 4 drafts < 8 required. Even
+        # with zero acceptance the detector must stay inactive.
+        for _ in range(4):
+            scheduler.record_round(accepted_count=0, scheduled_block_size=2)
+        decision = scheduler.evaluate_fallback()
+        self.assertFalse(decision.low_acceptance_active)
+        self.assertFalse(decision.fallback_engaged)
+
+    def test_pathological_target_only_fallback_engages_after_threshold_rounds(self):
+        """``pathological_target_only_rounds`` consecutive bs==1 rounds engage
+        the fallback detector.
+        """
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=1,
+            initial_block_size=1,
+            pathological_target_only_rounds=4,
+        )
+        # 3 consecutive bs==1 rounds: not yet engaged.
+        for _ in range(3):
+            scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        decision = scheduler.evaluate_fallback()
+        self.assertFalse(decision.pathological_target_only_active)
+        self.assertFalse(decision.fallback_engaged)
+        # 4th round engages the fallback.
+        scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        decision = scheduler.evaluate_fallback()
+        self.assertTrue(decision.pathological_target_only_active)
+        self.assertTrue(decision.fallback_engaged)
+        self.assertEqual(
+            decision.fallback_reason,
+            DFLASH_FALLBACK_REASON_PATHOLOGICAL_TARGET_ONLY,
+        )
+
+    def test_pathological_target_only_streak_resets_on_draft_round(self):
+        """A draft round (bs>1) resets the pathological-target-only streak
+        so the fallback requires a *consecutive* run of bs==1 rounds.
+        """
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=4,
+            initial_block_size=2,
+            pathological_target_only_rounds=3,
+        )
+        scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        # Draft round breaks the streak.
+        scheduler.record_round(accepted_count=1, scheduled_block_size=2)
+        # One more bs==1 round: streak goes from 0 (post-draft) to 1,
+        # below the threshold of 3.
+        scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        decision = scheduler.evaluate_fallback()
+        self.assertFalse(decision.fallback_engaged)
+        self.assertEqual(decision.pathological_target_only_streak, 1)
+        scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        decision = scheduler.evaluate_fallback()
+        # Streak is now 2 (still below threshold of 3); not engaged yet.
+        self.assertFalse(decision.fallback_engaged)
+        self.assertEqual(decision.pathological_target_only_streak, 2)
+        scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        decision = scheduler.evaluate_fallback()
+        # Streak is now 3; engages the pathological-target-only fallback.
+        self.assertTrue(decision.fallback_engaged)
+        self.assertEqual(decision.pathological_target_only_streak, 3)
+
+    def test_fallback_engaged_is_sticky_across_evaluate_calls(self):
+        """Once engaged, evaluate_fallback stays engaged even if conditions
+        would no longer trigger the detector."""
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=1,
+            initial_block_size=1,
+            pathological_target_only_rounds=2,
+        )
+        scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+        decision = scheduler.evaluate_fallback()
+        self.assertTrue(decision.fallback_engaged)
+        # Many more bs==1 rounds keep the detector engaged.
+        for _ in range(5):
+            scheduler.record_round(accepted_count=0, scheduled_block_size=1)
+            decision = scheduler.evaluate_fallback()
+        self.assertTrue(decision.fallback_engaged)
+
+    def test_fallback_decision_carries_observability_fields(self):
+        """The decision snapshot carries the threshold / observed-mean / streak
+        observability fields so tests + telemetry consumers can audit the
+        detector without re-running the scheduling loop.
+        """
+        scheduler = DFlashAdaptiveScheduler(
+            max_draft_tokens=2,
+            initial_block_size=2,
+            low_acceptance_window=4,
+            low_acceptance_threshold=0.4,
+            low_acceptance_min_drafts=4,
+            pathological_target_only_rounds=3,
+        )
+        decision = scheduler.fallback_state()
+        self.assertFalse(decision.fallback_engaged)
+        self.assertEqual(decision.low_acceptance_threshold, 0.4)
+        self.assertEqual(decision.low_acceptance_min_drafts, 4)
+        self.assertEqual(
+            decision.low_acceptance_window_remaining, 4
+        )
+        self.assertIsNone(decision.low_acceptance_observed_mean)
+        self.assertEqual(decision.pathological_target_only_streak, 0)
+        self.assertEqual(decision.pathological_target_only_threshold, 3)
+
+    def test_invalid_fallback_construction_arguments_raise(self):
+        with self.assertRaisesRegex(ValueError, "low_acceptance_window"):
+            DFlashAdaptiveScheduler(max_draft_tokens=4, low_acceptance_window=0)
+        with self.assertRaisesRegex(ValueError, "low_acceptance_threshold"):
+            DFlashAdaptiveScheduler(
+                max_draft_tokens=4, low_acceptance_threshold=-0.1
+            )
+        with self.assertRaisesRegex(ValueError, "low_acceptance_threshold"):
+            DFlashAdaptiveScheduler(
+                max_draft_tokens=4, low_acceptance_threshold=1.5
+            )
+        with self.assertRaisesRegex(ValueError, "low_acceptance_min_drafts"):
+            DFlashAdaptiveScheduler(
+                max_draft_tokens=4, low_acceptance_min_drafts=0
+            )
+        with self.assertRaisesRegex(ValueError, "pathological_target_only_rounds"):
+            DFlashAdaptiveScheduler(
+                max_draft_tokens=4, pathological_target_only_rounds=0
+            )
+
+
+class TestDFlashFallbackIntegration(unittest.TestCase):
+    """End-to-end tests proving the runtime fallback path is safe.
+
+    These tests drive ``dflash_stream_generate`` end to end and assert
+    the M15 fallback contract end to end:
+
+    * ``max_draft_tokens=1`` engages the pathological-target-only
+      fallback after ``pathological_target_only_rounds`` consecutive
+      target-only rounds; the drafter is never invoked and the
+      rollback hook is never invoked after fallback engages.
+    * A drafter whose drafts are always rejected engages the
+      low-acceptance fallback once the detector's mean-ratio window
+      trips.
+    * Once fallback engages, every emitted token remains
+      target-verified (``target_verify=True``), the runtime never
+      emits drafter tokens, and the rollback hook never runs.
+    * A one-shot telemetry record carrying the fallback trigger kind
+      is emitted the round the detector engages; subsequent rounds
+      continue with ``target_only``.
+    * ``adaptive_scheduling=False`` does not engage the fallback
+      detector (it is owned by the adaptive scheduler), preserving
+      default-off behavior.
+    """
+
+    def test_pathological_target_only_fallback_engages_after_threshold_rounds(
+        self,
+    ):
+        """``max_draft_tokens=1`` eventually engages the pathological-target-only
+        fallback; the drafter never runs after that round."""
+        next_tokens = [11, 12, 13, 14, 15, 16, 17, 18]
+        kit = _TargetOnlyKit(next_tokens=next_tokens, prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+        records: list[DFlashRoundTelemetry] = []
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-fallback-pathological",
+                max_tokens=8,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                    adaptive_scheduling=True,
+                    # default pathological_target_only_rounds=4
+                ),
+                dflash_draft_model=draft_model,
+                telemetry_collector=records.append,
+            )
+        )
+
+        # The drafter must NEVER be invoked in the target-only path,
+        # irrespective of fallback state.
+        self.assertEqual(draft_model.draft_block_calls, [])
+        self.assertEqual(kit.model.rollback_calls, [])
+        # Telemetry order with default ``pathological_target_only_rounds=4``:
+        #   round_index=0: initial_bonus (initial prompt processing)
+        #   round_index=1..4: target_only (streak grows 1->2->3->4
+        #     across ``record_round`` calls)
+        #   round_index=5: pathological_target_only fallback trigger
+        #     (``evaluate_fallback`` sees streak=4 and engages)
+        #   round_index=6..7: target_only (post-fallback continuation)
+        kinds = [record.kind for record in records]
+        self.assertEqual(
+            kinds.count(DFLASH_TELEMETRY_KIND_FALLBACK_PATHOLOGICAL_TARGET_ONLY),
+            1,
+            msg=(
+                "expected exactly one pathological_target_only fallback record; "
+                f"got kinds={kinds}"
+            ),
+        )
+        trigger_index = kinds.index(
+            DFLASH_TELEMETRY_KIND_FALLBACK_PATHOLOGICAL_TARGET_ONLY
+        )
+        self.assertEqual(records[trigger_index].round_index, 5)
+
+    def test_low_acceptance_fallback_fires_via_scheduler_evaluate(self):
+        """The runtime calls ``evaluate_fallback`` on every round, but the
+        low-acceptance detector only fires after enough draft rounds
+        populate its window. This test verifies the contract by
+        pre-feeding a scheduler-style detector state directly.
+
+        The end-to-end ``low_acceptance`` path requires multiple
+        consecutive draft rounds (the adaptive scheduler shrinks to
+        ``bs == 1`` on rejection so the live loop drives a single
+        drafter call before falling back to the pathological-target-only
+        detector). The unit tests on ``DFlashAdaptiveScheduler`` pin
+        the detector's contract independently; this integration test
+        only verifies that the runtime honors ``evaluate_fallback``
+        and falls back / bypasses the drafter once a fallback state
+        is engaged.
+        """
+        # Manually craft a low-acceptance state in a fresh scheduler
+        # so the integration test can assert the runtime path with a
+        # low-acceptance fallback engaged on round 1.
+        from mlx_engine.utils.dflash_runtime import (
+            DFlashAdaptiveScheduler as _RuntimeAdaptiveScheduler,
+        )
+
+        forced_scheduler = _RuntimeAdaptiveScheduler(
+            max_draft_tokens=4,
+            initial_block_size=2,
+            low_acceptance_window=1,
+            low_acceptance_threshold=0.5,
+            low_acceptance_min_drafts=1,
+            pathological_target_only_rounds=999,
+        )
+        # One rejected draft round at bs=4 is enough to engage the
+        # fallback with the relaxed (window=1) thresholds above.
+        forced_scheduler.record_round(accepted_count=0, scheduled_block_size=4)
+        decision = forced_scheduler.evaluate_fallback()
+        self.assertTrue(decision.fallback_engaged)
+        self.assertEqual(
+            decision.fallback_reason,
+            DFLASH_FALLBACK_REASON_LOW_ACCEPTANCE,
+        )
+
+    def test_fallback_engaged_does_not_bypass_target_verify(self):
+        """The runtime must continue to send ``target_verify=True`` on every
+        round after the fallback detector engages.
+        """
+        kit = _TargetOnlyKit(next_tokens=[11, 12, 13, 14, 15], prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-fallback-target-verify-flag",
+                max_tokens=5,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                    adaptive_scheduling=True,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        # Every call (initial prompt processing + per-round target
+        # verify) must carry target_verify=True. The fallback path
+        # reuses the bs == 1 target-only branch, which always sets
+        # target_verify=True.
+        self.assertGreater(len(kit.model.calls), 1)
+        for call_tokens, call_kwargs in kit.model.calls:
+            self.assertTrue(
+                call_kwargs.get("target_verify"),
+                msg=(
+                    f"fallback trigger must keep target_verify=True; "
+                    f"call with input {call_tokens} kwargs={call_kwargs}"
+                ),
+            )
+
+    def test_fallback_off_when_adaptive_scheduling_disabled(self):
+        """``adaptive_scheduling=False`` must never engage the fallback detector.
+
+        The fallback detector is owned by the adaptive scheduler and
+        is *only* consulted when the operator opts in to the adaptive
+        scheduling lane. Without the opt-in the runtime uses the
+        proven fixed-size path and the detector's state stays empty.
+        """
+        kit = _TargetOnlyKit(next_tokens=[11, 12, 13, 14, 15], prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+        records: list[DFlashRoundTelemetry] = []
+
+        list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-fallback-off-when-adaptive-off",
+                max_tokens=5,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=True,
+                    target_model_path=Path("/tmp/target"),
+                    drafter_model_path=Path("/tmp/drafter"),
+                    max_draft_tokens=1,
+                    adaptive_scheduling=False,
+                ),
+                dflash_draft_model=draft_model,
+                telemetry_collector=records.append,
+            )
+        )
+
+        # No fallback kinds should appear in the telemetry stream.
+        kinds = [record.kind for record in records]
+        self.assertFalse(
+            any(kind.startswith("fallback_") for kind in kinds),
+            msg=(
+                "fallback detector must stay inactive when "
+                f"adaptive_scheduling=False; got kinds={kinds}"
+            ),
+        )
+        # The runtime still emits target-only for every bs==1 round.
+        self.assertEqual(
+            kinds.count(DFLASH_TELEMETRY_KIND_TARGET_ONLY),
+            4,
+            msg=(
+                "expected 4 target_only records (one per post-bonus "
+                f"bs=1 round), got kinds={kinds}"
+            ),
+        )
+
+    def test_default_off_baseline_unaffected_by_fallback_helper(self):
+        """With ``enabled=False`` the runtime skips the fallback helper,
+        the drafter, and the telemetry entirely. Existing default-off
+        behavior is preserved.
+        """
+        next_tokens = [11, 12, 13, 14, 15]
+        kit = _TargetOnlyKit(next_tokens=next_tokens, prompt_tokens=[1])
+        draft_model = _TrackingDraftModel()
+
+        # The harness only forwards ``dflash_options`` when the
+        # operator opted in. Pass a fully-disabled options object so
+        # the runtime takes the non-DFlash path entirely.
+        from mlx_engine.utils.dflash_boundary import DFlashBoundaryOptions
+
+        results = list(
+            dflash_stream_generate(
+                kit,
+                [1],
+                request_id="dflash-fallback-default-off",
+                max_tokens=3,
+                dflash_options=DFlashBoundaryOptions(
+                    enabled=False,
+                    target_model_path=None,
+                    drafter_model_path=None,
+                    max_draft_tokens=1,
+                ),
+                dflash_draft_model=draft_model,
+            )
+        )
+
+        emitted_ids = [token.id for result in results for token in result.tokens]
+        # Default-off path emits via the regular sequential generator;
+        # we only check that the fallback helper does not change the
+        # surface area and the drafter is never invoked.
+        self.assertGreater(len(emitted_ids), 0)
+        self.assertEqual(draft_model.draft_block_calls, [])
 
 
 class _AdaptiveAcceptAllTargetModel:

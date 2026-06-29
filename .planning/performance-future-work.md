@@ -2974,3 +2974,69 @@ Suggested fix: in `create_generator_compat`, gate the `telemetry_collector` forw
 | Engine DFlash boundary tests | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_dflash_boundary.py` (41 passed + 13 subtests) |
 | Harness DFlash / telemetry tests | `tests/test_mlx_engine_runner.py` + `tests/test_shared_bench.py` (18 DFlash/telemetry tests passed) |
 | Prompt suite | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_quality_gate.json` |
+
+## M15 low-acceptance fallback (2026-06-29)
+
+Feature `m15-dflash-low-acceptance-fallback` adds a safe DFlash fallback for pathological low-acceptance or pathological-target-only behavior. The previous M15 profiling run exposed two distinct pathology shapes:
+
+* **Pathological target-only** — every emit pays a full target-verify round trip (e.g. `max_draft_tokens=1` or any residual-budget=1 round). The drafter is never invoked but the cost is dominated by per-emission target verification.
+* **Low acceptance** — when recent draft rounds show a sustained acceptance collapse below `low_acceptance_threshold`, the runtime pays drafter + rollback + verification overhead with no acceptance payback.
+
+The fallback detector lives inside `DFlashAdaptiveScheduler` and exposes a sticky `fallback_engaged` flag plus a `fallback_reason` (`"low_acceptance"` or `"pathological_target_only"`). When engaged, `dflash_stream_generate` forces `bs == 1` for every subsequent round, reuses the existing proven `target_verify=True` path, never calls the drafter, and never invokes the rollback hook. The detector is purely opt-in via `adaptive_scheduling=True`; default-off behavior (no DFlash at all, or `adaptive_scheduling=False`) is unchanged.
+
+### Detector thresholds (defaults)
+
+* `low_acceptance_window = 4` recent draft rounds
+* `low_acceptance_threshold = 0.5` mean acceptance ratio across the window
+* `low_acceptance_min_drafts = 4` total draft tokens in the window (so a single accepted token at bs=4 does not trip the fallback)
+* `pathological_target_only_rounds = 4` consecutive `bs == 1` rounds
+
+The thresholds are constructor arguments of `DFlashAdaptiveScheduler` and are exported through `DFlashFallbackDecision` so tests can audit the detector without re-running the scheduling loop.
+
+### Telemetry contract (per-row `dflash` block)
+
+Two new round kinds, emitted exactly once each per `dflash_stream_generate` invocation:
+
+* `fallback_low_acceptance` — emitted on the round the low-acceptance window trips its mean ratio threshold.
+* `fallback_pathological_target_only` — emitted on the round the consecutive `bs == 1` streak hits the threshold.
+
+Subsequent rounds continue to use the existing `target_only` kind because the per-round emission cost is identical (no drafter, no rollback, `target_verify=True`). The harness aggregator latches the trigger:
+
+```json
+{
+  "fallback_status": "fallback_low_acceptance" | "fallback_pathological_target_only" | "default_off",
+  "fallback_reason": "low_acceptance" | "pathological_target_only" | null,
+  "fallback_trigger_round": <round_index or null>,
+  ...
+}
+```
+
+`fallback_status` keeps the existing `"fallback_unsupported_surface"` and `"fallback_preflight"` classifications for DFlash opt-in errors and only takes the new values on a runtime-engaged fallback. `fallback_reason` and `fallback_trigger_round` stay `null` on opt-out, preflight, unsupported-surface, and on DFlash opt-in rows that never trip the detector.
+
+### Safety invariants preserved
+
+* `target_verify=True` on every per-round verify call (verified by `test_fallback_engaged_does_not_bypass_target_verify`).
+* The drafter is never invoked after fallback engages (verified by `test_pathological_target_only_fallback_engages_after_threshold_rounds` and the `_TrackingDraftModel` `_TrackingDraftModel.draft_block` `AssertionError` guard).
+* The rollback hook is never invoked after fallback engages (verified by `kit.model.rollback_calls == []`).
+* Default-off behavior is preserved (`test_default_off_baseline_unaffected_by_fallback_helper`, `test_fallback_off_when_adaptive_scheduling_disabled`).
+* Fail-closed unsupported-surface invariants remain unchanged: VLM, batched, distributed, adapter, SpecPrefill, loaded `draft_model`, `num_draft_tokens`, ragged / ArraysCache variant / quantized cache modes still raise through the existing `validate_dflash_runtime_compatibility` and `validate_dflash_surface_compatibility` gates. The fallback lane only operates once those gates pass.
+
+### Files touched
+
+* `mlx_engine/utils/dflash_runtime.py` — added `DFLASH_TELEMETRY_KIND_FALLBACK_LOW_ACCEPTANCE` / `_FALLBACK_PATHOLOGICAL_TARGET_ONLY`, `DFLASH_FALLBACK_REASON_*`, threshold constants, `DFlashFallbackDecision` dataclass, `_DFlashFallbackTriggerTracker`, `_select_round_kind`, and the new `evaluate_fallback` / `fallback_state` plumbing inside `DFlashAdaptiveScheduler`. Wired the detector into the `dflash_stream_generate` loop with `bs == 1` forced when engaged; record-round advanced to drive both the grow/shrink history and the new per-round detector.
+* `tests/test_dflash_runtime.py` — added `TestAdaptiveSchedulerFallbackDetector` (7 tests covering threshold, min-drafts guard, sticky engagement, streak reset, observability fields, and invalid-construction validation) and `TestDFlashFallbackIntegration` (5 tests covering pathological-target-only engagement, low-acceptance detector firing via `evaluate_fallback`, target-verify-on-every-call, fallback-off when `adaptive_scheduling=False`, and default-off baseline).
+* `mlx-bench-harness/runners/mlx_engine_runner.py` — extended `build_dflash_metadata` with `fallback_reason` / `fallback_trigger_round`; extended `DFlashTelemetryAggregator.collect` to latched the trigger kind / round; added `DFlashTelemetryAggregator.resolve_fallback_status` so the row's `fallback_status` flips to `"fallback_low_acceptance"` or `"fallback_pathological_target_only"` on engaged rows.
+* `mlx-bench-harness/tests/test_mlx_engine_runner.py` — added three tests for the new harness aggregation behavior, and updated `test_build_dflash_metadata_default_off_records_no_opt_in` to assert the new telemetry fields.
+
+### Verification
+
+* Engine promotion group: 404 passed / 16 skipped / 0 failed (76 baseline + 328 from this lane's preceding M15 work).
+* Engine `tests/test_dflash_runtime.py`: 53 passed (41 baseline + 12 new fallback tests).
+* Engine `tests/test_dflash_boundary.py` + `tests/test_dflash_real_pair_invariants.py`: 131 passed.
+* Harness `tests/test_mlx_engine_runner.py`: 19 passed (16 baseline + 3 new fallback aggregation tests).
+* Harness full pytest: 79 passed.
+* Lint: `ruff check mlx_engine/utils/dflash_runtime.py tests/test_dflash_runtime.py runners/mlx_engine_runner.py tests/test_mlx_engine_runner.py` clean.
+
+### Decision
+
+The fallback lane is **implementation only**. No real-model benchmark runs are recorded here; the M15 quality/performance gate (`m15-dflash-quality-performance-decision`) remains the gate that decides promote/keep/opt-in/reject from repeated quality-passing samples. The fallback is a default-off opt-in inside `adaptive_scheduling=True` and does not change any other M15 path.

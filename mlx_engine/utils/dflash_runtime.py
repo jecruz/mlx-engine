@@ -56,6 +56,20 @@ DFLASH_TELEMETRY_KIND_INITIAL_BONUS = "initial_bonus"
 DFLASH_TELEMETRY_KIND_TARGET_ONLY = "target_only"
 DFLASH_TELEMETRY_KIND_DRAFT_ROUND_ACCEPTED = "draft_round_accepted"
 DFLASH_TELEMETRY_KIND_DRAFT_ROUND_PARTIAL = "draft_round_partial"
+# M15 low-acceptance fallback telemetry kinds. These round shapes are
+# emitted ONCE each, at the round the fallback detector flips the
+# scheduler into fallback mode. Subsequent rounds continue with the
+# existing ``target_only`` kind because they share the same
+# target-verified emission path; the harness aggregates the fallback
+# reason on the per-row metadata block via the fallback state
+# snapshot. The fallback kinds are intentionally distinct from
+# ``fallback_unsupported_surface`` and ``fallback_preflight`` (which
+# describe DFlash opt-in errors) so the harness ``fallback_status``
+# field can stay diagnostic without competing with the new lane.
+DFLASH_TELEMETRY_KIND_FALLBACK_LOW_ACCEPTANCE = "fallback_low_acceptance"
+DFLASH_TELEMETRY_KIND_FALLBACK_PATHOLOGICAL_TARGET_ONLY = (
+    "fallback_pathological_target_only"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +114,36 @@ DEFAULT_DFLASH_SCHEDULER_HISTORY_WINDOW = 4
 DEFAULT_DFLASH_SCHEDULER_GROW_THRESHOLD = 1.0
 DEFAULT_DFLASH_SCHEDULER_SHRINK_THRESHOLD = 1.0
 
+# Default tuning for the M15 low-acceptance / pathological target-only
+# fallback detector. The detector owns a *separate* state from the
+# adaptive scheduler: the scheduler tracks recent acceptance ratios to
+# grow / shrink the next block size, while the fallback detector
+# tracks (a) whether the recent window of draft rounds has shipped a
+# mean acceptance ratio below ``LOW_ACCEPTANCE_THRESHOLD`` (covering
+# cases such as ``max_draft_tokens=4`` with frequent full rejections),
+# and (b) whether the scheduler has been collapsed to ``bs == 1``
+# (target-only) for ``PATHO_TARGET_ONLY_ROUNDS`` consecutive rounds
+# (covering the conservative ``--dflash-max-draft-tokens 1`` lane and
+# any residual-budget case where DFlash pays target verification per
+# emitted token without ever shipping a draft). The detector emits a
+# fallback telemetry record the first round it engages, then stays
+# engaged for the rest of the generation; subsequent rounds continue
+# to record ``target_only`` telemetry so the harness can attribute
+# per-round cost as usual.
+DEFAULT_DFLASH_FALLBACK_LOW_ACCEPTANCE_WINDOW = 4
+DEFAULT_DFLASH_FALLBACK_LOW_ACCEPTANCE_THRESHOLD = 0.5
+DEFAULT_DFLASH_FALLBACK_LOW_ACCEPTANCE_MIN_DRAFTS = 4
+DEFAULT_DFLASH_FALLBACK_PATHO_TARGET_ONLY_ROUNDS = 4
+
+# Fallback reason labels. Stable strings so the harness can switch on
+# them when wiring the ``fallback_reason`` field on the per-row
+# metadata block. ``DFLASH_FALLBACK_REASON_NONE`` is the sentinel for
+# "fallback detector is engaged but the round being recorded is not
+# the trigger round".
+DFLASH_FALLBACK_REASON_NONE = None
+DFLASH_FALLBACK_REASON_LOW_ACCEPTANCE = "low_acceptance"
+DFLASH_FALLBACK_REASON_PATHOLOGICAL_TARGET_ONLY = "pathological_target_only"
+
 
 @dataclass(frozen=True, slots=True)
 class DFlashSchedulerDecision:
@@ -121,6 +165,39 @@ class DFlashSchedulerDecision:
     clip_reason: str
     current_block_size: int
     history_size: int
+
+
+@dataclass(frozen=True, slots=True)
+class DFlashFallbackDecision:
+    """Snapshot of the fallback detector state for a single round.
+
+    The fallback detector is purely opt-in: the runtime only
+    constructs / advances it when ``dflash_options.adaptive_scheduling``
+    is ``True`` (i.e. when the operator explicitly opts in to the
+    adaptive scheduler lane that owns the fallback detector). When
+    the detector is engaged, the runtime continues with the proven
+    ``bs == 1`` target-only path for the remainder of the generation
+    and surfaces the trigger reason in the per-row telemetry block.
+
+    The dataclass is purely descriptive. The runtime never reads it
+    during generation; it is exported so focused tests can prove the
+    detector honors the documented thresholds on every call without
+    re-running the real scheduling loop. ``fallback_engaged`` is the
+    simple gate; the harness uses it to populate
+    ``fallback_status = "fallback_low_acceptance"`` /
+    ``"fallback_pathological_target_only"`` once it flips ``True``.
+    """
+
+    fallback_engaged: bool
+    fallback_reason: Optional[str]
+    low_acceptance_active: bool
+    low_acceptance_window_remaining: int
+    low_acceptance_threshold: float
+    low_acceptance_min_drafts: int
+    low_acceptance_observed_mean: Optional[float]
+    pathological_target_only_active: bool
+    pathological_target_only_streak: int
+    pathological_target_only_threshold: int
 
 
 class DFlashAdaptiveScheduler:
@@ -180,6 +257,18 @@ class DFlashAdaptiveScheduler:
         history_window: int = DEFAULT_DFLASH_SCHEDULER_HISTORY_WINDOW,
         grow_threshold: float = DEFAULT_DFLASH_SCHEDULER_GROW_THRESHOLD,
         shrink_threshold: float = DEFAULT_DFLASH_SCHEDULER_SHRINK_THRESHOLD,
+        low_acceptance_window: int = (
+            DEFAULT_DFLASH_FALLBACK_LOW_ACCEPTANCE_WINDOW
+        ),
+        low_acceptance_threshold: float = (
+            DEFAULT_DFLASH_FALLBACK_LOW_ACCEPTANCE_THRESHOLD
+        ),
+        low_acceptance_min_drafts: int = (
+            DEFAULT_DFLASH_FALLBACK_LOW_ACCEPTANCE_MIN_DRAFTS
+        ),
+        pathological_target_only_rounds: int = (
+            DEFAULT_DFLASH_FALLBACK_PATHO_TARGET_ONLY_ROUNDS
+        ),
     ) -> None:
         if max_draft_tokens < 1:
             raise ValueError("max_draft_tokens must be >= 1")
@@ -193,6 +282,14 @@ class DFlashAdaptiveScheduler:
             raise ValueError("grow_threshold must lie in [0, 1]")
         if grow_threshold < shrink_threshold:
             raise ValueError("grow_threshold must be >= shrink_threshold")
+        if low_acceptance_window < 1:
+            raise ValueError("low_acceptance_window must be >= 1")
+        if not 0.0 <= low_acceptance_threshold <= 1.0:
+            raise ValueError("low_acceptance_threshold must lie in [0, 1]")
+        if low_acceptance_min_drafts < 1:
+            raise ValueError("low_acceptance_min_drafts must be >= 1")
+        if pathological_target_only_rounds < 1:
+            raise ValueError("pathological_target_only_rounds must be >= 1")
 
         self._max_draft_tokens = int(max_draft_tokens)
         self._initial_block_size = min(
@@ -203,6 +300,42 @@ class DFlashAdaptiveScheduler:
         self._shrink_threshold = float(shrink_threshold)
         self._current_block_size = max(1, self._initial_block_size)
         self._history: deque[tuple[int, int]] = deque(maxlen=self._history_window)
+
+        # Fallback detector state. The fallback is only consulted by
+        # the runtime when ``adaptive_scheduling`` is True; the
+        # adaptive-off path keeps default-off behavior unchanged.
+        # ``_fallback_engaged`` is sticky: once True it never flips
+        # back to False so the rest of the generation is guaranteed
+        # to stay on the proven ``bs == 1`` target-only path
+        # (target_verify=True, no drafter, no rollback).
+        self._low_acceptance_window = int(low_acceptance_window)
+        self._low_acceptance_threshold = float(low_acceptance_threshold)
+        self._low_acceptance_min_drafts = int(low_acceptance_min_drafts)
+        self._pathological_target_only_rounds = int(
+            pathological_target_only_rounds
+        )
+        self._fallback_engaged = False
+        self._fallback_reason: Optional[str] = DFLASH_FALLBACK_REASON_NONE
+        self._recent_drafts: deque[tuple[int, int]] = deque(
+            maxlen=self._low_acceptance_window
+        )
+        self._pathological_target_only_streak = 0
+
+    @property
+    def _recent_drafts_count(self) -> int:
+        """Total draft-token count across the recent-drafts window.
+
+        The fallback detector requires ``low_acceptance_min_drafts``
+        actual drafts (not just rounds) before the mean-acceptance
+        threshold can fire; this helper sums ``scheduled - 1`` across
+        the configured window so the threshold only trips when the
+        recent rounds have actually proposed enough tokens for the
+        mean ratio to be statistically meaningful.
+        """
+
+        return sum(
+            max(0, scheduled - 1) for _accepted, scheduled in self._recent_drafts
+        )
 
     @property
     def current_block_size(self) -> int:
@@ -216,6 +349,63 @@ class DFlashAdaptiveScheduler:
     def history_window(self) -> int:
         return self._history_window
 
+    @property
+    def fallback_engaged(self) -> bool:
+        return self._fallback_engaged
+
+    @property
+    def fallback_reason(self) -> Optional[str]:
+        return self._fallback_reason
+
+    def fallback_state(self) -> DFlashFallbackDecision:
+        """Return a snapshot of the current fallback-detector state.
+
+        The runtime queries this on every round so it can flip its
+        record kind to ``fallback_low_acceptance`` /
+        ``fallback_pathological_target_only`` exactly once, then keep
+        using the existing ``target_only`` kind on subsequent rounds.
+        The harness also reads the snapshot at row close to populate
+        the ``fallback_reason`` field on the per-row metadata block.
+        """
+
+        observed_mean: Optional[float] = None
+        if self._recent_drafts:
+            total_drafts = sum(
+                max(0, scheduled - 1) for _accepted, scheduled in self._recent_drafts
+            )
+            total_accepted = sum(
+                min(accepted, max(0, scheduled - 1))
+                for accepted, scheduled in self._recent_drafts
+            )
+            if total_drafts > 0:
+                observed_mean = total_accepted / total_drafts
+
+        low_acceptance_active = (
+            len(self._recent_drafts) >= self._low_acceptance_window
+            and self._recent_drafts_count >= self._low_acceptance_min_drafts
+            and observed_mean is not None
+            and observed_mean < self._low_acceptance_threshold
+        )
+        pathological_target_only_active = (
+            self._pathological_target_only_streak
+            >= self._pathological_target_only_rounds
+        )
+
+        return DFlashFallbackDecision(
+            fallback_engaged=self._fallback_engaged,
+            fallback_reason=self._fallback_reason,
+            low_acceptance_active=low_acceptance_active,
+            low_acceptance_window_remaining=max(
+                0, self._low_acceptance_window - len(self._recent_drafts)
+            ),
+            low_acceptance_threshold=self._low_acceptance_threshold,
+            low_acceptance_min_drafts=self._low_acceptance_min_drafts,
+            low_acceptance_observed_mean=observed_mean,
+            pathological_target_only_active=pathological_target_only_active,
+            pathological_target_only_streak=self._pathological_target_only_streak,
+            pathological_target_only_threshold=self._pathological_target_only_rounds,
+        )
+
     def record_round(
         self,
         *,
@@ -225,19 +415,38 @@ class DFlashAdaptiveScheduler:
         """Record the outcome of a draft round.
 
         Target-only rounds (``scheduled_block_size <= 1``) are ignored
-        so they do not pollute the acceptance history with zero-draft
-        rounds that carry no useful signal for grow/shrink decisions.
+        by the adaptive scheduler's grow/shrink history because they
+        carry no drafts to evaluate. The fallback detector instead
+        counts them toward the pathological-target-only streak, so
+        ``max_draft_tokens=1`` (or any other configuration that
+        collapses every round to ``bs == 1``) trips the fallback
+        after ``pathological_target_only_rounds`` consecutive rounds.
+        Draft rounds (regardless of acceptance) are appended to the
+        fallback detector's recent-drafts window so the
+        low-acceptance threshold can fire after
+        ``low_acceptance_min_drafts`` draft tokens with a mean ratio
+        below ``low_acceptance_threshold``.
         """
 
-        if scheduled_block_size <= 1:
-            return
         if accepted_count < 0:
             accepted_count = 0
         if accepted_count > scheduled_block_size:
             accepted_count = scheduled_block_size
-        drafts = scheduled_block_size - 1
-        accepted_in_range = min(accepted_count, drafts)
-        self._history.append((int(accepted_in_range), int(scheduled_block_size)))
+
+        if scheduled_block_size <= 1:
+            self._pathological_target_only_streak += 1
+        else:
+            self._pathological_target_only_streak = 0
+            drafts = scheduled_block_size - 1
+            accepted_in_range = min(accepted_count, drafts)
+            self._recent_drafts.append(
+                (int(accepted_in_range), int(scheduled_block_size))
+            )
+
+        drafts = max(0, scheduled_block_size - 1)
+        if drafts > 0:
+            accepted_in_range = min(accepted_count, drafts)
+            self._history.append((int(accepted_in_range), int(scheduled_block_size)))
 
     def next_block_size(
         self,
@@ -313,6 +522,62 @@ class DFlashAdaptiveScheduler:
             history_size=len(self._history),
         )
 
+    def evaluate_fallback(self) -> DFlashFallbackDecision:
+        """Return the current fallback-detector state.
+
+        The runtime calls this on every post-bonus round (after
+        ``record_round`` has advanced the detectors for the round that
+        just completed). The returned ``DFlashFallbackDecision`` is a
+        pure snapshot: the runtime copies ``fallback_engaged`` /
+        ``fallback_reason`` locally so subsequent detector updates
+        cannot mutate the live state mid-round.
+
+        Once the detector flips ``fallback_engaged`` to ``True`` the
+        runtime drives the rest of the generation through the proven
+        ``bs == 1`` target-only path: ``target_verify=True`` for
+        every emitted token, no drafter calls, no rollback calls. The
+        adaptive scheduler's grow/shrink state is *not* consulted
+        after fallback engages because the per-round block size is
+        hard-coded to ``1`` by the runtime fallback path; this
+        guarantees the runtime cannot accidentally spend draft budget
+        while fallback is engaged.
+        """
+
+        decision = self.fallback_state()
+        if not self._fallback_engaged:
+            if decision.low_acceptance_active:
+                self._fallback_engaged = True
+                self._fallback_reason = DFLASH_FALLBACK_REASON_LOW_ACCEPTANCE
+            elif decision.pathological_target_only_active:
+                self._fallback_engaged = True
+                self._fallback_reason = (
+                    DFLASH_FALLBACK_REASON_PATHOLOGICAL_TARGET_ONLY
+                )
+        if self._fallback_engaged:
+            return DFlashFallbackDecision(
+                fallback_engaged=True,
+                fallback_reason=self._fallback_reason,
+                low_acceptance_active=decision.low_acceptance_active,
+                low_acceptance_window_remaining=(
+                    decision.low_acceptance_window_remaining
+                ),
+                low_acceptance_threshold=decision.low_acceptance_threshold,
+                low_acceptance_min_drafts=decision.low_acceptance_min_drafts,
+                low_acceptance_observed_mean=(
+                    decision.low_acceptance_observed_mean
+                ),
+                pathological_target_only_active=(
+                    decision.pathological_target_only_active
+                ),
+                pathological_target_only_streak=(
+                    decision.pathological_target_only_streak
+                ),
+                pathological_target_only_threshold=(
+                    decision.pathological_target_only_threshold
+                ),
+            )
+        return decision
+
 
 def load_dflash_drafter_model(
     target_model: Any,
@@ -344,6 +609,63 @@ def _emit_dflash_round_telemetry(
 
     if telemetry_collector is not None:
         telemetry_collector(record)
+
+
+@dataclass
+class _DFlashFallbackTriggerTracker:
+    """Mutable per-call trigger tracker for the low-acceptance fallback.
+
+    The runtime constructs one of these per ``dflash_stream_generate``
+    invocation and threads it through the bs==1 branch so each
+    fallback reason is emitted exactly once per generation. The
+    tracker intentionally does not persist across calls so it cannot
+    accidentally let a fallback state leak from one request to the
+    next.
+    """
+
+    low_acceptance_seen: bool = False
+    pathological_target_only_seen: bool = False
+
+
+def _select_round_kind(
+    *,
+    fallback_decision: Optional[DFlashFallbackDecision],
+    fallback_trigger_tracker: _DFlashFallbackTriggerTracker,
+) -> str:
+    """Pick the per-round telemetry kind for the bs==1 / fallback path.
+
+    * If the fallback detector is not engaged this round the runtime
+      emits the existing ``target_only`` kind (it is the same code
+      path as the conservative ``--dflash-max-draft-tokens 1`` lane).
+    * If fallback engaged during this round and the reason is
+      ``low_acceptance`` and no earlier round has already tagged the
+      trigger, emit the one-shot ``fallback_low_acceptance`` kind
+      and mark the tracker so subsequent rounds fall back to plain
+      ``target_only``. The same pattern applies for
+      ``pathological_target_only``.
+    * Subsequent rounds after the trigger record continue with
+      ``target_only`` because the per-round emission cost is
+      identical (drafter / rollback bypassed either way); the harness
+      consumes the runtime's ``fallback_engaged`` / ``fallback_reason``
+      snapshot at row close to populate the per-row metadata.
+    """
+
+    if fallback_decision is None or not fallback_decision.fallback_engaged:
+        return DFLASH_TELEMETRY_KIND_TARGET_ONLY
+    reason = fallback_decision.fallback_reason
+    if (
+        reason == DFLASH_FALLBACK_REASON_LOW_ACCEPTANCE
+        and not fallback_trigger_tracker.low_acceptance_seen
+    ):
+        fallback_trigger_tracker.low_acceptance_seen = True
+        return DFLASH_TELEMETRY_KIND_FALLBACK_LOW_ACCEPTANCE
+    if (
+        reason == DFLASH_FALLBACK_REASON_PATHOLOGICAL_TARGET_ONLY
+        and not fallback_trigger_tracker.pathological_target_only_seen
+    ):
+        fallback_trigger_tracker.pathological_target_only_seen = True
+        return DFLASH_TELEMETRY_KIND_FALLBACK_PATHOLOGICAL_TARGET_ONLY
+    return DFLASH_TELEMETRY_KIND_TARGET_ONLY
 
 
 def _apply_logits_processors(
@@ -469,6 +791,26 @@ def dflash_stream_generate(
     used. Every target call still carries ``target_verify=True``, every
     emitted token is target-verified, and the existing rollback path
     is unchanged.
+
+    The same adaptive scheduler owns the M15 low-acceptance fallback
+    detector. When recent rounds show a sustained acceptance collapse
+    (mean acceptance ratio below ``low_acceptance_threshold`` across
+    ``low_acceptance_window`` rounds with at least
+    ``low_acceptance_min_drafts`` total drafts), OR when the
+    scheduler has collapsed to ``bs == 1`` for
+    ``pathological_target_only_rounds`` consecutive rounds, the
+    detector flips its sticky ``fallback_engaged`` flag and the
+    runtime forces ``bs == 1`` for every subsequent round. The
+    fallback path emits a one-shot telemetry record of kind
+    ``fallback_low_acceptance`` or
+    ``fallback_pathological_target_only`` so the harness can
+    attribute the trigger reason on the per-row metadata block; all
+    later rounds continue with the existing ``target_only`` kind
+    because the per-round cost is identical. Once fallback is engaged
+    the runtime never invokes the drafter or the rollback hook (the
+    bs==1 branch bypasses both); every emitted token is still
+    target-verified, ``target_verify=True`` is preserved on every
+    call, and the default-off baseline (no opt-in) is unchanged.
     """
 
     if isinstance(model_kit, DistributedModelKit):
@@ -712,18 +1054,66 @@ def dflash_stream_generate(
                 max_draft_tokens=dflash_options.max_draft_tokens,
                 initial_block_size=initial_block_size,
             )
+        # M15 fallback state. Holds the *current* (round-stable)
+        # snapshot of the fallback detector so the loop can emit the
+        # correct telemetry kind for the round it is recording. The
+        # snapshot is refreshed at the top of every loop iteration by
+        # ``adaptive_scheduler.evaluate_fallback()``, which records
+        # the current round and then advances the detector. Once the
+        # detector engages, this snapshot stays ``fallback_engaged``
+        # and the loop forces ``bs == 1`` for every subsequent round.
+        fallback_decision: Optional[DFlashFallbackDecision] = None
+        # Per-call tracker for one-shot fallback telemetry kinds. The
+        # bs==1 branch uses it to tag the trigger round exactly once
+        # per fallback reason; the tracker is purely local to this
+        # generator call so it cannot leak fallback state between
+        # requests.
+        fallback_trigger_tracker = _DFlashFallbackTriggerTracker()
         while emitted < max_tokens:
             round_index += 1
-            block_total = _dflash_block_total(draft_model, dflash_options.max_draft_tokens)
-            remaining_budget = max_tokens - emitted + 1
+            # Always query the fallback detector *first* so the
+            # scheduler's grow/shrink history advances with the most
+            # recent round outcome. The fallback decision is sticky:
+            # once ``fallback_engaged`` flips True the loop forces
+            # ``bs == 1`` and never asks the adaptive scheduler for
+            # another block-size choice, so the scheduler's
+            # ``current_block_size`` becomes irrelevant for the rest
+            # of this generation.
             if adaptive_scheduler is not None:
-                decision = adaptive_scheduler.next_block_size(
-                    block_total=block_total,
-                    remaining_budget=remaining_budget,
-                )
-                bs = decision.scheduled_block_size
+                fallback_decision = adaptive_scheduler.evaluate_fallback()
             else:
-                bs = min(block_total, dflash_options.max_draft_tokens, remaining_budget)
+                fallback_decision = None
+            if fallback_decision is not None and fallback_decision.fallback_engaged:
+                # Force the loop into the proven ``bs == 1`` target-only
+                # branch every subsequent round. This guarantees:
+                #   * No drafter.draft_block calls (the runtime bs==1
+                #     branch bypasses the drafter entirely).
+                #   * No rollback calls (the bs==1 branch records
+                #     ``_record_speculative_round(draft_model, 0, 0)``
+                #     and never triggers ``rollback_speculative_cache``).
+                #   * No draft cache mutation: the bs==1 branch never
+                #     touches the drafter's per-layer state.
+                #   * Every emitted token is target-verified
+                #     (``target_verify=True`` is hard-coded on the
+                #     bs==1 verify call below).
+                bs = 1
+            else:
+                block_total = _dflash_block_total(
+                    draft_model, dflash_options.max_draft_tokens
+                )
+                remaining_budget = max_tokens - emitted + 1
+                if adaptive_scheduler is not None:
+                    decision = adaptive_scheduler.next_block_size(
+                        block_total=block_total,
+                        remaining_budget=remaining_budget,
+                    )
+                    bs = decision.scheduled_block_size
+                else:
+                    bs = min(
+                        block_total,
+                        dflash_options.max_draft_tokens,
+                        remaining_budget,
+                    )
             if bs < 1:
                 break
 
@@ -777,11 +1167,24 @@ def dflash_stream_generate(
                 target_only_emission_elapsed_s = time.perf_counter() - emission_start
                 if maybe_result is not None:
                     yield maybe_result
+                # When the fallback detector flipped on during this
+                # round, the loop's first iteration after ``evaluate_fallback``
+                # recorded the detector engaged *before* this verify
+                # call ran. Emit a one-shot telemetry record tagged with
+                # the fallback kind so the harness can attribute the
+                # trigger reason; every subsequent round reuses the
+                # existing ``target_only`` shape because the per-round
+                # emission cost is identical (the drafter / rollback
+                # paths are bypassed in both cases).
+                fallback_kind = _select_round_kind(
+                    fallback_decision=fallback_decision,
+                    fallback_trigger_tracker=fallback_trigger_tracker,
+                )
                 _emit_dflash_round_telemetry(
                     telemetry_collector,
                     DFlashRoundTelemetry(
                         round_index=round_index,
-                        kind=DFLASH_TELEMETRY_KIND_TARGET_ONLY,
+                        kind=fallback_kind,
                         scheduled_block_size=1,
                         draft_count=0,
                         accepted_count=0,
@@ -798,6 +1201,18 @@ def dflash_stream_generate(
                 )
                 if emitted % 256 == 0:
                     mx.clear_cache()
+                # Record this round with the adaptive scheduler so the
+                # fallback detector's pathological-target-only streak
+                # advances. The scheduler ignores bs==1 rounds for its
+                # *grow/shrink* history (so no drafter state is
+                # perturbed) but still records them toward the
+                # pathological-target-only counter that drives the
+                # fallback trigger.
+                if adaptive_scheduler is not None:
+                    adaptive_scheduler.record_round(
+                        accepted_count=0,
+                        scheduled_block_size=bs,
+                    )
                 continue
 
             drafter_start = time.perf_counter()
