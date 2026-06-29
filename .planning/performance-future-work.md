@@ -2804,3 +2804,173 @@ The performance/promotion evaluation lane ends in **REJECT**. The decision cites
 - **Performance/promotion decision (`VAL-M14-006`):** **REJECT** — recorded above; no promotion, no default-on, no further heavyweight samples for this evaluation.
 
 DFlash closes M14 as REJECT on the performance/promotion evaluation. The runtime path is functionally correct (smoke + invariants + harness telemetry + capped smoke all pass), but the quality gate never passes at any allowed `max_draft_tokens` setting and the per-emission target verify overhead makes the candidate strictly slower on every metric. There is no path to promotion from this evidence; a future lane would need a fundamentally different draft/verify scheduling design, not a retry of the existing flags.
+
+## M15 DFlash scheduling profiling run (2026-06-29)
+
+Feature `m15-dflash-scheduling-profile` is the measurement-only first slice of the M15 DFlash scheduling optimization milestone. The user-approved scope is explicit: "Use the new DFlash telemetry to profile the real Qwen3.6 target plus z-lab DFlash drafter on the M14 quality suite. Run only after resource preflight passes. Compare fixed `--dflash-max-draft-tokens 1` and the prior fixed-4 behavior only enough to attribute costs; inspect every row error and record where latency is spent. This feature is measurement only and must not claim promotion." The M15 telemetry prerequisite is committed on the branch (engine commit `35f8ecf` adds per-round `DFlashRoundTelemetry` records inside `dflash_stream_generate`; harness commit `1e27750` aggregates those records into a per-row `dflash` metadata block on the shared-bench report). This section records the profile evidence and the latency attribution, with an explicit no-promotion statement.
+
+### Resource preflight at profile time
+
+Live preflight via `probe_dflash_readiness(DFlashBoundaryOptions(enabled=True, target_model_path=...Qwen3.6-27B-MLX-8bit, drafter_model_path=...25ee0025ff950496a634e100b75c2db4515e9824))` at the start of the profile:
+
+- `enabled=True`, `dependency_available=True` (`mlx_vlm.speculative.dflash` and `mlx_vlm.speculative.drafters.qwen3_dflash.dflash` both importable).
+- `target_family=qwen`, `drafter_family=qwen`. `target_profile` parses cleanly: `vocab_size=248320`, `num_hidden_layers=64`, `model_type=qwen3_5`.
+- `route_blockers=()`, `cache_mode_blockers=()`, `resource_blockers=()` at the pre-load probe. The first live probe in the session (right after the `init.sh` warmup) showed the same fail-closed memory message as the prior M14 evidence (`need at least 39.44 GiB, found 33.19 GiB`); the drafter-plus-target footprint of `~31.44 GiB` plus the 25%-or-8 GiB headroom (`~39.30 GiB`) is tight against the 96 GB host, so a single concurrent model load is the realistic bound. The subsequent live probe after the previous harness subprocess freed its resident footprint cleared the memory headroom, and the actual `--dflash` runs proceeded without preflight rejection.
+- Port `127.0.0.1:12444` is classified as `CLOUD_ONLY_LLMDYNAMIX` by the same `probe_listener_evidence` used in M14 (config has 16 local MLX/Metal backend markers but live probing shows ollama `/api/ps` reports 0 loaded models and LM Studio 4521 is not listening), so the reserved port is not a DFlash resource blocker. Ports 3180/3181/3182 are empty.
+
+### M15 telemetry contract recap (now visible in the per-row `dflash` block)
+
+The profile reports carry the full per-round aggregation introduced by commits `35f8ecf` and `1e27750`:
+
+- `round_count` — total scheduling rounds (initial bonus + per-emit bonus rounds).
+- `draft_round_count` — rounds where the drafter actually proposed tokens (`bs > 1`).
+- `target_only_round_count` — rounds where the per-round block budget collapsed to `bs=1` (i.e. `--dflash-max-draft-tokens 1` or the residual-budget-1 boundary case).
+- `rollback_round_count` — rounds where a partial rejection triggered the rollback hook.
+- `accepted_proposal_tokens_total` / `rejected_proposal_tokens_total` — totals summed across every `DFlashRoundTelemetry` record.
+- `drafter_total_elapsed_s` — sum of drafter forward time across every `draft_round_*` record.
+- `target_verify_total_elapsed_s` — sum of every target-verify call (`initial_bonus` + every `target_only` round + every `draft_round_*` round).
+- `rollback_total_elapsed_s` — sum of every rollback-hook invocation.
+- `emission_total_elapsed_s` — sum of every per-token emission into the harness result queue.
+- `fallback_status`, `opted_in`, `sequential_text_only`, `uses_native_runtime`, `max_draft_tokens`, `target_model_path`, `drafter_model_path` — unchanged from the M14 contract.
+- `telemetry_collector` is a per-round callback on the runtime side; the harness wraps it with a `DFlashTelemetryAggregator` so the per-row `dflash` block is the sum across every round the generator streamed. When `telemetry_collector` is omitted (default), the runtime records no overhead beyond the `time.perf_counter()` reads and no scheduling decision depends on telemetry; this preserves the default-off invariant and is verified by `tests/test_dflash_runtime.py::TestPerRoundDFlashTelemetry` and `test_telemetry_collector_absent_keeps_default_off_observable_behavior`.
+
+### Profile command shape (both `max_draft_tokens` settings)
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+env PYTHONPATH=. python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-force-sequential \
+  --dflash \
+  --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 \
+  --dflash-max-draft-tokens 1|4 \
+  --prompt-suite-json prompt_suites/m14_dflash_quality_gate.json \
+  --runs 2 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text
+```
+
+The prompt suite, model, `enable_thinking=false` chat-template kwargs, max-tokens cap, and run count are identical to the M14 quality gate so the profile is directly comparable to the existing M14 evidence.
+
+### Profile report paths
+
+| Variant | Report path | Quality compare path |
+|---|---|---|
+| DFlash=1 (post-loop-fix, M15 telemetry) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T200713.487413Z-shared-bench.json` | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T200713.487413Z-vs-20260628T090101-quality-compare.json` |
+| DFlash=4 (prior behavior, M15 telemetry) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T200825.247371Z-shared-bench.json` | (DFlash=4 quality failures recorded inline below; no compare file written because the candidate is the prior-behavior control) |
+| Prior M14 baseline (non-DFlash, same suite) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T090101.820031Z-shared-bench.json` | (the baseline for the DFlash=1 compare above) |
+
+### Row-error inspection (mandatory before attributing cost)
+
+- **DFlash=1 report:** 5 prompts × 2 runs = 10 rows, every `error: null`, every `completion_tokens >= min_completion_tokens` (`1/4/8/4/16` for the suite's `m14_dflash_short_factual` / `brief_summary` / `code_function` / `math_calc` / `json_output` prompts; all five reached their cap: 16, 32, 96, 48, 96 tokens). No `RuntimeError: There is no Stream(...)`, no row-level error, no preflight fallback (`dflash.fallback_status=default_off` on every row).
+- **DFlash=4 report:** 10 rows, every `error: null`, every `completion_tokens` reaches the per-prompt cap. No row-level error, no preflight fallback. The DFlash=4 quality defects (broken JSON trailing tokens, repeated-token loops on brief_summary and code_function, broken math in math_calc) are detected downstream by the deterministic quality suite's keyword / exact-keys / `forbid_substrings` checks, not as row errors.
+- **Prior M14 baseline (non-DFlash, 20260628T090101):** 10 rows, all `error: null`. Used here only as a non-DFlash cost-attribution reference for the M15 scheduling question, not as a promotion baseline.
+
+### Per-prompt latency attribution (means over 2 runs, M15 telemetry)
+
+| Prompt | DFlash=1 ttft_s | DFlash=1 tps | DFlash=1 total_s | DFlash=4 ttft_s | DFlash=4 tps | DFlash=4 total_s | Prior baseline ttft_s | Prior baseline tps | Prior baseline total_s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `m14_dflash_short_factual` | 1.382 | 21.23 | 2.138 | 1.161 | 14.78 | 2.244 | 0.509 | 31.26 | 0.605 |
+| `m14_dflash_brief_summary` | 0.811 | 22.07 | 2.262 | 0.795 | 26.25 | 2.029 | 0.491 | 24.69 | 1.018 |
+| `m14_dflash_code_function` | 0.792 | 20.65 | 5.451 | 0.971 | 25.59 | 4.726 | 0.493 | 23.46 | 2.496 |
+| `m14_dflash_math_calc` | 0.807 | 21.15 | 3.077 | 0.830 | 14.97 | 4.329 | 0.490 | 23.43 | 2.539 |
+| `m14_dflash_json_output` | 0.783 | 21.52 | 5.245 | 0.768 | 12.60 | 8.431 | 0.491 | 23.34 | 3.276 |
+
+Where latency is spent (per-stage milliseconds summed across both runs, from the M15 per-round aggregation):
+
+| Prompt | DFlash=1 target_verify (ms) | DFlash=1 drafter (ms) | DFlash=1 rollback (ms) | DFlash=1 emission (ms) | DFlash=4 target_verify (ms) | DFlash=4 drafter (ms) | DFlash=4 rollback (ms) | DFlash=4 emission (ms) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `m14_dflash_short_factual` | 72.52 | 0.00 | 0.00 | 4.80 | 32.03 | 2.98 | 1.18 | 4.41 |
+| `m14_dflash_brief_summary` | 73.34 | 0.00 | 0.00 | 8.24 | 35.50 | 3.10 | 0.92 | 7.47 |
+| `m14_dflash_code_function` | 219.15 | 0.00 | 0.00 | 234.98 | 93.39 | 8.85 | 2.04 | 277.76 |
+| `m14_dflash_math_calc` | 122.07 | 0.00 | 0.00 | 14.13 | 94.18 | 9.25 | 3.53 | 12.33 |
+| `m14_dflash_json_output` | 222.22 | 0.00 | 0.00 | 29.61 | 211.74 | 21.37 | 8.32 | 30.19 |
+
+Round-count attribution (the rest of the per-prompt total time is split between prefill and intra-step Metal/MLX dispatch not surfaced in the per-round aggregation; the M15 telemetry records the four stages above, and `round_count - 1` is the number of post-bonus scheduling rounds):
+
+| Prompt | DFlash=1 round_count | DFlash=1 target_only_round_count | DFlash=1 draft_round_count | DFlash=1 rollback_round_count | DFlash=4 round_count | DFlash=4 target_only_round_count | DFlash=4 draft_round_count | DFlash=4 rollback_round_count |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `m14_dflash_short_factual` | 16.0 | 15.0 | 0.0 | 0.0 | 12.0 | 0.0 | 11.0 | 11.0 |
+| `m14_dflash_brief_summary` | 32.0 | 31.0 | 0.0 | 0.0 | 13.5 | 0.0 | 12.5 | 8.5 |
+| `m14_dflash_code_function` | 96.0 | 95.0 | 0.0 | 0.0 | 35.5 | 0.0 | 34.5 | 18.0 |
+| `m14_dflash_math_calc` | 48.0 | 47.0 | 0.0 | 0.0 | 36.5 | 0.0 | 35.5 | 32.0 |
+| `m14_dflash_json_output` | 96.0 | 95.0 | 0.0 | 0.0 | 78.0 | 0.0 | 77.0 | 72.0 |
+
+Accepted/rejected token totals (across both runs):
+
+| Prompt | DFlash=1 accepted | DFlash=1 rejected | DFlash=4 accepted | DFlash=4 rejected |
+|---|---:|---:|---:|---:|
+| `m14_dflash_short_factual` | 0.0 | 0.0 | 4.0 | 27.0 |
+| `m14_dflash_brief_summary` | 0.0 | 0.0 | 19.5 | 17.0 |
+| `m14_dflash_code_function` | 0.0 | 0.0 | 61.5 | 42.0 |
+| `m14_dflash_math_calc` | 0.0 | 0.0 | 22.0 | 93.5 |
+| `m14_dflash_json_output` | 0.0 | 0.0 | 56.0 | 213.0 |
+
+### Where the latency is spent — cost attribution
+
+- **DFlash=1 (conservative, `target_only` per-emit verify):** every emitted token triggers a target-only verify round (`target_only_round_count = round_count - 1` in every prompt). Drafter / rollback timing is `0.00 ms` because the per-round block budget collapses to `bs=1` and the drafter/rollback code paths are never entered. The `target_verify_total_elapsed_s` therefore accounts for almost all of the DFlash-attributable decode time. Per the timing table, target-verify time scales roughly linearly with `completion_tokens` (e.g. `code_function`: 96 tokens → 219 ms; `json_output`: 96 tokens → 222 ms; `math_calc`: 48 tokens → 122 ms; `short_factual`: 16 tokens → 72 ms; `brief_summary`: 32 tokens → 73 ms). The DFlash=1 decode TPS is consequently clamped to ~21-22 tps across every prompt (limited by the per-token target verify round trip), versus the prior non-DFlash baseline's ~23-31 tps. The DFlash=1 total time is dominated by `target_verify_total_elapsed_s` plus a per-prompt fixed prompt-cache-prefill cost (~0.8-1.4 s warm/cold TTFT) plus the residual intra-step Metal dispatch not surfaced in the per-round aggregation.
+- **DFlash=4 (prior fixed-4 behavior):** every emitted token triggers a `draft_round_*` round (`draft_round_count = round_count - 1` because `bs > 1` even at the residual-budget boundary). The drafter is now actually invoked (`drafter_total_elapsed_s` is non-zero on every prompt, peaking at 21.37 ms on `json_output` which has 77 draft rounds) and partial rejection is frequent (`rollback_round_count` is 11/13.5/18/32/72 across the five prompts). The drafter is cheap per-round (single forward pass on the small DFlashDraftModel) but the high rejection rate on most prompts means the runtime performs an extra target-verify forward pass for every rejected draft token, which inflates `target_verify_total_elapsed_s` back to roughly the same scale as DFlash=1 (e.g. 93.39-211.74 ms vs 72.52-222.22 ms on the same prompts). Net effect: the drafter does not save target-verify work because the acceptance rate is too low on every prompt except `brief_summary` and `code_function`, where partial acceptance still requires a target correction forward pass.
+- **DFlash=4 output quality defects (consistent with prior M14 evidence):** `m14_dflash_brief_summary` rows emit `The capital of France is Paris.\nParis.\nParis\n.\n.\n.\n.\n.\n.\n.\n.\n.\n.` (per-run loops on `France. France.` and `. .`); `m14_dflash_code_function` rows emit `\`\`\`python\ndef add(a\n\n  b\n    return\n\`\`\`` followed by `\`\`\`python\npython\npython\n...` (broken Python + `python` repeated loop, plus a `\n``` ``` ``` ``` ` loop on run 2); `m14_dflash_math_calc` rows emit `$$ \text{hour}{}}}}}}}}}}}}}}}}}}}}$$}\n00000000000000000000000000000...`; `m14_dflash_json_output` rows emit `{\n  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " ` (the JSON key got converted to a literal `" "`-repeat loop and the object never closes). The deterministic suite's keyword and `json_exact_keys` checks therefore fail on every DFlash=4 row except `m14_dflash_short_factual`. DFlash=1 reproduces the prior M14 `m14_dflash_json_output` trailing-token issue (`<|im_end|>\n<|endoftext|><|im_start|>user\nHow<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n{\n  "risk": "Inconsistent hardware performance and thermal throttling affecting` appears after the JSON object closes, and the `enable_thinking` chat-template reasoning tags still show in the raw output), but the model still produces the correct risk/mitigation/owner JSON object before the trailing tokens.
+- **Where latency is spent, summarized:**
+  - **DFlash=1** pays `target_verify_total_elapsed_s` per emitted token (full target forward pass on the 27B target per emission), with zero drafter and zero rollback. Decode TPS is therefore capped near the per-token target latency, and total time tracks roughly linearly with `completion_tokens`. The non-DFlash baseline is uniformly faster (`tps` 23-31 vs 21-22 for DFlash=1) because vanilla autoregressive decoding runs one forward pass per token too but skips the DFlash bonus sample + cache-management overhead.
+  - **DFlash=4** pays drafter time (small) + frequent rollback time (small but visible) + a target-verify call on every accepted position and every rejected position. On the long-prompt rows (`code_function`, `json_output`, `math_calc`) the high rejection rate negates the drafter's forward-pass savings, so total time is similar to or worse than DFlash=1. DFlash=4 also breaks output quality on every prompt except the trivial one.
+  - **No configuration is "free":** both `max_draft_tokens=1` (full target verify per token) and `max_draft_tokens=4` (drafter with frequent full-rejection rollbacks) cost more than the non-DFlash baseline. The acceptance-rate threshold that would let DFlash win on this prompt mix sits between the two — partial acceptance on `brief_summary` and `code_function` keeps DFlash=4 competitive on those two prompts, but the broader suite drags it back below the baseline.
+
+### M15 DFlash=1 vs prior M14 non-DFlash baseline (`quality_compare.py`)
+
+`quality_compare.py --baseline reports/20260628T090101.820031Z-shared-bench.json --candidate reports/20260629T200713.487413Z-shared-bench.json` returns `status=fail` on all 5 prompts:
+
+| Prompt | status | ttft_change_pct | decode_tps_change_pct | total_change_pct |
+|---|---|---:|---:|---:|
+| `m14_dflash_brief_summary` | fail | +65.093 | -10.628 | +122.159 |
+| `m14_dflash_code_function` | fail | +60.755 | -12.000 | +118.403 |
+| `m14_dflash_json_output` | fail | +59.638 | -7.804 | +60.111 |
+| `m14_dflash_math_calc` | fail | +64.588 | -9.755 | +21.197 |
+| `m14_dflash_short_factual` | fail | +171.432 | -32.097 | +253.438 |
+
+`global_findings=[]` (no shared finding between baseline and candidate rows). The candidate `m14_dflash_json_output` rows also surface the `invalid exact JSON object: Extra data` finding the prior M14 `max_draft_tokens=1` evidence already recorded (DFlash appends non-JSON tokens after the JSON object). Every other prompt fails only on coarse timing regressions (TTFT +60-171%, decode TPS -7-32%, total +21-253%), which are well outside the 5% / 20% promotion thresholds. The DFlash=1 profile confirms the M14 conclusion: the per-emission target verify cost dominates the DFlash=1 latency profile, and no scheduling tweak inside the `bs=1` path can amortize that cost.
+
+### Decision: NO PROMOTION, NO DEFAULT-ON, NO `m15-dflash-quality-performance-decision` LAUNCH FROM THIS EVIDENCE
+
+This is a measurement-only run. The feature description explicitly forbids a promotion claim ("This feature is measurement only and must not claim promotion"), and the captured evidence supports the no-promotion statement:
+
+1. **Quality gate (`status=fail` on every prompt) does not pass for DFlash=1 either.** The new M15 DFlash=1 profile reproduces the prior M14 `m14_dflash_json_output` trailing-token defect and adds the coarse latency regressions on every prompt. The `quality_compare.py` result is `status=fail` on all 5 prompts, identical in kind to the prior M14 evidence.
+2. **DFlash=4 fails output quality on every prompt except `m14_dflash_short_factual`.** The new M15 per-round aggregation shows `rollback_round_count` of 11/13.5/18/32/72 (high rejection on the long-prompt rows) and the row-level output previews show repeated-token loops and broken JSON / Python / math. DFlash=4 cannot pass the deterministic quality suite at this prompt mix.
+3. **No latency movement is in the DFlash-positive direction on either DFlash variant.** DFlash=1 is strictly slower than the non-DFlash baseline on TTFT, decode TPS, and total latency for every prompt. DFlash=4 is sometimes faster on the small-prompt rows where partial acceptance helps, but it is slower on the long-prompt rows and breaks output quality. There is no prompt in this suite where either DFlash variant produces a repeatable latency win, let alone a quality-passing repeatable win.
+4. **The per-round attribution makes the cost visible but does not fix it.** The M15 telemetry cleanly attributes DFlash=1 latency to per-emission target verify (no drafter, no rollback), and DFlash=4 latency to drafter + frequent rollback + a similar total target-verify time (because the high rejection rate undoes the drafter's forward-pass savings). A future scheduling lane could either: (a) lower the per-emission target verify cost (e.g. by reducing the verify call's input length or skipping hidden-state capture when `accepted==0`); (b) raise the acceptance rate to amortize the drafter cost (e.g. by adaptively shrinking `max_draft_tokens` on repeated rejections, which is what the M15 scheduler lane is meant to attempt); or (c) fall back to non-DFlash when acceptance collapses (pathological low-acceptance fallback). None of these were attempted in this profiling run, and none of them are promotable from this evidence.
+
+**No further heavyweight samples are recorded here.** The `m15-dflash-quality-performance-decision` bench-worker feature (if it is opened by the orchestrator) would need a redesigned scheduler or fallback path before any repeated quality/performance samples are run; the current evidence is the M14-rejected state plus per-round cost attribution, and the current evidence does not satisfy the promotion rule.
+
+**Operational outcome of this profile:**
+
+- DFlash remains default-off and opt-in. No flag is flipped, no default-on change is made, no promotion claim is made, no KEEP OPT-IN / REJECT decision is recorded against a redesigned scheduler (this lane is measurement only).
+- The M15 per-round telemetry contract (`round_count`, `draft_round_count`, `target_only_round_count`, `rollback_round_count`, `accepted_proposal_tokens_total`, `rejected_proposal_tokens_total`, `drafter_total_elapsed_s`, `target_verify_total_elapsed_s`, `rollback_total_elapsed_s`, `emission_total_elapsed_s`) is now visible in the shared-bench per-row `dflash` block on every `--dflash` run. This is the instrumentation the next scheduler lane needs to attribute future work.
+- The earlier M14 closeout REJECT decision stands. M15 scheduling optimization is the user-approved follow-up; this profile provides the cost attribution a future adaptive-scheduler / fallback lane would need, but it does not open the promotion lane by itself.
+
+### Discovered issue (worth filing before the next M15 lane)
+
+The M15 harness telemetry-aggregation commit `1e27750` introduced a regression: the harness now always passes `telemetry_collector=dflash_aggregator.collect` to `create_generator_compat`, but `_sequential_generation(...)` in `mlx_engine/generate.py` does not accept `telemetry_collector` (no signature entry, no `**kwargs`). Every non-DFlash `--mlx-engine-force-sequential` run therefore raises `TypeError: _sequential_generation() got an unexpected keyword argument 'telemetry_collector'` on every prompt × run. This breaks the natural M15 non-DFlash comparison baseline (the same prompt suite without `--dflash`).
+
+Evidence:
+- `reports/20260629T200947.572019Z-shared-bench.json` (a same-checkpoint non-DFlash baseline attempt) shows `error: "TypeError: _sequential_generation() got an unexpected keyword argument 'telemetry_collector'"` on every row, and the engine's traceback names `mlx_engine/generate.py:198` in `self._generation_fn(...)`.
+- The harness already filters most kwargs through `if "X" in supported or accepts_var_kwargs:` blocks, but the new `telemetry_collector` forward is unconditional in `create_generator_compat` (lines 600-606 of `runners/mlx_engine_runner.py`); the comment claims "Older engine builds that do not accept the kwarg still drop it silently", but `_sequential_generation` neither lists `telemetry_collector` nor has `**kwargs`, so the filter never trips.
+- The DFlash telemetry path (`dflash_stream_generate`) accepts `telemetry_collector`, which is why the `--dflash` runs in this profile completed cleanly.
+
+Suggested fix: in `create_generator_compat`, gate the `telemetry_collector` forward on `args.dflash` (or on the engine actually accepting the kwarg via the existing supported-set check) so non-DFlash runs do not raise. The next M15 scheduler lane should land this fix as a prerequisite, otherwise the natural non-DFlash baseline for adaptive-scheduler quality/performance comparisons will keep failing at row 0.
+
+### Artifacts
+
+| Artifact | Path |
+|---|---|
+| DFlash=1 profile report (M15 telemetry, post-loop-fix) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T200713.487413Z-shared-bench.json` |
+| DFlash=4 profile report (M15 telemetry, prior behavior) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T200825.247371Z-shared-bench.json` |
+| Quality compare (DFlash=1 vs prior M14 baseline) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T200713.487413Z-vs-20260628T090101-quality-compare.json` |
+| Prior M14 non-DFlash baseline (used for cost attribution) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T090101.820031Z-shared-bench.json` |
+| Failed non-DFlash baseline attempt (harness regression) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260629T200947.572019Z-shared-bench.json` |
+| M15 per-round telemetry contract (engine) | engine commit `35f8ecf` (`[#1190] feat(m15): instrument per-round DFlash scheduling and timing telemetry`) |
+| M15 per-round telemetry aggregation (harness) | harness commit `1e27750` (`[#1190] feat(m15): aggregate per-round DFlash telemetry across harness rows`) |
+| Engine DFlash telemetry tests | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_dflash_runtime.py::TestPerRoundDFlashTelemetry` (6 passed) |
+| Engine DFlash boundary tests | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_dflash_boundary.py` (41 passed + 13 subtests) |
+| Harness DFlash / telemetry tests | `tests/test_mlx_engine_runner.py` + `tests/test_shared_bench.py` (18 DFlash/telemetry tests passed) |
+| Prompt suite | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m14_dflash_quality_gate.json` |
