@@ -8,7 +8,6 @@ assistant output and the CLI metrics.
 """
 import json
 import re
-import glob
 import sys
 from pathlib import Path
 
