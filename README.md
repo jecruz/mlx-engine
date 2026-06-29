@@ -126,6 +126,15 @@ regressed TTFT, decode TPS, and total latency. See commits `9582970`
 (runtime-loop fix), `8f98e8a` (quality negative evidence), and `fd32c99`
 (performance REJECT) for the final evidence chain.
 
+M15 closeout also keeps DFlash default-off and explicit opt-in only. Adaptive
+scheduling and low-acceptance/pathological target-only fallback ran against the
+real Qwen3.6 target plus z-lab Qwen3.5 DFlash drafter with zero row errors, but
+every row fell back to `fallback_pathological_target_only` and the
+quality/performance gates failed. The final M15 decision is REJECT / KEEP
+OPT-IN / NO PROMOTION; see the 20260629T205452 shared-bench, quality-compare,
+and `.planning/dflash-adaptive-quality-performance-decision-20260629T205452Z.json`
+artifacts for the closeout evidence.
+
 ## Development Setup
 
 ### Pre-commit Hooks
