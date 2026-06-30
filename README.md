@@ -199,6 +199,27 @@ quality passed with TTFT `12.350718s`, decode TPS `34.796`, total
 `12.810545s`. Scrutiny passed `411` passed / `16` skipped / `52` subtests and
 ruff clean, and user-testing passed VAL-M20-001 through VAL-M20-004.
 
+M21 closeout ran prefill step-size optimization as direct
+`shared_bench.py --prefill-step-size` sweeps. Evidence covered Qwen3.5 dense
+default, Qwen3.5 forced sequential, Qwen2.5-Coder forced sequential,
+LFM2.5-VL short, LFM2.5-VL persistent long, and Gemma4 12B short VLM, with
+omitted/default plus explicit `1024`, `2048`, `4096`, and `8192` candidates
+where feasible. All retained reports passed row-error and quality inspection,
+but the final decision is REJECT / no default change because apparent wins were
+quality-failing, small/noisy, route-local, or lacked at least two repeated
+quality-passing samples. Notable evidence: Qwen dense `2048` failed compare on
+warm TTFT regression; Qwen sequential `1024` and Qwen2.5-Coder `8192` passed
+compare but had small single-sample margins; LFM2.5-VL `8192` and Gemma4
+`2048` looked promising but were single-sample only. VLM manifests are
+`reports/20260630T181722Z-m21-vlm-gemma4-sweep-manifest.json` and
+`reports/20260630T181722Z-m21-vlm-gemma4-sweep-manifest-analysis.json`; Qwen
+summary is `reports/20260630T180105Z-m21-qwen-text-step-sweep-summary.json`.
+Scrutiny passed `411` passed / `16` skipped / `52` subtests and ruff clean,
+and user-testing passed VAL-M21-001 through VAL-M21-005. See commits `ecd7f13`,
+`347b259`, `ec1549d`, and `756e065`. No LM Studio runtime, DFlash, adapter
+route, or MoE promotion evidence was used, and explicit `--prefill-step-size`
+overrides remain preserved.
+
 ## Development Setup
 
 ### Pre-commit Hooks
