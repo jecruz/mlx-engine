@@ -3744,3 +3744,105 @@ The explicit temporary cache paths and best available sizes from retained report
 ### Validation contract assertion
 
 - `VAL-M19-006` (regression radar synthesis is recorded for future optimization lanes): **MET** by this section. It records every retained M19 report path and inspect path, the non-retained optional long-pair attempt, blocked/skipped lanes, row-error and quality status, key metrics, cached-token notes, temporary cache path evidence, and the future comparison map without making promotion claims.
+
+## M20 Gemma4 direct VLM preflight and benchmark (2026-06-30, `m20-gemma4-direct-vlm-preflight-benchmark`)
+
+Feature `m20-gemma4-direct-vlm-preflight-benchmark` re-ran Gemma4 inventory after the user clarified that a usable local MLX checkpoint exists under `lmstudio/mlx-community/`. This is a direct `shared_bench.py` evidence lane only. It uses the real VLM image suites through the default VLM/batched-vision route and does not use LM Studio runtime, DFlash, MoE, text-only substitution, or `--mlx-engine-force-sequential`.
+
+### Gemma4 checkpoint and resource preflight
+
+Primary selected checkpoint:
+
+- **Path:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit`
+- **Config:** `model_type=gemma4_unified`, `architectures=["Gemma4UnifiedForConditionalGeneration"]`, `text_config.use_bidirectional_attention=vision`
+- **Safetensors:** `3` files, `12,716,202,713` bytes, `11.843 GiB`
+
+Optional heavier checkpoint found but not used for the retained short lane:
+
+- **Path:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-31B-it-qat-OptiQ-4bit`
+- **Config:** `model_type=gemma4`, `architectures=["Gemma4ForConditionalGeneration"]`, `text_config.use_bidirectional_attention=vision`
+- **Safetensors:** `6` files, `23,524,076,286` bytes, `21.909 GiB`
+
+Live resource and process evidence before loading Gemma4:
+
+- **Machine memory:** `sysctl -n hw.memsize` reported `103,079,215,104` bytes (`96 GiB`). `vm_stat` reported page size `16384`, free `433,925`, inactive `1,559,863`, speculative `278,013`, which is about `34.66 GiB` raw free+inactive+speculative headroom before the 12B run.
+- **Disk:** `/Volumes/StudioStackSSD4TB` had `714 GiB` available (`81%` used).
+- **Mission adapter ports:** `lsof -nP -iTCP:3180/3181/3182 -sTCP:LISTEN` returned no listeners.
+- **LLMDYNAMIX port:** `lsof -nP -iTCP:12444 -sTCP:LISTEN` showed `llmdynamix` PID `2552` listening. `ps` showed LLMDYNAMIX listener RSS about `319,776 KiB` and `llmdynamix-engine -config /Users/jeffreycruz/.llmdynamix/merged-config.yaml` PID `3157` RSS about `131,696 KiB`.
+- **LLMDYNAMIX live model evidence:** `GET http://127.0.0.1:12444/v1/models` returned an OpenAI-compatible catalog that includes cloud and local-provider entries, but live local backend checks showed no loaded local model: `GET http://127.0.0.1:11434/api/ps` returned `{"models":[]}`, and `GET http://127.0.0.1:4521/v1/models` failed with connection refused. Therefore the `:12444` listener was treated as allowed cloud-router/catalog evidence, not a local MLX/Metal-heavy blocker.
+- **Other local model processes:** Ollama listeners were present on `127.0.0.1:11434`, but `/api/ps` returned no loaded models. No `shared_bench.py`, `quality_compare.py`, or `mlx_engine.openai_adapter` process was active before the Gemma4 load.
+- **DFlash environment:** no `MLX_ENGINE_*DFLASH`, `*DFLASH`, or `MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM` environment variables were set.
+
+### Retained direct short VLM run
+
+The first short run used the service-template cap of `--max-tokens 48`. It completed with zero row errors but was **not retained** because `quality_compare.py --candidate` failed `image_pair`: the output hit `chameleon` but truncated before the `toucan` keyword. That non-retained diagnostic evidence is:
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T161846.344479Z-shared-bench.json`
+- **Inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T161846.344479Z-gemma4-12b-vlm-short-quality-inspect.json`
+- **Reason not retained:** inspect `status=fail`, `failed_prompts=["image_pair"]`, row errors still `0/2`, failure caused by insufficient answer budget for the pair prompt.
+
+The retained rerun increased only the answer budget to `--max-tokens 96`; the direct route, VLM suite, deterministic decoding, `--max-seq-nums 1`, `--mlx-engine-batched-timing`, and `--include-output-text` requirements were preserved.
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness && \
+python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --prompt-suite-json prompt_suites/vlm_image_quality.json \
+  --runs 1 \
+  --max-tokens 96 \
+  --temperature 0.0 \
+  --top-p 1.0 \
+  --max-seq-nums 1 \
+  --mlx-engine-batched-timing \
+  --include-output-text \
+  --timeout 1200
+```
+
+- **Retained report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T161943.247230Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T161943.247230Z-gemma4-12b-vlm-short-quality-inspect.json`
+- **Quality inspect status:** `pass`
+- **Route/config flags in report:** `dflash=false`, `suffix_decoding=false`, `specprefill=false`, `mlx_engine_force_sequential=false`, `max_seq_nums=1`, `include_output_text=true`, deterministic `temperature=0.0`, `top_p=1.0`
+- **Row-error check:** `0/2` rows have `error: null`; runner process returncode was `0`.
+- **Keyword checks:** `image_toucan` hit `toucan`; `image_pair` hit both `chameleon` and `toucan`.
+- **Output text:** full `output_text` was present for both rows; `image_toucan` finished with `finish_reason=eos_token`, and `image_pair` used the `96` token cap after naming both animals.
+- **Metric summary:**
+  - `image_toucan`: TTFT `0.996581s`, decode TPS `44.371`, total `2.934772s`, decode `1.938190s`, completion tokens `86`, cached tokens `0`
+  - `image_pair`: TTFT `1.047883s`, decode TPS `43.854`, total `3.236964s`, decode `2.189081s`, completion tokens `96`, cached tokens `18`
+
+### Optional stress lane
+
+The optional stress lane was run on the same 12B primary checkpoint using the long-pair VLM prompt suite. This is retained as passing optional stress evidence. The heavier 31B OptiQ checkpoint was not run because the requested optional stress decision was satisfied by the long-pair pass on the primary 12B checkpoint, while the 31B checkpoint is almost twice the safetensors footprint (`21.909 GiB`) and would add a separate heavyweight lane without being required for the M20 short benchmark acceptance.
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness && \
+python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --prompt-suite-json prompt_suites/vlm_image_long_pair_quality.json \
+  --runs 1 \
+  --max-tokens 96 \
+  --temperature 0.0 \
+  --top-p 1.0 \
+  --max-seq-nums 1 \
+  --mlx-engine-batched-timing \
+  --include-output-text \
+  --timeout 1200
+```
+
+- **Optional stress report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T162050.589588Z-shared-bench.json`
+- **Optional stress inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T162050.589588Z-gemma4-12b-vlm-long-pair-quality-inspect.json`
+- **Quality inspect status:** `pass`
+- **Row-error check:** `0/1` rows have `error: null`; runner process returncode was `0`.
+- **Keyword checks:** `image_long_pair` hit both `chameleon` and `toucan`.
+- **Output text:** `The first image shows a chameleon. The second image shows a toucan.`
+- **Metric summary:** TTFT `12.350718s`, decode TPS `34.796`, total `12.810545s`, decode `0.459827s`, completion tokens `16`, cached tokens `0`, prompt tokens `7090` as reported by the harness (`7619` engine-reported prompt tokens).
+
+### Decision and comparison guidance
+
+- `VAL-M20-001` (Gemma4 MLX checkpoint and resource preflight accepted): **MET**. The selected 12B checkpoint path, config metadata, safetensors footprint, bidirectional visual attention metadata, memory/headroom, ports/process evidence, and cloud-only/no-local-model LLMDYNAMIX evidence are recorded above.
+- `VAL-M20-002` (Gemma4 short VLM direct benchmark completes and passes inspect): **MET** by the retained `20260630T161943.247230Z` direct harness report and `quality_compare.py --candidate` inspect. Every row has `error: null`, expected image keywords are retained, and inspect status is `pass`.
+- `VAL-M20-003` (Gemma4 optional stress lane is decided): **MET**. The optional 12B long-pair stress lane passed and is retained; the 31B OptiQ lane is explicitly skipped as unnecessary additional heavyweight evidence after the primary 12B long-pair stress pass.
+- This M20 evidence is **data-only/no-promotion**. It provides Gemma4 direct-harness comparison anchors for future Gemma4 VLM work, but it does not promote any runtime path or cache behavior. DFlash remains no-go/default-off from M14 through M16, LM Studio runtime was not used, MoE evidence was not used, and no `--mlx-engine-force-sequential` or DFlash flags were passed.
