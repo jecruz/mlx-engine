@@ -20,13 +20,23 @@ from mlx_engine.model_kit.batched_vision.prompt_cache.types import (
 )
 
 
-def test_global_no_chunked_prefill_exempts_only_gemma4_unified():
+def test_global_no_chunked_prefill_exempts_gemma4_visual_policy():
     model = SimpleNamespace(no_chunked_prefill=True)
 
     assert not _requires_global_no_chunked_prefill(model, "gemma4_unified")
     assert not _requires_global_no_chunked_prefill(model, "gemma4_unified_text")
+    assert not _requires_global_no_chunked_prefill(
+        model,
+        "gemma4",
+        uses_bidirectional_visual_attention=True,
+    )
     assert _requires_global_no_chunked_prefill(model, "gemma4")
     assert _requires_global_no_chunked_prefill(model, "gemma4_text")
+    assert _requires_global_no_chunked_prefill(
+        model,
+        "qwen2_vl",
+        uses_bidirectional_visual_attention=True,
+    )
 
 
 def test_global_no_chunked_prefill_stays_disabled_without_model_flag():
@@ -53,10 +63,34 @@ def test_gemma4_restore_conflict_only_rejects_split_image_span():
         cached_prefix_len=201,
         image_spans=image_spans,
     )
+    assert _restore_splits_gemma4_image_span(
+        model_type="gemma4",
+        cached_prefix_len=201,
+        image_spans=image_spans,
+        uses_bidirectional_visual_attention=True,
+    )
+    assert not _restore_splits_gemma4_image_span(
+        model_type="gemma4",
+        cached_prefix_len=200,
+        image_spans=image_spans,
+        uses_bidirectional_visual_attention=True,
+    )
+    assert not _restore_splits_gemma4_image_span(
+        model_type="gemma4",
+        cached_prefix_len=700,
+        image_spans=image_spans,
+        uses_bidirectional_visual_attention=True,
+    )
     assert not _restore_splits_gemma4_image_span(
         model_type="gemma4",
         cached_prefix_len=201,
         image_spans=image_spans,
+    )
+    assert not _restore_splits_gemma4_image_span(
+        model_type="qwen2_vl",
+        cached_prefix_len=201,
+        image_spans=image_spans,
+        uses_bidirectional_visual_attention=True,
     )
 
 
