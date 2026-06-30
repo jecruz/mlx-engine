@@ -3531,3 +3531,51 @@ M18 closes as **INTEGRATED** for the minimal Gemma4 `#340` behavior. The focused
 ### Validation contract assertion
 
 - `VAL-M18-004` (focused Gemma4 validation passes without Qwen/VLM or DFlash regressions): **MET**. Focused Gemma4 and batched-vision pytest output passed on the three required files, scoped ruff passed on the implementation and test files, Qwen/VLM stability is inherited from the M17 focused regression evidence because M18 did not touch those paths, and DFlash remains no-go/default-off.
+
+## M19 fresh baseline matrix preflight (2026-06-30, `m19-baseline-matrix-preflight`)
+
+Feature `m19-baseline-matrix-preflight` is the scope and resource gate before any post-M18 benchmark capture. It selects only direct `shared_bench.py` lanes on the current checkout, records exact model and prompt-suite paths, and confirms the M19 matrix is data-only: no promotion claim, no DFlash, no LM Studio runtime, and no MoE promotion evidence.
+
+### Repository and precondition check
+
+- **Engine repo:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine`
+- **Branch/HEAD:** `mlx-vlm-restore-eval-followup` at `69bbff5`; `git rev-list --left-right --count HEAD...@{upstream}` returned `0 0`, so the M18 closeout branch is pushed and in parity with origin.
+- **Harness repo:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness` on `main`.
+- **Interpreter:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python` imports `mlx.core` and `mlx.nn`; Python version observed as `3.12.13`.
+- **Harness import:** mission `init.sh` confirmed `shared_bench` importable under harness `python3`.
+- **Prompt suites present:** `task_diverse_deterministic_quality.json`, `vlm_image_quality.json`, `vlm_image_long_quality.json`, and `vlm_image_long_pair_quality.json` all exist under `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/`.
+- **Persistent cache hygiene:** `init.sh` found no stale `/private/tmp/mlx-engine-vlm-cache-*`; M19 VLM restart lanes must still clean `/tmp/mlx-engine-vlm-cache-m19` before their runs.
+- **Disk headroom:** `/Volumes/StudioStackSSD4TB` has about `735 GiB` available; `/tmp` and `/private/tmp` each have about `46.55 GiB` available.
+
+### Resource and process isolation check
+
+The preflight process scan found no running `shared_bench.py`, `quality_compare.py`, `mlx_engine.openai_adapter`, or active mission adapter on ports `3180-3182`. `Ollama` is installed and serving, but `ollama ps` and `/api/ps` both showed no loaded models. `LLMDYNAMIX` is listening on `127.0.0.1:12444` and exposes model discovery, including some entries whose owner field is `LM Studio`; M19 benchmark commands do not route to that listener and do not use LM Studio runtime. Because the listener is present and available memory is tight for a 27B model, heavyweight Qwen3.6 27B is not selected for the first matrix. The mandatory 9B/14B/VLM direct-harness lanes are not blocked by this idle service state, but each benchmark worker must rerun the process check immediately before loading a model and run lanes serially.
+
+DFlash controls are absent from the worker environment (`env | grep -E '^(MLX_ENGINE_.*DFLASH|.*DFLASH|MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM)='` returned no matches), and every selected command below omits `--dflash`, `--dflash-target-model`, and `--dflash-drafter-model`.
+
+### Selected M19 matrix
+
+| Lane | Decision | Model path | Prompt suite | Run count and generation config | Route flags | Cache namespace |
+|---|---|---|---|---|---|---|
+| Qwen dense default | **Selected** | `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit` (`9.7G`, MLX safetensors, `model_type=qwen3_5`) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/task_diverse_deterministic_quality.json` (5 deterministic prompts) | `--runs 3 --max-tokens 256 --temperature 0.0 --top-p 1.0 --include-output-text` | direct `--engine mlx-engine`; no forced sequential | none |
+| Qwen dense forced sequential | **Selected** | same Qwen3.5 9B path | same deterministic suite | `--runs 3 --max-tokens 256 --temperature 0.0 --top-p 1.0 --include-output-text` | direct `--engine mlx-engine --mlx-engine-force-sequential` | none |
+| Qwen code | **Selected** | `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit` (`7.8G`, MLX safetensors, `model_type=qwen2`) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/task_diverse_deterministic_quality.json` | `--runs 3 --max-tokens 256 --temperature 0.0 --top-p 1.0 --include-output-text` | direct `--engine mlx-engine --mlx-engine-force-sequential` | none |
+| VLM short image | **Selected** | `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit` (`1.9G`, MLX safetensors, `model_type=lfm2_vl`) | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/vlm_image_quality.json` (toucan plus chameleon/toucan pair) | `--runs 2 --max-tokens 64 --temperature 0.0 --top-p 1.0 --include-output-text` | direct `--engine mlx-engine` | none |
+| VLM long persistent restart | **Selected** | same LFM2.5-VL path | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/vlm_image_long_quality.json` (`image_long_toucan`) | `--runs 2 --max-tokens 32 --temperature 0.0 --top-p 1.0 --include-output-text` | direct `--engine mlx-engine --mlx-engine-process-restart --mlx-engine-vlm-prompt-cache-root /tmp/mlx-engine-vlm-cache-m19` | `m19-lfm25-vlm-long` |
+| Optional VLM long pair persistent restart | **Selected if VLM worker has time after required short/long lanes** | same LFM2.5-VL path | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/vlm_image_long_pair_quality.json` (`image_long_pair`, chameleon plus toucan) | `--runs 2 --max-tokens 64 --temperature 0.0 --top-p 1.0 --include-output-text` | direct `--engine mlx-engine --mlx-engine-process-restart --mlx-engine-vlm-prompt-cache-root /tmp/mlx-engine-vlm-cache-m19` | `m19-lfm25-vlm-long-pair` |
+| Optional Qwen3.6 27B | **Blocked for the first matrix** | `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit` exists (`28G`, MLX safetensors, `model_type=qwen3_5`) | deterministic text suite if revisited | would need a dedicated serial heavyweight run | direct `--engine mlx-engine --mlx-engine-force-sequential`, no DFlash | none |
+| Qwen3.6 35B MoE | **Excluded** | `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-35B-A3B-MLX-8bit` exists (`35G`, `model_type=qwen3_5_moe`) | none selected | none | none | none |
+| Gemma4 | **Blocked** | GGUF-only local inventory: `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/gemma-4-12B-it-GGUF`, `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/gemma-4-12B-it-QAT-GGUF`, `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/gemma-4-E4B-it-GGUF`, plus `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/unsloth/gemma-4-31B-it-GGUF` | no direct MLX prompt suite selected | no run | blocked before direct harness load | none |
+
+### Blockers and exclusions
+
+- **Optional Qwen3.6 27B blocker:** the MLX checkpoint exists, but this preflight observed only about `31.98 GiB` free+inactive+speculative memory for a `28G` model directory. That leaves less than an 8 GiB or 25% headroom budget and a `127.0.0.1:12444` LLMDYNAMIX listener is active. Do not run this optional heavyweight lane until a fresh process check confirms the listener is not loading local MLX/Metal work and enough memory headroom is available. This is not a DFlash lane.
+- **MoE exclusion:** Qwen3.6 35B A3B is present but `model_type=qwen3_5_moe`; it is explicitly excluded from promotion evidence and is not part of M19 retained baselines.
+- **Gemma4 blocker:** local Gemma4 inventory is GGUF-only and lacks the direct MLX checkpoint shape required by `shared_bench.py` through `mlx-engine` (`config.json` plus MLX safetensors in the model directory). The checked GGUF directories have no `config.json` and no `.safetensors`, so no usable local MLX Gemma4 benchmark checkpoint exists for M19. The M18 focused pytest evidence remains the Gemma4 guardrail until a usable local MLX Gemma4 checkpoint is provisioned.
+- **LM Studio exclusion:** the direct-harness matrix uses exact filesystem model directories and `.venv-py312` only. It does not use `lms`, LM Studio runtime, LLMDYNAMIX, or the OpenAI-compatible listener on `127.0.0.1:12444`.
+- **DFlash exclusion:** DFlash remains no-go/default-off from M14-M16. No selected M19 command includes DFlash flags or `MLX_ENGINE_DFLASH*` environment variables.
+
+### Validation contract assertion
+
+- `VAL-M19-001` (baseline matrix preflight is clean and scoped): **MET** by this preflight record. It names exact selected model paths, prompt suites, run counts, route flags, cache namespaces, resource/process state, and explicit DFlash/LM Studio/MoE exclusions.
+- `VAL-M19-005` (Gemma4 benchmark practicality is decided): **MET as blocked**. The local inventory contains only GGUF Gemma4 artifacts and package/source files, not a usable MLX safetensors checkpoint for direct `mlx-engine` benchmarking. M18 focused pytest evidence remains the Gemma4 guardrail.
