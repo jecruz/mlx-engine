@@ -182,6 +182,23 @@ Studio runtime was used. See commits `a46dedb`, `5829553`, `7e95692`,
 subtests and ruff clean, and user-testing passed VAL-M19-001 through
 VAL-M19-006.
 
+M20 closeout added direct Gemma4 VLM data-only/no-promotion evidence from the
+local MLX checkpoint
+`/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit`,
+with no LM Studio runtime, no forced sequential text substitute, no DFlash, and
+DFlash still no-go/default-off. Retained short evidence is
+`reports/20260630T161943.247230Z-shared-bench.json` with inspect
+`reports/20260630T161943.247230Z-gemma4-12b-vlm-short-quality-inspect.json`;
+quality passed with zero row errors and chameleon/toucan keywords. Short metrics
+were image_toucan TTFT `0.996581s`, decode TPS `44.371`, total `2.934772s`,
+and image_pair TTFT `1.047883s`, decode TPS `43.854`, total `3.236964s`.
+Optional long-pair stress evidence is
+`reports/20260630T162050.589588Z-shared-bench.json` with inspect
+`reports/20260630T162050.589588Z-gemma4-12b-vlm-long-pair-quality-inspect.json`;
+quality passed with TTFT `12.350718s`, decode TPS `34.796`, total
+`12.810545s`. Scrutiny passed `411` passed / `16` skipped / `52` subtests and
+ruff clean, and user-testing passed VAL-M20-001 through VAL-M20-004.
+
 ## Development Setup
 
 ### Pre-commit Hooks
