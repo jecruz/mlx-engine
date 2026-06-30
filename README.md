@@ -154,6 +154,18 @@ and default-off. See commits `a876def` and `3f9481b` for the audit decision and
 focused validation evidence; scrutiny passed with `404` passed / `16` skipped
 and ruff clean, and user-testing passed VAL-M17-001 through VAL-M17-004.
 
+M18 closeout manually applied the focused Gemma4 upstream #340 change
+(`8ae2610`) because direct cherry-pick conflicted in batched-vision
+`model_kit.py`. Gemma4-family configs/models with
+`use_bidirectional_attention == "vision"` now receive the visual-prefill policy
+previously limited to `gemma4_unified*`, while non-bidirectional Gemma4 and
+non-Gemma models remain unchanged. See commits `3c0a0ae`, `5b4243a`, and
+`4ec4345`; focused validation passed `19` tests with `20` deselected, scrutiny
+passed `411` passed / `16` skipped / `52` subtests and ruff clean, and
+user-testing passed VAL-M18-001 through VAL-M18-004. No broad upstream
+merge/cherry-pick occurred; Qwen/VLM remains stable from M17, and DFlash remains
+closed/no-go/default-off.
+
 ## Development Setup
 
 ### Pre-commit Hooks
