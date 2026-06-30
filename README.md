@@ -166,6 +166,22 @@ user-testing passed VAL-M18-001 through VAL-M18-004. No broad upstream
 merge/cherry-pick occurred; Qwen/VLM remains stable from M17, and DFlash remains
 closed/no-go/default-off.
 
+M19 closeout refreshed a data-only baseline matrix and regression radar, not a
+promotion lane. Retained evidence covers Qwen3.5-9B dense default and
+forced-sequential, Qwen2.5-Coder-14B sequential, and LFM2.5-VL short plus
+persistent-long runs under `reports/20260630T130730.730931Z-*`,
+`reports/20260630T130858.441935Z-*`, `reports/20260630T131852.120849Z-*`,
+`reports/20260630T132919.996156Z-*`, and
+`reports/20260630T133031.773011Z-*`; the optional VLM long-pair was not retained
+after quality failed/missed toucan with `cached_tokens` still `0`. Gemma4 was
+blocked by no usable local MLX safetensors checkpoint, Qwen3.6 27B by
+memory/headroom and the active LLMDYNAMIX listener, DFlash remains
+no-go/default-off, MoE remains excluded from promotion evidence, and no LM
+Studio runtime was used. See commits `a46dedb`, `5829553`, `7e95692`,
+`264888a`, and `8b79c3a`; scrutiny passed `411` passed / `16` skipped / `52`
+subtests and ruff clean, and user-testing passed VAL-M19-001 through
+VAL-M19-006.
+
 ## Development Setup
 
 ### Pre-commit Hooks
