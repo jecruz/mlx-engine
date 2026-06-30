@@ -3889,3 +3889,109 @@ Feature `m20-gemma4-direct-benchmark-synthesis` closes the Gemma4 direct VLM ben
 - The 31B OptiQ checkpoint remains available for a separate heavyweight stress feature, but it should start with a fresh resource/process preflight and must not be inferred from the 12B retained evidence.
 
 `VAL-M20-004` is **MET** by this synthesis: it records all retained Gemma4 direct report paths, inspect paths, row-error and keyword checks, quality statuses, metrics, resource notes, optional stress retained/skipped decisions, direct-harness-only usage, data-only/no-promotion status, no LM Studio runtime usage, and DFlash no-go/default-off confirmation.
+
+## M21 prefill step-size preflight (2026-06-30, `m21-prefill-step-size-preflight`)
+
+Feature `m21-prefill-step-size-preflight` inventories the existing prefill-step-size control surface and selects the safe direct-harness lanes for the M21 sweep. This is a planning and evidence-gating step only: it does not change engine defaults, does not run the sweep, and does not make any promotion or default-change claim.
+
+### Preconditions and resource snapshot
+
+- **Validation state:** `/Users/jeffreycruz/.factory/missions/dbaf7c9f-269e-49f0-993a-ded7115a0792/validation-state.json` records every assertion from `VAL-M1-001` through `VAL-M20-004` as `passed`; `VAL-M21-*` remains pending before this preflight note.
+- **Working trees before edit:** `mlx-engine` was clean on `mlx-vlm-restore-eval-followup...origin/mlx-vlm-restore-eval-followup`; `mlx-bench-harness` was clean on `main`.
+- **Interpreter and harness:** mission `init.sh` confirmed `.venv-py312` imports `mlx.core` and `mlx.nn`, harness `shared_bench` is importable, and system `ruff 0.15.7` is available.
+- **Disk:** `/Volumes/StudioStackSSD4TB` had `714 GiB` available (`81%` used).
+- **Memory/process snapshot:** `vm_stat` showed page size `16384`, free pages `761692`, inactive pages `1532784`, and speculative pages `172644` at preflight time. Process scan found no active `shared_bench.py`, `quality_compare.py`, `mlx_engine.openai_adapter`, or cheetara adapter processes. Ports `3180`, `3181`, and `3182` were clear. `llmdynamix` was listening on `*:12444`; M21 commands do not route to that listener, and benchmark workers must rerun the process check immediately before any heavy load to confirm no local MLX/Metal model is active.
+- **Persistent cache hygiene:** `init.sh` found no stale `/private/tmp/mlx-engine-vlm-cache-*`. Any persistent VLM sweep must use fresh roots and namespaces per step size, then record cached-token cold/warm behavior immediately.
+
+### Current default and explicit override behavior
+
+Source and test inventory:
+
+- `mlx_engine/cache_wrapper.py` defines `PROMPT_PROCESSING_CHUNK_SIZE = 2048`; `validate_prefill_step_size(None)` resolves to `2048` and rejects `0`, negative, float, and boolean values with `ValueError("prefill_step_size must be a positive integer")`.
+- `mlx_engine/generate.py` defines `DEFAULT_BATCHED_PREFILL_STEP_SIZE = 4096` and `DEFAULT_SEQUENTIAL_TEXT_PREFILL_STEP_SIZE = 4096`.
+- `resolve_batched_prefill_step_size(...)` changes an omitted/default prefill value to `4096` only when `prefill_step_size` was unspecified, the loaded path uses the batched text kit, and `model_type == "qwen3_5_text"`. Explicit values such as `2048` are returned unchanged.
+- `resolve_sequential_text_prefill_step_size(...)` changes an omitted/default prefill value to `4096` only for sequential text model types in `{"qwen2", "qwen3_5_text"}`. Explicit values are returned unchanged.
+- VLM/Gemma4 routes receive the validated value from `load_model(...)` directly unless a route-specific resolver changes it; Gemma4 VLM and LFM2.5-VL therefore retain the standard omitted/default `2048` behavior in the current code.
+- Harness `shared_bench.py` exposes `--prefill-step-size` and forwards it to supported runner subprocesses only when present. The combined report records `config.prefill_step_size` as `null` for omitted/default runs and the explicit integer for sweeps.
+- Harness `runners/mlx_engine_runner.py` accepts `--prefill-step-size`, passes it to `load_model(...)`, and preserves explicit values through the sequential `--force-sequential` compatibility path. It only forwards DFlash, SuffixDecoding, and SpecPrefill kwargs when their explicit opt-in flags are set.
+- Existing tests cover this behavior in `tests/test_prefill_step_size.py` and `tests/test_load_model_default_seq_nums.py`: omitted/default resolves through the route/model-family defaults, invalid values are rejected, and explicit overrides such as `2048` remain `2048` even on Qwen routes that otherwise prefer `4096`.
+
+Effective M21 baseline interpretation:
+
+- Omitted/default is a distinct candidate because it preserves the currently effective route-specific behavior rather than forcing one numeric value.
+- Explicit `1024`, `2048`, `4096`, and `8192` are valid positive integer overrides and should bypass the route-specific omitted/default resolver.
+- Any future default-change follow-up must preserve the explicit override semantics above.
+
+### Retained comparison anchors
+
+All anchors below were rechecked from existing report/inspect JSON during preflight; every retained anchor has zero row errors and `quality_compare.py --candidate` status `pass`.
+
+| Lane | Retained anchor | Quality inspect | Prompt suite and config | Row/error status | Notes |
+|---|---|---|---|---|---|
+| Qwen dense default direct route | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T130730.730931Z-shared-bench.json` | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T130730.730931Z-qwen35-dense-default-quality-inspect.json` | `prompt_suites/task_diverse_deterministic_quality.json`; `--runs 3 --max-tokens 256 --temperature 0.0 --top-p 1.0 --include-output-text`; direct `--engine mlx-engine`; no forced sequential | `0/15` row errors; status `pass` | Default/direct text anchor for Qwen3.5-9B. |
+| Qwen dense forced sequential | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T130858.441935Z-shared-bench.json` | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T130858.441935Z-qwen35-dense-sequential-quality-inspect.json` | Same deterministic suite/config; direct `--engine mlx-engine --mlx-engine-force-sequential` | `0/15` row errors; status `pass` | Sequential text anchor for Qwen3.5-9B. |
+| Qwen code forced sequential | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T131852.120849Z-shared-bench.json` | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T131852.120849Z-qwen25-code-sequential-quality-inspect.json` | Same deterministic suite/config; direct `--engine mlx-engine --mlx-engine-force-sequential` | `0/15` row errors; status `pass` | Code/coder anchor for Qwen2.5-Coder-14B. |
+| LFM2.5-VL short image | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T132919.996156Z-shared-bench.json` | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T132919.996156Z-vlm-short-quality-inspect.json` | `prompt_suites/vlm_image_quality.json`; `--runs 2 --max-tokens 64 --temperature 0.0 --top-p 1.0 --include-output-text`; direct VLM route | `0/4` row errors; status `pass` | Short VLM anchor with in-process cached-token sequences `[0,100]` and `[0,173]`. |
+| LFM2.5-VL long persistent restart | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T133031.773011Z-shared-bench.json` | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T133031.773011Z-vlm-long-persistent-quality-inspect.json` | `prompt_suites/vlm_image_long_quality.json`; `--runs 2 --max-tokens 32 --temperature 0.0 --top-p 1.0 --include-output-text`; `--mlx-engine-process-restart` with persistent VLM cache | `0/2` row errors; status `pass` | Persistent-cache anchor with cached-token sequence `[0,7373]`; future sweeps must use fresh namespaces. |
+| Gemma4 12B short VLM | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T161943.247230Z-shared-bench.json` | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T161943.247230Z-gemma4-12b-vlm-short-quality-inspect.json` | `prompt_suites/vlm_image_quality.json`; `--runs 1 --max-tokens 96 --temperature 0.0 --top-p 1.0 --max-seq-nums 1 --mlx-engine-batched-timing --include-output-text --timeout 1200` | `0/2` row errors; status `pass` | Primary Gemma4 12B VLM anchor. |
+| Gemma4 12B long-pair optional stress | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T162050.589588Z-shared-bench.json` | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T162050.589588Z-gemma4-12b-vlm-long-pair-quality-inspect.json` | `prompt_suites/vlm_image_long_pair_quality.json`; same Gemma4 direct route, deterministic config, `--max-seq-nums 1`, timing on | `0/1` row errors; status `pass` | Retained optional stress anchor, but not selected for the first M21 sweep unless later evidence needs a heavier Gemma4 stress repeat. |
+
+### Model and prompt-suite availability
+
+- **Qwen dense:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit`, `model_type=qwen3_5`, `architectures=["Qwen3_5ForConditionalGeneration"]`, `2` safetensors files, `10,426,592,393` bytes.
+- **Qwen code:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit`, `model_type=qwen2`, `architectures=["Qwen2ForCausalLM"]`, `2` safetensors files, `8,309,494,233` bytes.
+- **LFM2.5-VL:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`, `model_type=lfm2_vl`, `architectures=["Lfm2VlForConditionalGeneration"]`, `1` safetensors file, `2,083,497,259` bytes.
+- **Gemma4 12B VLM:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit`, `model_type=gemma4_unified`, `architectures=["Gemma4UnifiedForConditionalGeneration"]`, `text_config.use_bidirectional_attention=vision`, `3` safetensors files, `12,716,202,713` bytes.
+- **Prompt suites present:** `task_diverse_deterministic_quality.json`, `vlm_image_quality.json`, `vlm_image_long_quality.json`, and `vlm_image_long_pair_quality.json` exist under `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/`.
+
+### Selected candidate sizes and lanes
+
+Candidate sizes for every selected lane:
+
+1. **Omitted/default**: omit `--prefill-step-size` so the current route/model-family default resolves naturally.
+2. **Explicit 1024**: pass `--prefill-step-size 1024`.
+3. **Explicit 2048**: pass `--prefill-step-size 2048`.
+4. **Explicit 4096**: pass `--prefill-step-size 4096`.
+5. **Explicit 8192**: pass `--prefill-step-size 8192` where a fresh resource/process check remains clean.
+
+Selected direct-harness sweep lanes:
+
+| Lane | Sweep status | Rationale and command shape |
+|---|---|---|
+| Qwen dense default direct route | **Selected** for omitted/default plus `1024`, `2048`, `4096`, `8192` | Preserves the M19 default/direct route. Use `shared_bench.py --engine mlx-engine --model <Qwen3.5-9B> --prompt-suite-json prompt_suites/task_diverse_deterministic_quality.json --runs 2 --max-tokens 256 --temperature 0.0 --top-p 1.0 --include-output-text` and add `--prefill-step-size N` only for explicit sizes. |
+| Qwen dense forced sequential | **Selected** for omitted/default plus `1024`, `2048`, `4096`, `8192` if time/resource budget allows after the default route | Preserves the M19 sequential route for text-prefill sensitivity. Same deterministic config plus `--mlx-engine-force-sequential`. |
+| Qwen2.5-Coder forced sequential | **Selected** for omitted/default plus `1024`, `2048`, `4096`, `8192` | Covers the code/coder text lane with the M19 deterministic suite and sequential route. Same config plus `--mlx-engine-force-sequential`. |
+| LFM2.5-VL short image | **Selected** for omitted/default plus `1024`, `2048`, `4096`, `8192` | Low-cost VLM image quality and in-process cache signal. Use `prompt_suites/vlm_image_quality.json`, `--runs 1 --max-tokens 64 --temperature 0.0 --top-p 1.0 --include-output-text`. |
+| LFM2.5-VL long persistent restart | **Selected** for omitted/default plus `1024`, `2048`, `4096`, `8192` if cache-root isolation is clean | Required persistent-cache signal. Use fresh roots such as `/tmp/mlx-engine-vlm-cache-m21-default`, `/tmp/mlx-engine-vlm-cache-m21-1024`, etc., matching namespaces such as `m21-lfm25-vlm-long-default`; preserve `--mlx-engine-process-restart`, `--runs 2`, and `--max-tokens 32`. |
+| Gemma4 12B short VLM | **Selected** for omitted/default plus `1024`, `2048`, `4096`, `8192` if the fresh process check shows no local MLX/Metal contention | Primary Gemma4 VLM signal from M20. Preserve `prompt_suites/vlm_image_quality.json`, `--runs 1 --max-tokens 96 --temperature 0.0 --top-p 1.0 --max-seq-nums 1 --mlx-engine-batched-timing --include-output-text --timeout 1200`. |
+
+Omitted or deferred lanes:
+
+- **Gemma4 12B long-pair stress:** defer from the first sweep. It remains a retained optional stress anchor, but it is heavier and should only be rerun if a short Gemma4 candidate appears promising or if the decision feature needs stress confirmation.
+- **Gemma4 31B OptiQ:** not selected. It is an optional heavyweight model with a larger safetensors footprint and no retained M21 anchor requirement.
+- **Qwen3.6 27B:** not selected. It needs a separate fresh non-DFlash baseline and stricter memory/process preflight; it is not required for the M21 retained anchors.
+- **Qwen3.6 35B A3B MoE:** excluded from promotion evidence by mission rule. It must not be used as an M21 promotion/default-change anchor.
+
+### Required quality and inspection procedure for sweep workers
+
+- Run lanes serially, one model/step size at a time.
+- For each retained report, inspect the JSON directly and confirm every row has `error: null` or no `error` key.
+- Run `quality_compare.py --candidate <report> --out <inspect.json>` for each retained step-size report. For route-specific compares against M19/M20 anchors, workers may also add `--baseline <anchor>` when comparing the same model/suite/config.
+- Preserve prompt suite, max tokens, temperature, top-p, output-text inclusion, route flags, `max_seq_nums`, timing flag, process-restart flag, and cache namespace pattern across sizes inside each lane.
+- For persistent VLM lanes, record cold/warm `cached_tokens` and cache root/namespace per size. Warm rows must retain the expected image keyword, especially `toucan` on `image_long_toucan`.
+- If any explicit size returns row errors, under-generates below the prompt-suite floor, misses image keywords, or fails inspect status, record it as non-retained for that lane rather than treating process exit `0` as success.
+- Promotion/default-change evidence is out of scope for this preflight and for any single sweep. A later decision may only propose a default change after at least two repeated quality-passing samples show a repeatable win in TTFT, decode TPS, total latency, or prefill-related timing for a narrow route/model family.
+
+### Explicit no-go and exclusion surfaces
+
+M21 is direct-harness only. The selected sweep commands must not use:
+
+- LM Studio runtime, `lms`, or LLMDYNAMIX as a benchmark/promotion route.
+- DFlash flags (`--dflash`, `--dflash-target-model`, `--dflash-drafter-model`, `--dflash-max-draft-tokens`) or `MLX_ENGINE_*DFLASH` env vars.
+- Adapter routes (`127.0.0.1:3180`, `3181`, or `3182`) or cheetara compatibility surfaces.
+- SpecPrefill, SuffixDecoding, DFlash interactions, loaded `draft_model`, or `num_draft_tokens`.
+- MoE promotion evidence from Qwen3.6 35B A3B.
+
+### Validation contract assertion
+
+- `VAL-M21-001` (prefill step-size preflight is clean and scoped): **MET** by this section. It records the current effective defaults and explicit override semantics, retained M19/M20 anchors, candidate sizes, exact model and prompt-suite paths, resource/process state, selected and omitted lanes, cache-isolation requirements, and explicit exclusions for LM Studio runtime, DFlash, adapter routes, SpecPrefill/Suffix/DFlash interactions, and MoE promotion evidence.
