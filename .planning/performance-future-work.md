@@ -3444,3 +3444,48 @@ Combined Qwen/VLM and batched-vision regression result across this lane: **254 p
 - DFlash remains closed/no-go (M14/M15/M16 REJECT decisions unchanged).
 - Gemma4-only `8ae2610` / upstream `#340` remains deferred.
 - No broad merge or cherry-pick was performed in M17.
+
+## M18 Gemma4 #340 upstream audit (2026-06-30, `m18-gemma4-340-audit`)
+
+Feature `m18-gemma4-340-audit` reopens only the previously deferred Gemma4-only upstream commit `8ae2610` / PR `#340` after M17. This is an audit and planning lane before any code intake. It compares current `mlx-vlm-restore-eval-followup` (`335a28f`) with upstream `8ae2610` by ancestry and content, records the exact gaps, and chooses a focused manual intake plan. No broad merge of `upstream/main`, no broad cherry-pick of `cherry-pick/mlx-upstream-sync`, no DFlash change, and no Qwen/VLM scope expansion was performed.
+
+### Branch and ancestry checks
+
+- **Current branch:** `mlx-vlm-restore-eval-followup` at `335a28f`.
+- **M17 precondition:** all M17 features are complete, including `m17-upstream-qwen-vlm-candidate-audit`, `m17-qwen-vlm-focused-validation`, scrutiny, and user-testing validation.
+- **Upstream fetch:** `git fetch upstream main` succeeded; `upstream/main`, `upstream/HEAD`, and `8ae2610` resolve to `8ae2610`.
+- **Ancestry:** `git merge-base --is-ancestor 8ae2610 HEAD` exits `1`, so `8ae2610` is **not** currently in branch ancestry.
+- **Range shape:** `git rev-list --left-right --count HEAD...8ae2610` reports `158 1`, so the current mission branch carries substantial local history while upstream contributes only this one commit beyond the merge base for this comparison.
+- **Direct patch safety:** `git apply --check /private/tmp/m18-8ae2610.patch` fails at `mlx_engine/model_kit/batched_vision/model_kit.py:73` (`patch does not apply`). A three-way check can apply the other four files cleanly but reports conflicts in `model_kit.py`. Therefore a blind cherry-pick is **not safe**; the intake should be a manual, minimal reconciliation.
+
+### Upstream `8ae2610` touched files and current branch gaps
+
+| File | Upstream behavior in `8ae2610` | Current branch content gap | Intake classification |
+|---|---|---|---|
+| `mlx_engine/model_kit/patches/gemma4.py` | Renames the helper scope from "unified" to "bidirectional-vision"; adds `is_gemma4_model_type`, `_language_model`, `_model_type`, `_get_config_value`, `uses_bidirectional_visual_attention`, and `config_uses_bidirectional_visual_attention`; changes `visual_prefill_prefix_len(...)` and `patch_loaded_model(...)` to apply when Gemma4-family config/model has `use_bidirectional_attention == "vision"`, not only `gemma4_unified*`. | Current code only recognizes `gemma4_unified*`. Non-unified `gemma4` / `gemma4_text` with `use_bidirectional_attention == "vision"` gets `visual_prefill_prefix_len(...) == None` and does not receive the cached visual suffix mask patch. | **Focused manual intake required.** Add the bidirectional-visual detection helpers while preserving existing unified behavior and negative cases for non-bidirectional Gemma4 / non-Gemma models. |
+| `mlx_engine/model_kit/batched_vision/model_kit.py` | Imports `config_uses_bidirectional_visual_attention`, stores `_uses_gemma4_bidirectional_visual_attention` from the config before model load, passes it into `_requires_global_no_chunked_prefill(...)` and `_restore_splits_gemma4_image_span(...)`, and treats either unified Gemma4 or bidirectional-visual Gemma4 as the request-local visual-prefill policy surface. | Current `model_kit.py` only exempts `gemma4_unified*` from global no-chunked prefill and only rejects restore splits inside image spans for `gemma4_unified*`. It has local M7-M16 changes around persistent prompt-cache options, metadata reuse, restore freshness flush, timing, and prompt-cache chunk sizing, so upstream patch context conflicts. | **Manual reconciliation required.** Thread the new boolean through the current local code, not the upstream old context. Keep persistent-cache, metadata, timing, and freshness-flush logic intact. |
+| `tests/test_patched_gemma4.py` | Updates the suffix visual mask patch test to use `gemma4_text` with `config.use_bidirectional_attention="vision"`; adds positive/negative tests for `uses_bidirectional_visual_attention(...)` and `config_uses_bidirectional_visual_attention(...)`. | Current tests only prove unified behavior and lack detection coverage. | **Focused test intake required.** Add config and loaded-model detection tests, including non-bidirectional Gemma4 and non-Gemma negatives. |
+| `tests/test_batched_vision_model_kit.py` | Extends `_requires_global_no_chunked_prefill(...)` and `_restore_splits_gemma4_image_span(...)` tests so non-unified Gemma4 with bidirectional visual attention is exempt from global no-chunked prefill and rejects restore splits inside image spans. | Current tests explicitly exempt only `gemma4_unified*` and still treat `gemma4` as requiring global no-chunked prefill unless the model flag is false. | **Focused test intake required.** Update helpers/tests to encode the new positive path plus existing negative path. |
+| `tests/test_batched_vision_batch_generator.py` | Changes a restored suffix padding test from unified Gemma4 to bidirectional `gemma4`; replaces the old "does not apply unified visual policy to gemma4" test with two tests: bidirectional Gemma4 applies the visual policy, non-bidirectional Gemma4 chunks normally. | Current `_gemma4_model()` already has `use_bidirectional_attention="vision"`, but the existing test asserts it does **not** receive the visual-prefix policy. This is the clearest content gap and expected behavior change for M18. | **Focused test intake required.** Flip the bidirectional Gemma4 expectation and add a separate non-bidirectional helper/test for normal chunking. |
+
+### Decision: focused manual Gemma4 #340 intake, no direct cherry-pick
+
+Direct cherry-pick is not safe because the upstream patch conflicts in `mlx_engine/model_kit/batched_vision/model_kit.py`, where the mission branch has accumulated local persistent-cache, metadata, timing, and restore-freshness changes that upstream `8ae2610` does not know about. The exact content gap is nevertheless small and well-scoped: extend Gemma4 visual-prefill policy from `gemma4_unified*` to any Gemma4-family config/model with `use_bidirectional_attention == "vision"`.
+
+The next implementation lane should manually intake only the minimal Gemma4 behavior:
+
+1. Add Gemma4-family bidirectional-visual detection helpers in `mlx_engine/model_kit/patches/gemma4.py`.
+2. Change `visual_prefill_prefix_len(...)` and `patch_loaded_model(...)` to use that detection while preserving existing `gemma4_unified*` behavior.
+3. In current `BatchedVisionModelKit`, store a config-level `_uses_gemma4_bidirectional_visual_attention` boolean and thread it into `_requires_global_no_chunked_prefill(...)`, `_restore_splits_gemma4_image_span(...)`, `_make_batch_generator(...)`, and `_insert_prepared_request(...)`.
+4. Add/update focused tests in `tests/test_patched_gemma4.py`, `tests/test_batched_vision_model_kit.py`, and `tests/test_batched_vision_batch_generator.py` for positive bidirectional Gemma4, non-bidirectional Gemma4, non-Gemma, restored image-span conflict boundaries, and normal chunking.
+5. Validate with `services.yaml` `commands.test:gemma4` and scoped `ruff check` on changed files before any final M18 decision.
+
+### Scope guardrails
+
+- **No broad merge or broad cherry-pick performed:** only `git fetch`, `git show`, `git diff-tree`, `git merge-base --is-ancestor`, and `git apply --check` were used.
+- **No DFlash change:** no `mlx_engine/utils/dflash_*`, DFlash tests, or `MLX_ENGINE_DFLASH*` defaults were touched. M14/M15/M16 REJECT and no-go decisions remain authoritative.
+- **No Qwen/VLM scope expansion:** M17 Qwen/VLM stability remains inherited. The planned M18 code lane should not touch Qwen patch code or VLM policy except the Gemma4-specific branches above.
+
+### Validation contract assertion
+
+- `VAL-M18-001` (Gemma4 `#340` intake is scoped without broad upstream merge) — **MET** by this audit: the upstream commit and files are named, ancestry/content gaps are recorded, direct-vs-minimal-intake is decided, and no broad merge, cherry-pick, DFlash change, or Qwen/VLM scope expansion was performed.
