@@ -3270,3 +3270,117 @@ Source: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m16-r
 - `VAL-M16-001` (reference implementation and benchmark surface are identified and preflighted) — **MET**. Local `mlx_vlm.speculative.dflash` path recorded with version and exact file paths; package versions captured; target + drafter paths verified; pairing compatibility preflighted; resource/process isolation recorded (M3 Ultra 78 GiB Metal working set, no concurrent local MLX/Metal-heavy load, cloud-only LLMDYNAMIX listener classified and not blocking).
 - `VAL-M16-002` (original/reference baseline and DFlash candidate run with matching prompts/config) — **MET**. Baseline and candidate ran on identical 3-prompt set with `temperature=0`, `seed=0`, `max_tokens=16`, identical model paths; both exits `0`, no process errors, output artifacts saved per prompt; both CLI A/B and load-once A/B captured.
 - `VAL-M16-003` (reference benchmark metrics and quality are analyzed into a decision) — **MET**. Per-prompt and aggregate throughput (`-18.04%` token-weighted), wall-time deltas (load-once dominates by prompt-by-prompt), peak memory delta, output-keyword match, repetition check, and structured-output failure check all recorded. Final decision recorded above.
+
+## M17 upstream Qwen/VLM candidate audit (2026-06-30, `m17-upstream-qwen-vlm-candidate-audit`)
+
+Feature `m17-upstream-qwen-vlm-candidate-audit` is the M17 validation lane. It audits relevant Qwen/VLM upstream and cherry-pick candidates against the current `mlx-vlm-restore-eval-followup` branch, classifies each commit by ancestry and content equivalence, validates that the M8 Qwen fast-path and left-padding content remains correct, defers Gemma4-only `#340` (`8ae2610`) per scope, keeps DFlash closed/no-go, and records the decision. No broad-merge or broad-cherry-pick of `upstream/main` or `cherry-pick/mlx-upstream-sync` was performed; only content-equivalence and focused-pytest evidence are used.
+
+### Branch state at audit time
+
+- **Working branch:** `mlx-vlm-restore-eval-followup` (HEAD `bdc398f`).
+- **Upstream remotes configured:** `origin` → `https://github.com/jecruz/mlx-engine.git`, `upstream` → `https://github.com/lmstudio-ai/mlx-engine.git`. Both fetchable; `upstream` is read-only by mission policy.
+- **Upstream comparison branches:**
+  - `upstream/main` → `8ae2610` (Handle Gemma4 bidirectional visual prefill #340). 1 commit beyond current HEAD ancestry.
+  - `cherry-pick/mlx-upstream-sync` → `bfdd7b9` (Limit Qwen left-padded positions to decode). 30 commits beyond current HEAD ancestry; per AGENTS.md, the approved M8 Qwen bundle content may already be present via upstream PR #334 merge commit `9445b31` even when the original side-branch SHAs are not direct ancestors on `mlx-vlm-restore-eval-followup`. Content equivalence and focused tests are treated as authoritative; the audit does not spend mission time trying to recreate those exact commit objects locally.
+
+### Method (audit, not merge)
+
+1. For each upstream candidate `git merge-base --is-ancestor <sha> HEAD` to record ancestry presence.
+2. For cherry-pick candidates not visible as direct ancestors, inspect `git show <sha>` to compare the patch against the current `mlx_engine/model_kit/patches/qwen3_5.py` (and other touched files) for content equivalence, and against `tests/test_patched_qwen3_5.py` for the companion tests.
+3. Run the focused pytest recommended by the feature description: `tests/test_patched_qwen3_5.py`, `tests/test_patched_qwen3_5_target_verify_forwarding.py`, `tests/test_batched_vision_prompt_inputs.py`, `tests/test_batched_vision_model_kit.py`, `tests/test_batched_vision_qwen_mrope.py`, `tests/test_model_kit_startup.py`, `tests/test_dflash_boundary.py`, `tests/test_patched_qwen3_5_dflash_rollback.py`. Row errors must be zero; companion tests from each cherry-pick must be present and passing.
+4. Confirm DFlash closure: env-var-only opt-in path (`MLX_ENGINE_DFLASH`, etc.) at `mlx_engine/utils/dflash_boundary.py`, no default-on DFlash flag leaks in patched qwen3_5 surface, and the M14/M15/M16 REJECT decisions remain in force.
+
+### Candidate table
+
+Upstream candidates since 2026-04 that touch Qwen/VLM directly (sorted by chronology). Ancestry column = `git merge-base --is-ancestor <sha> HEAD` result; equivalence column = whether the patched behavior is present in the current branch by file/test inspection; classification column = the audit decision.
+
+| Upstream SHA | Title | Ancestry on HEAD | Content present | Classification | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| `aea0911` | Sync Qwen3.5 vision path with current mlx-vlm (#317) | YES | YES | already-present | Direct ancestor; current `mlx_engine/model_kit/patches/qwen3_5.py` reflects the sync. |
+| `e47768b` | Clear Qwen text rope state before VLM prefill (#333) | YES | YES | already-present | Direct ancestor; `_clear_qwen3_5_text_rope_state` in `mlx_engine/model_kit/batched_vision/batch_generator.py`. Covered by `tests/test_batched_vision_prompt_inputs.py::test_build_prompt_kwargs_text_clears_qwen3_5_rope_state` and `::test_build_cached_prompt_kwargs_text_clears_qwen3_5_rope_state`. |
+| `ae24add` | Disable Qwen ragged attention kernel (#338) | YES | YES | already-present | Direct ancestor; covered by `tests/test_patched_qwen3_5.py::test_vlm_qwen3_5_ragged_decode_attention_kernel_is_disabled`. |
+| `8ae2610` | Handle Gemma4 bidirectional visual prefill (#340) | NO | NO | deferred (Gemma4-only, out-of-scope) | Not a Qwen/VLM candidate; touches Gemma4 bidirectional visual prefill only. Per AGENTS.md "Treat Gemma4-only `8ae2610` / upstream #340 as deferred unless the user explicitly expands scope beyond Qwen/VLM priority." Not cherry-picked. |
+| `9445b31` | Add Gemma 12b Unified Support (#334) | YES | n/a | skipped (Gemma, out-of-scope) | Direct ancestor on HEAD; Gemma4 unified model only, no Qwen/VLM surface. Listed only to record the audit traversed it. |
+| `147cc6f` | Add unified arch for gemma4 (#305) | YES | n/a | skipped (Gemma, out-of-scope) | Direct ancestor; Gemma4 unified arch, no Qwen/VLM surface. |
+| `315aa51` | Update gemma-4 test (#311) | YES | n/a | skipped (Gemma test, out-of-scope) | Direct ancestor; Gemma4 test only. |
+| `e2f0e89` | Add disk-based caching and continuous batching for VLMs (#326) | YES | YES | already-present | Direct ancestor; recorded in VLM restore-planner / batched-vision code on the current branch. |
+| `95104c3` | Add vision feature caching for unified models (#309) | YES | YES | already-present | Direct ancestor; vision-feature memoizer port lives in `mlx_engine/model_kit/batched_vision/vision_feature_memoizer.py`. |
+| `ef77245` | Add prompt caching checkpoints for sequential generation (#308) | YES | YES | already-present | Direct ancestor; covered by M1 prompt-cache evidence and the retained-baseline evidence recorded in `.planning/performance-future-work.md`. |
+| `f6675d9` | Upgrade mlx-lm and update to use new BatchedGeneration API (#304) | YES | YES | already-present | Direct ancestor; BatchedGeneration API is the current model kit surface. |
+| `3b3686b` | update mlx-vlm (#303) | YES | YES | already-present | Direct ancestor; mlx-vlm version pin recorded in M16 package freeze. |
+| `125c501` | Update requirements.txt; raise ValueError for unsupported model (#302) | YES | YES | already-present | Direct ancestor; `mlx_engine/model_kit/model_kit.py` raises `ValueError` for unsupported model types per M2 work. |
+
+Cherry-pick/mlx-upstream-sync candidates that touch Qwen/VLM directly (sorted by chronology). Ancestry column is intentionally `NO` for every row — per AGENTS.md the side-branch SHAs are not direct ancestors of `mlx-vlm-restore-eval-followup` because the M8 bundle was already merged ahead of the formal M8 cutover via prior M2 work. The audit relies on content equivalence and focused tests instead.
+
+| Cherry-pick SHA | Title | Ancestry on HEAD | Content present | Classification | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| `27c7606` | Remap Qwen3.5 vision weight keys before filtering | NO | YES (via M2/M8 merge + replacement) | already-present by content | Original target files (`mlx_engine/model_kit/vision_add_ons/load_utils.py`, `mlx_engine/model_kit/vision_add_ons/qwen3_5.py`) were removed during the legacy-vision-kit cleanup (`14eadf7`, `fe35245`, `2713eb4`). The new batched-vision vision-add-on path handles Qwen3.5 weight remapping in `mlx_engine/model_kit/batched_vision/model_kit.py` and through `mlx_vlm.models.qwen3_5.qwen3_5.sanitize_key`. Real Qwen3.5 VLM loads and runs (M14/M15/M16 evidence) prove the equivalent remap is in place. |
+| `e3a419c` | Route Qwen3.5 target verify attention to VLM | NO | YES | already-present by content | `_patched_vlm_qwen3_5_attention_call` in `mlx_engine/model_kit/patches/qwen3_5.py` (line 1241) declares `target_verify: bool = False` and the routing guard at line 1245 (`or position_embeddings is not None or target_verify`) routes `target_verify=True` calls to `OriginalVlmQwen3_5AttentionCall`. Companion test `test_vlm_qwen3_5_attention_target_verify_uses_original_vlm` passes. |
+| `9dd4811` | Handle Qwen3.5 attention position embeddings | NO | YES | already-present by content | `_patched_vlm_qwen3_5_attention_call` in `mlx_engine/model_kit/patches/qwen3_5.py` (line 1240) declares `position_embeddings: Optional[tuple[mx.array, mx.array]] = None` and forwards it to the original VLM attention when non-`None` (line 1255). Companion test `test_vlm_qwen3_5_attention_position_embeddings_uses_original_vlm` passes. |
+| `0cdae5e` | Restore Qwen decode fast path | NO | YES (M2 merge) | already-present by content | M2 merge brought the `_vlm_qwen3_5_gated_delta_net_fast_path` helper and `_patched_vlm_qwen3_5_gated_delta_net_call` wrapper into `mlx_engine/model_kit/patches/qwen3_5.py`; M8 reconcile reconfirmed the routing. Companion tests `test_vlm_qwen3_5_gated_delta_fast_path_skips_upstream_decode_conv`, `test_vlm_qwen3_5_gated_delta_fast_path_contiguous_cache_write`, `test_vlm_qwen3_5_gated_delta_special_cases_use_original_vlm` (parametrized), `test_vlm_qwen3_5_gated_delta_ragged_cache_uses_original_vlm`, `test_qwen3_5_ordinary_decode_fast_path_completes_correctly` all pass. |
+| `ae55e21` | Handle Qwen left-padded decode mask | NO | YES (M8 left-padded follow-ups) | already-present by content | `_patched_vlm_qwen3_5_attention_call` includes the `or (isinstance(mask, str) and mask == "left_padded_decode")` fallback to `OriginalVlmQwen3_5AttentionCall`. Companion test `test_vlm_qwen3_5_attention_left_padded_decode_uses_original_vlm` passes. |
+| `970a7c7` | Handle Qwen left-padded text decode | NO | YES (M8 left-padded follow-ups) | already-present by content | `_patched_vlm_qwen3_5_language_model_call` routes to `OriginalVlmQwen3_5LanguageModelCall` for single-step left-padded decode and the new `_vlm_qwen3_5_batched_left_padding_position_ids` helper feeds `position_ids` from `cache[fa_idx].offset[:batch_size]`. Companion tests `test_vlm_qwen3_5_text_left_padded_decode_uses_original_vlm` and `test_vlm_qwen3_5_text_left_padded_decode_advances_per_row_positions` (new in M8, multi-step per-row positions) pass. |
+| `bfdd7b9` | Limit Qwen left-padded positions to decode | NO | YES (M8 left-padded follow-ups) | already-present by content | Companion test `test_vlm_qwen3_5_text_left_padded_prefill_uses_fast_path` (multi-token prefill keeps the fast path) passes. The helper and the `position_ids` derivation are exactly what `bfdd7b9` patched. |
+
+### M8 Qwen fast-path and left-padding content equivalence
+
+The M8 lane (`m8-qwen-fast-path-intake` + `m8-qwen-left-padded-followups` + `m8-qwen-promotion-decision-reconcile`) already merged the prioritized Qwen decode / fast-path candidate plus the three left-padded decode correctness follow-ups from the approved upstream bundle. The M17 audit re-confirms each of those bundle contents by file inspection and focused test result:
+
+- **Ordinary decode fast path** (commit `0cdae5e`): present in `_vlm_qwen3_5_gated_delta_net_fast_path` and `_patched_vlm_qwen3_5_gated_delta_net_call`. End-to-end coverage: `test_qwen3_5_ordinary_decode_fast_path_completes_correctly` (8-token prefill + 12 sequential single-token decode steps, all routed through the patched GDN fast path for every linear layer, zero row errors).
+- **Left-padded decode mask** (commit `ae55e21`): the attention layer falls back to `OriginalVlmQwen3_5AttentionCall` whenever `mask == "left_padded_decode"`. Covered by `test_vlm_qwen3_5_attention_left_padded_decode_uses_original_vlm`.
+- **Left-padded text decode positions** (commit `970a7c7`): the language model falls back to `OriginalVlmQwen3_5LanguageModelCall` for single-step left-padded decode and feeds per-row `position_ids` from `cache[fa_idx].offset[:batch_size]`. Multi-step per-row advancement covered by `test_vlm_qwen3_5_text_left_padded_decode_advances_per_row_positions` (advances `[[7],[5]] → [[8],[6]] → [[9],[7]]` across three sequential decode calls against a mutable cache).
+- **Left-padded prefill stays on the fast path** (commit `bfdd7b9`): covered by `test_vlm_qwen3_5_text_left_padded_prefill_uses_fast_path` (multi-token prefill does not regress).
+- **Routing contracts (companion coverage from `0cdae5e`):** `test_vlm_qwen3_5_gated_delta_fast_path_skips_upstream_decode_conv`, `test_vlm_qwen3_5_gated_delta_fast_path_contiguous_cache_write`, `test_vlm_qwen3_5_gated_delta_special_cases_use_original_vlm` (parametrized over `target_verify` and `gdn_sink`), `test_vlm_qwen3_5_gated_delta_ragged_cache_uses_original_vlm`, `test_vlm_qwen3_5_single_row_batch_cache_requires_real_left_padding` (parametrized over `left_padding=0` vs `>0`), `test_vlm_qwen3_5_single_row_batch_cache_ignores_non_batch_cache`.
+
+The M17 audit therefore confirms the M8 fast-path and left-padded decode content remains present by content equivalence. No new M8/M17 cherry-pick is required.
+
+### Focused pytest evidence (M17 validation)
+
+Run from `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine` with `.venv-py312/bin/python`:
+
+```bash
+.venv-py312/bin/python -m pytest tests/test_patched_qwen3_5.py tests/test_patched_qwen3_5_target_verify_forwarding.py tests/test_batched_vision_prompt_inputs.py tests/test_batched_vision_model_kit.py tests/test_batched_vision_qwen_mrope.py tests/test_model_kit_startup.py tests/test_dflash_boundary.py tests/test_patched_qwen3_5_dflash_rollback.py -q --no-header
+```
+
+Observed result: **140 passed, 9 skipped, 0 failed** across the 8 test files. The 9 skipped tests are all real-model pytests in `tests/test_patched_qwen3_5.py` requiring auxiliary checkpoints that are absent from `~/.lmstudio/models/lmstudio-community/` per the AGENTS.md "Known Pre-Existing Issues" note, not regressions introduced by any M17 audit step. The remaining 7 test files (target-verify forwarding, batched vision prompt inputs, batched vision model kit, batched vision qwen MRoPE, model kit startup, DFlash boundary, DFlash rollback) pass with zero skipped tests.
+
+- `tests/test_patched_qwen3_5.py`: 26 passed, 9 skipped (real-model pytests).
+- `tests/test_patched_qwen3_5_target_verify_forwarding.py`: 11 passed (the `target_verify` forwarding contract from the M14 wrapper-hook fix is exercised end-to-end and routes through `OriginalVlmQwen3_5AttentionCall` for `target_verify=True`).
+- `tests/test_batched_vision_prompt_inputs.py`: includes `test_build_prompt_kwargs_text_clears_qwen3_5_rope_state` and `test_build_cached_prompt_kwargs_text_clears_qwen3_5_rope_state` (the upstream `#333` content). Both pass.
+- `tests/test_batched_vision_model_kit.py`, `tests/test_batched_vision_qwen_mrope.py`, `tests/test_model_kit_startup.py`: pass (VLM model kit and Qwen MRoPE / rope index coverage intact).
+- `tests/test_dflash_boundary.py`: 68 passed (DFlash preflight + unsupported-surface fail-closed invariants remain enforced; DFlash is not default-on).
+- `tests/test_patched_qwen3_5_dflash_rollback.py`: pass (the M14 wrapper-level `TextModel.rollback_speculative_cache` hook is present; per-row rollback for the proven 16 KVCache + 48 ArraysCache sequential layout works).
+
+Row errors across every run: **zero**. Process exit codes: **0**. No `RuntimeError: There is no Stream(...)` text anywhere in the runner stderr.
+
+### DFlash closure
+
+- `MLX_ENGINE_DFLASH` (and the related `MLX_ENGINE_DFLASH_TARGET_MODEL`, `MLX_ENGINE_DFLASH_DRAFTER_MODEL`, `MLX_ENGINE_DFLASH_MAX_DRAFT_TOKENS`, `MLX_ENGINE_DFLASH_ADAPTIVE_SCHEDULING`) remain the only DFlash opt-in surface in `mlx_engine/utils/dflash_boundary.py`. No DFlash flag is default-on; the `dflash_options.enabled` checks at `mlx_engine/generate.py:401` and `:701` gate the runtime path.
+- The M14/M15/M16 REJECT decisions remain in force: M14 `quality_compare.py` `status=fail` for both `max_draft_tokens=4` and `max_draft_tokens=1`, M15 quality gate `fail` plus no repeatable latency win, M16 reference-DFlash benchmark `fail locally` with token-weighted aggregate TPS `-18.04%`. The native `mlx-engine` DFlash foundation remains on the branch as opt-in infrastructure but is not promoted.
+- M17 does **not** reopen DFlash. No `MLX_ENGINE_DFLASH*` default value changed, no new DFlash surface was added, and the failed quality/performance evidence remains authoritative.
+
+### Gemma4-only `#340` deferral
+
+- `8ae2610` (Handle Gemma4 bidirectional visual prefill #340) is **not** present on `mlx-vlm-restore-eval-followup` (`git merge-base --is-ancestor 8ae2610 HEAD` → `NO`).
+- The commit only affects Gemma4 bidirectional visual prefill; it has no Qwen/VLM surface and would not move the M17 lane (Qwen/VLM validation only).
+- Per AGENTS.md and the feature description ("Treat Gemma4-only `8ae2610` / upstream #340 as deferred unless the user explicitly expands scope"), this commit is recorded as **deferred (Gemma4-only, out-of-scope)**. No cherry-pick or focused follow-up is created for it in M17.
+- A future `m17-gemma4-bidirectional-prefill` feature could pick it up only if the user explicitly expands scope beyond Qwen/VLM priority; that lane is not created from M17.
+
+### Decision
+
+- **No new Qwen/VLM cherry-pick is needed.** The M17 audit confirms the relevant upstream and cherry-pick Qwen/VLM candidates are already present by ancestry (`ae24add`, `e47768b`, `aea0911`, etc.) or content equivalence (`0cdae5e`, `ae55e21`, `970a7c7`, `bfdd7b9`, `9dd4811`, `e3a419c`, `27c7606`). The focused pytest coverage (140 passed, 9 skipped, 0 failed) proves the M8 fast-path, M8 left-padded decode, the `target_verify` forwarding contract, the Qwen text-rope clearing before VLM prefill (`#333`), the ragged-attention disable (`#338`), and the VLM Qwen3.5 vision-path sync (`#317`) all behave correctly under the current branch.
+- **No broad-merge or broad-cherry-pick was performed.** Only `git fetch upstream` (read-only) and `git log`/`git show`/`git merge-base --is-ancestor` inspection were used. `origin` and `upstream` push is not performed by M17.
+- **DFlash remains closed/no-go.** No DFlash flag was promoted to default-on; no new DFlash surface was added; the M14/M15/M16 REJECT decisions are still authoritative.
+- **Gemma4-only `#340` (`8ae2610`) is deferred.** Out-of-scope for the M17 Qwen/VLM validation lane. Listed in the candidate table for traceability.
+- **Follow-up required:** none on the engine surface. The next M17 lane (`m17-qwen-vlm-focused-validation`) will run the same focused pytest from a fresh process as a final pre-handoff cross-check (this is the engine-worker skill's lane; M17 bench-worker audit just records the candidate table and decision).
+
+### Validation contract assertions
+
+- `VAL-M17-001` (upstream Qwen/VLM candidate audit classifies candidates) — **MET**. The two candidate tables above enumerate every relevant upstream (`aea0911`, `e47768b`, `ae24add`, `8ae2610`, plus the non-Qwen `9445b31`, `147cc6f`, `315aa51`, `e2f0e89`, `95104c3`, `ef77245`, `f6675d9`, `3b3686b`, `125c501` for completeness) and cherry-pick (`27c7606`, `e3a419c`, `9dd4811`, `0cdae5e`, `ae55e21`, `970a7c7`, `bfdd7b9`) commit; each is classified as already-present (by ancestry or content), skipped/deferred (Gemma-only), or out-of-scope. No broad merge or cherry-pick was performed (read-only `git fetch` + `git show` + `git merge-base --is-ancestor` only).
+- `VAL-M17-004` (M17 decision is recorded without reopening DFlash) — **MET**. The decision section above states "no new Qwen/VLM cherry-pick is needed", keeps DFlash closed/no-go (no default-on DFlash flag, M14/M15/M16 REJECT decisions still authoritative), and defers Gemma4 `#340` as out-of-scope unless the user explicitly expands scope. The M17 audit does not open a new DFlash lane and does not reopen the M14/M15/M16 quality/performance evidence.
+- `VAL-M17-002` (Qwen decode and left-padding behavior remains correct) — covered by the focused pytest evidence (140 passed, 9 skipped, 0 failed) and the per-test mapping in the "M8 Qwen fast-path and left-padding content equivalence" subsection. The companion `m17-qwen-vlm-focused-validation` engine-worker lane re-runs the same pytest from a fresh process before handoff.
+- `VAL-M17-003` (Qwen/VLM integration remains stable) — covered by the focused pytest evidence (the `tests/test_batched_vision_*` group passes, including Qwen MRoPE, Qwen text-rope clearing before VLM prefill, and Qwen/VLM parity coverage). The companion `m17-qwen-vlm-focused-validation` engine-worker lane re-runs the same pytest before handoff.
+
+### Consequence: no Qwen/VLM cherry-pick work in M17
+
+Per the feature description ("Audit upstream Qwen/VLM candidate commits before any cherry-pick. ... record the decision in `.planning/performance-future-work.md`. Do not broad-merge or broad-cherry-pick upstream branches.") and AGENTS.md ("M17 is an upstream Qwen/VLM cherry-pick validation lane. Do not broad-merge `upstream/main` or `cherry-pick/mlx-upstream-sync`; audit candidates first and validate current behavior. Current planning expects most Qwen/VLM content is already present by ancestry or content equivalence, `8ae2610` / upstream #340 is Gemma4-only and deferred unless scope expands, and DFlash remains closed/no-go."), no Qwen/VLM cherry-pick or follow-up is created. The audit decision is recorded here and committed with `[#1190]` prefix as the single M17 deliverable.
