@@ -4064,3 +4064,80 @@ Explicit `8192` had the best aggregate total in this two-run sample, and the com
 - `VAL-M21-002` (Qwen text prefill step-size sweep is captured and quality-inspected): **MET** for Qwen3.5 dense default, Qwen3.5 forced sequential, and Qwen2.5-Coder forced sequential. Every retained Qwen text report has zero row errors, `quality_compare.py --candidate` inspect status `pass`, preserved deterministic prompt suite/sampling/max-token/output-text/route settings, and recorded TTFT/decode TPS/total metrics by step size.
 - No Qwen text lane was omitted. The optional larger Qwen3.6 27B and MoE lanes remain out of this feature's scope per the preflight omissions.
 - **No default-change or promotion claim is made from this feature.** The only default-route Qwen3.5 apparent aggregate winner failed the route-specific quality/performance compare because of a warm TTFT regression. The sequential Qwen3.5 and Qwen2.5-Coder apparent winners passed compare but moved by sub-1% to about 2% prompt-specific amounts in a single two-run sample. Promotion/default-change would require a later decision feature with at least two repeated quality-passing samples that show a repeatable route/model-specific win.
+
+## M21 VLM/Gemma4 prefill step-size sweep (2026-06-30, `m21-vlm-gemma4-prefill-step-size-sweep`)
+
+Feature `m21-vlm-gemma4-prefill-step-size-sweep` ran the selected VLM lanes through direct `shared_bench.py` with omitted/default plus explicit `--prefill-step-size` values `1024`, `2048`, `4096`, and `8192`. This is sweep evidence only. It does not change engine defaults and does not make a promotion/default-change claim from single-sample results.
+
+### Resource and route preflight
+
+Immediately before heavyweight VLM/Gemma4 loads, the worker reran process and port preflight:
+
+- Ports `3180`, `3181`, and `3182` had no listeners.
+- Port `12444` had `llmdynamix` PID `2552` listening, with `llmdynamix-engine` PID `3157`; this was treated as allowed because `GET http://127.0.0.1:11434/api/ps` returned `{"models":[]}` and `GET http://127.0.0.1:4521/v1/models` was connection-refused, so no loaded local model backend was observed.
+- No active `shared_bench.py`, `quality_compare.py`, `mlx_engine.openai_adapter`, or cheetara adapter process was found before the sweep.
+- `/Volumes/StudioStackSSD4TB` had `714 GiB` available. No `MLX_ENGINE_*DFLASH`, `DFLASH`, or `MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM` env var was set.
+
+All retained commands used direct `--engine mlx-engine` with `.venv-py312` through `--mlx-engine-python`. No LM Studio runtime, DFlash flag, adapter route, SpecPrefill, SuffixDecoding, loaded `draft_model`, `num_draft_tokens`, forced-sequential VLM substitute, or MoE promotion evidence was used.
+
+Analysis artifact for this sweep:
+
+- **Manifest:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T181722Z-m21-vlm-gemma4-sweep-manifest.json`
+- **Derived analysis:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T181722Z-m21-vlm-gemma4-sweep-manifest-analysis.json`
+
+### LFM2.5-VL short image route
+
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`
+- **Route/config:** direct VLM route, `prompt_suites/vlm_image_quality.json`, `--runs 1 --max-tokens 64 --temperature 0.0 --top-p 1.0 --include-output-text`.
+- **Row and quality result:** every retained report has `2/2` rows with `error: null`; every inspect returned `status=pass`. `image_toucan` retained `toucan`; `image_pair` retained both `chameleon` and `toucan`.
+
+| Step | Report | Inspect | Inspect status | Avg TTFT s | Avg decode TPS | Avg total s | Cached-token sequence |
+|---|---|---|---|---:|---:|---:|---|
+| omitted/default | `reports/20260630T181722.729665Z-shared-bench.json` | `reports/20260630T181722.729665Z-shared-bench-m21-lfm25_vlm_short-default-quality-inspect.json` | `pass` | `0.170518` | `366.721` | `0.290873` | `[0, 0]` |
+| `1024` | `reports/20260630T181730.694889Z-shared-bench.json` | `reports/20260630T181730.694889Z-shared-bench-m21-lfm25_vlm_short-1024-quality-inspect.json` | `pass` | `0.105592` | `356.794` | `0.228799` | `[0, 0]` |
+| `2048` | `reports/20260630T181735.971091Z-shared-bench.json` | `reports/20260630T181735.971091Z-shared-bench-m21-lfm25_vlm_short-2048-quality-inspect.json` | `pass` | `0.114752` | `367.088` | `0.235299` | `[0, 0]` |
+| `4096` | `reports/20260630T181741.252626Z-shared-bench.json` | `reports/20260630T181741.252626Z-shared-bench-m21-lfm25_vlm_short-4096-quality-inspect.json` | `pass` | `0.103521` | `364.033` | `0.225265` | `[0, 0]` |
+| `8192` | `reports/20260630T181746.784688Z-shared-bench.json` | `reports/20260630T181746.784688Z-shared-bench-m21-lfm25_vlm_short-8192-quality-inspect.json` | `pass` | `0.103001` | `363.178` | `0.225004` | `[0, 0]` |
+
+The best aggregate total in this one-run short VLM sample was explicit `8192`. The route-specific compare against omitted/default is `reports/20260630T181746.784688Z-shared-bench-m21-lfm25_vlm_short-8192-vs-default-quality-compare.json`, with `status=pass`; `image_pair` total improved `-25.683%`, and `image_toucan` total improved `-20.480%`. This is not promotion/default-change evidence because it is a single sample and the short route has no repeated candidate confirmation.
+
+### LFM2.5-VL persistent-restart long image route
+
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`
+- **Route/config:** direct VLM route, `prompt_suites/vlm_image_long_quality.json`, `--mlx-engine-process-restart --runs 2 --max-tokens 32 --temperature 0.0 --top-p 1.0 --include-output-text`.
+- **Cache isolation:** each step used a fresh root and namespace: `/tmp/mlx-engine-vlm-cache-m21-20260630T181722Z-lfm25_vlm_long_persistent-<step>` and `m21-lfm25_vlm_long_persistent-<step>-20260630T181722Z`. Each root measured `87M` after the sweep.
+- **Row and quality result:** every retained report has `2/2` rows with `error: null`; every inspect returned `status=pass`. Every cold and warm `image_long_toucan` row retained `toucan`.
+
+| Step | Report | Inspect | Inspect status | Avg TTFT s | Avg decode TPS | Avg total s | Cold/warm cached tokens | Cold/warm TTFT s | Cold/warm total s |
+|---|---|---|---|---:|---:|---:|---|---|---|
+| omitted/default | `reports/20260630T181752.284497Z-shared-bench.json` | `reports/20260630T181752.284497Z-shared-bench-m21-lfm25_vlm_long_persistent-default-quality-inspect.json` | `pass` | `0.559201` | `340.471` | `0.574154` | `[0, 7373]` | `1.085616 / 0.032786` | `1.098567 / 0.049742` |
+| `1024` | `reports/20260630T181803.180387Z-shared-bench.json` | `reports/20260630T181803.180387Z-shared-bench-m21-lfm25_vlm_long_persistent-1024-quality-inspect.json` | `pass` | `0.568083` | `378.661` | `0.581298` | `[0, 7373]` | `1.103648 / 0.032518` | `1.116478 / 0.046118` |
+| `2048` | `reports/20260630T181814.291007Z-shared-bench.json` | `reports/20260630T181814.291007Z-shared-bench-m21-lfm25_vlm_long_persistent-2048-quality-inspect.json` | `pass` | `0.556730` | `356.312` | `0.570842` | `[0, 7373]` | `1.081177 / 0.032283` | `1.094235 / 0.047449` |
+| `4096` | `reports/20260630T181824.817406Z-shared-bench.json` | `reports/20260630T181824.817406Z-shared-bench-m21-lfm25_vlm_long_persistent-4096-quality-inspect.json` | `pass` | `0.554321` | `418.095` | `0.566596` | `[0, 7373]` | `1.076130 / 0.032511` | `1.086435 / 0.046757` |
+| `8192` | `reports/20260630T181835.576021Z-shared-bench.json` | `reports/20260630T181835.576021Z-shared-bench-m21-lfm25_vlm_long_persistent-8192-quality-inspect.json` | `pass` | `0.547085` | `364.203` | `0.560837` | `[0, 7373]` | `1.063090 / 0.031079` | `1.077413 / 0.044261` |
+
+The best aggregate total in this two-run persistent sample was explicit `8192`. The route-specific compare against omitted/default is `reports/20260630T181835.576021Z-shared-bench-m21-lfm25_vlm_long_persistent-8192-vs-default-quality-compare.json`, with `status=pass`; TTFT changed `-2.167%`, decode TPS `+6.970%`, and total `-2.320%`. This is not promotion/default-change evidence because only one candidate sample was collected in this feature.
+
+### Gemma4 12B short VLM route
+
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit`
+- **Route/config:** direct Gemma4 VLM/batched-vision route, `prompt_suites/vlm_image_quality.json`, `--runs 1 --max-tokens 96 --temperature 0.0 --top-p 1.0 --max-seq-nums 1 --mlx-engine-batched-timing --include-output-text --timeout 1200`.
+- **Row and quality result:** every retained report has `2/2` rows with `error: null`; every inspect returned `status=pass`. `image_toucan` retained `toucan`; `image_pair` retained both `chameleon` and `toucan`.
+
+| Step | Report | Inspect | Inspect status | Avg TTFT s | Avg decode TPS | Avg total s | Cached-token sequence |
+|---|---|---|---|---:|---:|---:|---|
+| omitted/default | `reports/20260630T181846.436337Z-shared-bench.json` | `reports/20260630T181846.436337Z-shared-bench-m21-gemma4_12b_vlm_short-default-quality-inspect.json` | `pass` | `0.846326` | `44.044` | `2.913247` | `[0, 18]` |
+| `1024` | `reports/20260630T181903.021401Z-shared-bench.json` | `reports/20260630T181903.021401Z-shared-bench-m21-gemma4_12b_vlm_short-1024-quality-inspect.json` | `pass` | `0.887229` | `41.988` | `3.053392` | `[0, 18]` |
+| `2048` | `reports/20260630T181919.559497Z-shared-bench.json` | `reports/20260630T181919.559497Z-shared-bench-m21-gemma4_12b_vlm_short-2048-quality-inspect.json` | `pass` | `0.819955` | `43.880` | `2.894847` | `[0, 18]` |
+| `4096` | `reports/20260630T181935.220823Z-shared-bench.json` | `reports/20260630T181935.220823Z-shared-bench-m21-gemma4_12b_vlm_short-4096-quality-inspect.json` | `pass` | `0.844221` | `44.051` | `2.911040` | `[0, 18]` |
+| `8192` | `reports/20260630T181950.781860Z-shared-bench.json` | `reports/20260630T181950.781860Z-shared-bench-m21-gemma4_12b_vlm_short-8192-quality-inspect.json` | `pass` | `0.832989` | `43.829` | `2.909972` | `[0, 18]` |
+
+The best aggregate total in this one-run Gemma4 sample was explicit `2048`, effectively matching the current omitted/default VLM behavior. The route-specific compare against omitted/default is `reports/20260630T181919.559497Z-shared-bench-m21-gemma4_12b_vlm_short-2048-vs-default-quality-compare.json`, with `status=pass`; `image_pair` total changed `-1.000%`, and `image_toucan` total changed `-0.192%`. The diagnostic compare for explicit `1024`, `reports/20260630T181903.021401Z-shared-bench-m21-gemma4_12b_vlm_short-1024-vs-default-quality-compare.json`, returned `status=fail` because `image_toucan` TTFT regressed `+16.110%` and total regressed `+11.885%`. This Gemma4 evidence does not support a default change.
+
+### Omitted heavy lanes and sweep decision
+
+- **Gemma4 12B long-pair stress:** deferred as planned by M21 preflight. The short Gemma4 sweep did not produce a compelling default-change signal, so the retained M20 long-pair stress anchor was not rerun.
+- **Gemma4 31B OptiQ:** not selected by M21 preflight due larger heavyweight footprint and no requirement for this VLM/Gemma4 step-size lane.
+- **LFM2.5-VL optional long-pair:** not selected because M19 showed the long-pair persistent attempt missed the expected `toucan` keyword and did not show warm cached-token reuse; the retained persistent long lane above is the required VLM cache signal.
+
+`VAL-M21-003` (VLM and Gemma4 prefill step-size sweep is captured and quality-inspected) is **MET** for LFM2.5-VL short image, LFM2.5-VL persistent-restart long image, and Gemma4 12B short VLM routes. Every retained VLM/Gemma4 report has zero row errors, every inspect returned `status=pass`, expected `toucan`/`chameleon` keywords were retained where applicable, and the persistent LFM2.5-VL lane used fresh cache roots/namespaces per step size with cold/warm cached tokens `[0, 7373]` for every step. **No default-change or promotion claim is made from this feature.** The apparent LFM2.5-VL `8192` wins require repeated quality-passing confirmation in the later M21 decision feature before any narrow default-change follow-up could be justified.
