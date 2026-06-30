@@ -3384,3 +3384,63 @@ Row errors across every run: **zero**. Process exit codes: **0**. No `RuntimeErr
 ### Consequence: no Qwen/VLM cherry-pick work in M17
 
 Per the feature description ("Audit upstream Qwen/VLM candidate commits before any cherry-pick. ... record the decision in `.planning/performance-future-work.md`. Do not broad-merge or broad-cherry-pick upstream branches.") and AGENTS.md ("M17 is an upstream Qwen/VLM cherry-pick validation lane. Do not broad-merge `upstream/main` or `cherry-pick/mlx-upstream-sync`; audit candidates first and validate current behavior. Current planning expects most Qwen/VLM content is already present by ancestry or content equivalence, `8ae2610` / upstream #340 is Gemma4-only and deferred unless scope expands, and DFlash remains closed/no-go."), no Qwen/VLM cherry-pick or follow-up is created. The audit decision is recorded here and committed with `[#1190]` prefix as the single M17 deliverable.
+
+### Fresh-process cross-check (2026-06-30, `m17-qwen-vlm-focused-validation`)
+
+The engine-worker lane `m17-qwen-vlm-focused-validation` re-ran the audit's focused pytest suite from a fresh process as the final pre-handoff cross-check. The pytest command, exit code, and per-file results match the audit's recorded evidence. No broad merge, DFlash change, or Gemma4-only scope expansion was performed. No Qwen/VLM cherry-pick content is missing.
+
+#### Focused pytest (audit-recommended eight files)
+
+Run from `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine` with `.venv-py312/bin/python`:
+
+```bash
+.venv-py312/bin/python -m pytest tests/test_patched_qwen3_5.py tests/test_patched_qwen3_5_target_verify_forwarding.py tests/test_batched_vision_prompt_inputs.py tests/test_batched_vision_model_kit.py tests/test_batched_vision_qwen_mrope.py tests/test_model_kit_startup.py tests/test_dflash_boundary.py tests/test_patched_qwen3_5_dflash_rollback.py -q --no-header
+```
+
+Observed result: **140 passed, 9 skipped, 0 failed, 25 subtests passed** across the 8 test files (exit code `0`). Identical to the audit's recorded result.
+
+Per-file breakdown (fresh process):
+
+| Test file | Result |
+|---|---|
+| `tests/test_patched_qwen3_5.py` | 26 passed, 9 skipped (real-model pytests gated on `~/.lmstudio/models/lmstudio-community/` auxiliary checkpoints — AGENTS.md "Known Pre-Existing Issues") |
+| `tests/test_patched_qwen3_5_target_verify_forwarding.py` | 11 passed (M14 wrapper-hook `target_verify` forwarding end-to-end) |
+| `tests/test_batched_vision_prompt_inputs.py` | passed (Qwen text RoPE clear before VLM prefill — upstream `#333` content) |
+| `tests/test_batched_vision_model_kit.py` | passed (VLM model kit intact) |
+| `tests/test_batched_vision_qwen_mrope.py` | passed (Qwen MRoPE / rope index coverage) |
+| `tests/test_model_kit_startup.py` | passed |
+| `tests/test_dflash_boundary.py` | 68 passed (DFlash preflight + unsupported-surface fail-closed invariants intact, DFlash not default-on) |
+| `tests/test_patched_qwen3_5_dflash_rollback.py` | passed (M14 wrapper-level `TextModel.rollback_speculative_cache` hook; per-row rollback for 16 KVCache + 48 ArraysCache sequential layout works) |
+
+Row errors across the fresh run: **zero**. Process exit code: `0`. No `RuntimeError: There is no Stream(...)` text anywhere in the runner stderr.
+
+#### Additional Qwen/VLM-adjacent batched-vision regression coverage
+
+The lane ran the broader Qwen/VLM-adjacent batched-vision surface to confirm no regression in current VLM cache/prefill behavior:
+
+| Pytest command | Result |
+|---|---|
+| `pytest tests/test_batched_vision_parity.py tests/test_batched_vision_batch_generator.py tests/test_batched_vision_chunks.py tests/test_batched_vision_cache_store.py -q` | 44 passed, 7 skipped, 0 failed (exit `0`) |
+| `pytest tests/test_vlm_record_layout_model.py tests/test_vision_feature_cache.py -q` | 6 passed, 0 failed (exit `0`) |
+| `pytest tests/test_batched_vision_image_spans.py tests/test_batched_vision_records.py tests/test_batched_vision_disk_budget.py tests/test_batched_vision_restore_planner.py tests/test_batched_vision_cache_io_thread.py tests/test_batched_vision_blob_store.py tests/test_batched_vision_request_lifecycle.py tests/test_batched_vision_prompt_inputs.py tests/test_batched_vision_qwen_mrope.py tests/test_batched_vision_coordinator.py -q` | 64 passed, 0 failed (exit `0`) |
+
+Combined Qwen/VLM and batched-vision regression result across this lane: **254 passed, 16 skipped, 0 failed**, with 25 subtests passed. The 16 skipped tests are pre-existing environment-gated pytests (real-model checkpoints and pre-existing `model_getter()` interactive-loader conditions per AGENTS.md "Known Pre-Existing Issues"). The pre-existing `test_vision_models.py` interactive-loader `OSError: pytest: reading from stdin` failures are out of scope for the M17 focused validation lane.
+
+#### Per-feature expected-behavior confirmation
+
+- **Ordinary decode fast path** — covered by `tests/test_patched_qwen3_5.py` (`test_qwen3_5_ordinary_decode_fast_path_completes_correctly` passes).
+- **target_verify / position_embeddings fallback** — covered by `tests/test_patched_qwen3_5_target_verify_forwarding.py` (11 passed) and `tests/test_patched_qwen3_5_dflash_rollback.py`.
+- **Ragged attention disabled** — covered by `tests/test_patched_qwen3_5.py` (`test_vlm_qwen3_5_gated_delta_ragged_cache_uses_original_vlm` passes) and the upstream `#338` content equivalence.
+- **Left-padded per-row decode positions** — covered by `tests/test_patched_qwen3_5.py` (`test_vlm_qwen3_5_text_left_padded_decode_advances_per_row_positions` advances `[[7],[5]] → [[8],[6]] → [[9],[7]]` across three sequential decode calls against a mutable cache).
+- **Left-padded prefill behavior** — covered by `tests/test_patched_qwen3_5.py` (`test_vlm_qwen3_5_text_left_padded_prefill_uses_fast_path` — multi-token prefill keeps the fast path).
+- **Qwen text RoPE clearing before VLM prefill** — covered by `tests/test_batched_vision_prompt_inputs.py` (`test_build_prompt_kwargs_text_clears_qwen3_5_rope_state` and `test_build_cached_prompt_kwargs_text_clears_qwen3_5_rope_state` — upstream `#333` content).
+- **No regression in current VLM cache/prefill tests** — the additional 254-test sweep across the batched-vision regression files (`test_batched_vision_*`, `test_vlm_record_layout_model`, `test_vision_feature_cache`) shows zero failures.
+
+#### Consequence for M17
+
+- No focused follow-up is required. All audit-identified Qwen/VLM content is present and the pytest coverage proves current behavior is correct under the M8 fast-path, M8 left-padded decode, M14 wrapper-hook `target_verify` forwarding, upstream `#333` Qwen text RoPE clear, upstream `#338` ragged-attention disable, and upstream `#317` VLM Qwen3.5 vision-path sync.
+- `VAL-M17-002` (Qwen decode and left-padding behavior remains correct) — **MET** (140 passed, 9 skipped, 0 failed across the audit-recommended eight files; per-feature test mapping above).
+- `VAL-M17-003` (Qwen/VLM integration remains stable) — **MET** (254 passed, 16 skipped, 0 failed across the focused + batched-vision regression sweep; Qwen text RoPE clearing before VLM prefill, VLM prefill/cache behavior, and Qwen/VLM parity all green).
+- DFlash remains closed/no-go (M14/M15/M16 REJECT decisions unchanged).
+- Gemma4-only `8ae2610` / upstream `#340` remains deferred.
+- No broad merge or cherry-pick was performed in M17.
