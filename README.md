@@ -145,6 +145,15 @@ unless the user explicitly overrides. Evidence lives under
 `.planning/m16-reference-dflash-benchmark/`; see commits `8cf32d6` and
 `1229cc5` for the M16 closeout and lint-fix evidence chain.
 
+M17 closeout validated upstream Qwen/VLM cherry-pick candidates as a focused
+audit, not a broad merge. No new Qwen/VLM cherry-pick is needed because the
+relevant upstream/cherry-pick content is already present by ancestry or content
+equivalence, and the focused Qwen/VLM tests pass. Gemma4-only upstream #340
+(`8ae2610`) remains deferred unless scope expands. DFlash remains closed/no-go
+and default-off. See commits `a876def` and `3f9481b` for the audit decision and
+focused validation evidence; scrutiny passed with `404` passed / `16` skipped
+and ruff clean, and user-testing passed VAL-M17-001 through VAL-M17-004.
+
 ## Development Setup
 
 ### Pre-commit Hooks
