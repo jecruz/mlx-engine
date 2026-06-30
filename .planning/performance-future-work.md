@@ -3647,3 +3647,54 @@ Feature `m19-qwen-code-baseline` captured the fresh Qwen code baseline on the cu
 
 - `VAL-M19-003` (Qwen code baseline captured and quality-inspected): **MET**. The selected Qwen code forced-sequential route completed with zero row errors and `quality_compare.py --candidate` status `pass`.
 - M19 remains a baseline matrix and regression radar lane only. These measurements make no promotion claim and do not re-open DFlash, LM Studio runtime validation, MoE promotion evidence, or any speculative-decoding path.
+
+## M19 VLM baselines (2026-06-30, `m19-vlm-baselines`)
+
+Feature `m19-vlm-baselines` captured fresh LFM2.5-VL image baselines on the current post-M18 checkout using direct `shared_bench.py` plus `quality_compare.py --candidate` inspect mode. This is **data-only baseline evidence** for future VLM comparison lanes, not a promotion decision.
+
+### Short image suite
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T132919.996156Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T132919.996156Z-vlm-short-quality-inspect.json`
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`
+- **Prompt suite:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/vlm_image_quality.json`
+- **Command shape:** direct `--engine mlx-engine`, `.venv-py312` passed via `--mlx-engine-python`, `--runs 2 --max-tokens 64 --temperature 0.0 --top-p 1.0 --include-output-text`.
+- **Route/config flags:** `dflash=false`, `suffix_decoding=false`, `specprefill=false`, `mlx_engine_force_sequential=false`, `max_seq_nums=4`, no persistent cache root.
+- **Row-error check:** 4/4 rows have `error: null`; runner process returncode was 0.
+- **Keyword and quality check:** `quality_compare.py --candidate` returned `status=pass`. Both `image_toucan` rows retained `toucan`, and both `image_pair` rows retained `chameleon` and `toucan`.
+- **Metric summary:**
+  - `image_toucan`: avg TTFT `0.090128s`, cold TTFT `0.168148s`, warm TTFT `0.012107s`, avg decode TPS `374.091`, avg total `0.261223s`, avg cached tokens `50.0`
+  - `image_pair`: avg TTFT `0.196123s`, cold TTFT `0.374760s`, warm TTFT `0.017485s`, avg decode TPS `367.614`, avg total `0.264190s`, avg cached tokens `86.5`
+
+### Persistent-restart long image suite
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T133031.773011Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T133031.773011Z-vlm-long-persistent-quality-inspect.json`
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`
+- **Prompt suite:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/vlm_image_long_quality.json`
+- **Command shape:** direct `--engine mlx-engine --mlx-engine-process-restart --mlx-engine-vlm-prompt-cache-root /tmp/mlx-engine-vlm-cache-m19 --mlx-engine-vlm-prompt-cache-namespace m19-lfm25-vlm-long`, `.venv-py312` passed via `--mlx-engine-python`, `--runs 2 --max-tokens 32 --temperature 0.0 --top-p 1.0 --include-output-text`.
+- **Cache hygiene:** `/tmp/mlx-engine-vlm-cache-m19` was absent immediately before the persistent long run, satisfying the clean-root requirement for this lane.
+- **Route/config flags:** `dflash=false`, `suffix_decoding=false`, `specprefill=false`, `mlx_engine_force_sequential=false`, `max_seq_nums=4`, persistent VLM cache root `/tmp/mlx-engine-vlm-cache-m19`, namespace `m19-lfm25-vlm-long`.
+- **Process-restart evidence:** the shared-bench report has `process_restart=true` with two separate runner processes. Both process returncodes were 0. Run 1 populated persistent storage at `/tmp/mlx-engine-vlm-cache-m19/c4ace1452144cc40`; run 2 restarted and reused that storage.
+- **Warm-restore / cached-token evidence:** run 1 had `cached_tokens=0`; run 2 had `cached_tokens=7373` and runner stderr recorded `Prompt cache restore: cached_tokens=7373 uncached_tokens=0 lifetime_efficiency=100.00%`.
+- **Row-error check:** 2/2 rows have `error: null`.
+- **Keyword and quality check:** `quality_compare.py --candidate` returned `status=pass`. Both cold and warm rows output `A toucan.`, retained `toucan`, and met the prompt-specific `min_completion_tokens=4` threshold with 5 completion tokens.
+- **Metric summary:**
+  - `image_long_toucan`: avg TTFT `0.567536s`, cold TTFT `1.100714s`, warm TTFT `0.034358s`, avg decode TPS `354.989`, avg total `0.581721s`, cold total `1.113707s`, warm total `0.049736s`, avg cached tokens `3686.5`
+
+### Optional long-pair lane outcome
+
+The optional long-pair lane was attempted because preflight allowed it after the required short and persistent-long lanes. It is **not retained as a passing M19 baseline** because it did not meet the same evidence bar:
+
+- **Attempted report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T133144.079604Z-shared-bench.json`
+- **Attempted quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T133144.079604Z-vlm-long-pair-quality-inspect.json`
+- **Command shape:** direct `--engine mlx-engine --mlx-engine-process-restart --mlx-engine-vlm-prompt-cache-root /tmp/mlx-engine-vlm-cache-m19 --mlx-engine-vlm-prompt-cache-namespace m19-lfm25-vlm-long-pair`, `.venv-py312` passed via `--mlx-engine-python`, `--runs 2 --max-tokens 64 --temperature 0.0 --top-p 1.0 --include-output-text`.
+- **Cache hygiene note:** to avoid deleting benchmark artifacts in this delegated session, the prior `/tmp/mlx-engine-vlm-cache-m19` cache root was moved reversibly to `/tmp/mlx-engine-vlm-cache-m19-backups/before-long-pair-20260630T1333Z` before the optional attempt.
+- **Row-error check:** 2/2 rows had `error: null`, but the lane failed semantic and restore evidence checks.
+- **Precise omission reason:** `quality_compare.py --candidate` returned `status=fail` because both rows missed the expected `toucan` keyword (`keyword_hits={"chameleon": true, "toucan": false}`) and answered "the chameleon in the second image is the colorful, tropical bird." The persistent restart also did not show warm restore evidence: run 2 still had `cached_tokens=0`, and runner stderr recorded `Prompt cache restore: cached_tokens=0 uncached_tokens=7455`. Because the optional long-pair run lacked both expected keyword retention and cached-token/warm-restore evidence, it is recorded as a failed optional attempt rather than a retained baseline.
+
+### Decision and scope note
+
+- `VAL-M19-004` (VLM baselines captured and quality-inspected): **MET for the required short and persistent-long lanes**. The short suite and persistent-restart long suite completed with zero row errors, expected image keywords retained, and `quality_compare.py --candidate` status `pass`; the persistent lane also captured process-restart and cached-token warm-restore evidence.
+- The optional long-pair lane is **not retained** because its attempted run failed inspect status and warm-restore evidence as described above.
+- M19 remains a baseline matrix and regression radar lane only. These measurements make no promotion claim and do not re-open DFlash, LM Studio runtime validation, MoE promotion evidence, or any speculative-decoding path.
