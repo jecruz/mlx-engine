@@ -3622,3 +3622,28 @@ Feature `m19-qwen-dense-baselines` captured fresh Qwen dense text baselines on t
 
 - `VAL-M19-002` (Qwen dense text baselines captured and quality-inspected): **MET**. Both selected Qwen dense routes completed with zero row errors and `quality_compare.py --candidate` status `pass`.
 - M19 remains a baseline matrix and regression radar lane only. These measurements make no promotion claim and do not re-open DFlash, LM Studio runtime validation, MoE promotion evidence, or any speculative-decoding path.
+
+## M19 Qwen code baseline (2026-06-30, `m19-qwen-code-baseline`)
+
+Feature `m19-qwen-code-baseline` captured the fresh Qwen code baseline on the current post-M18 checkout using direct `shared_bench.py` plus `quality_compare.py --candidate` inspect mode. This is **data-only baseline evidence** for future code-lane comparisons, not a promotion decision.
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T131852.120849Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T131852.120849Z-qwen25-code-sequential-quality-inspect.json`
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit`
+- **Prompt suite:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/task_diverse_deterministic_quality.json`
+- **Command shape:** direct `--engine mlx-engine --mlx-engine-force-sequential`, `.venv-py312` passed via `--mlx-engine-python`, `--runs 3 --max-tokens 256 --temperature 0.0 --top-p 1.0 --include-output-text`.
+- **Resource/process note:** the worker reran process isolation immediately before the model load. Ports `3180-3182` were free, no `shared_bench.py`, `quality_compare.py`, or `mlx_engine.openai_adapter` process was active, and the only matched local service processes were idle `ollama serve` processes. `/Volumes/StudioStackSSD4TB` had about `735 GiB` available.
+- **Route/config flags:** `dflash=false`, `suffix_decoding=false`, `specprefill=false`, `mlx_engine_force_sequential=true`, `max_seq_nums=4`, `include_output_text=true`, deterministic `temperature=0.0`, `top_p=1.0`.
+- **Row-error check:** 15/15 rows have `error: null`; runner process returncode was 0. Completion tokens were stable per prompt (`short_nyc_det=69`, `code_python_det=112`, `reasoning_math_det=7`, `instruction_format_det=41`, `long_context_franklin_det=153`).
+- **Quality inspect status:** `pass` for all five prompts. Output text was included; keyword checks passed for `New York`/`finance`, `stable_unique`/`return`, `38.9`, `risk`/`mitigation`/`owner`, and `Franklin`/`Autobiography`. The inspect found no forbidden reasoning prefixes/substrings, no repeated-line or repeated-5gram findings, and JSON exact-key coverage passed for `instruction_format_det`.
+- **Metric summary:**
+  - `short_nyc_det`: avg TTFT `0.170987s`, avg decode TPS `71.255`, avg total `1.139351s`
+  - `code_python_det`: avg TTFT `0.156844s`, avg decode TPS `71.057`, avg total `1.733047s`
+  - `reasoning_math_det`: avg TTFT `0.155325s`, avg decode TPS `77.632`, avg total `0.245496s`
+  - `instruction_format_det`: avg TTFT `0.156971s`, avg decode TPS `72.065`, avg total `0.725902s`
+  - `long_context_franklin_det`: avg TTFT `4.117633s`, avg decode TPS `56.315`, avg total `6.834510s`
+
+### Decision and scope note
+
+- `VAL-M19-003` (Qwen code baseline captured and quality-inspected): **MET**. The selected Qwen code forced-sequential route completed with zero row errors and `quality_compare.py --candidate` status `pass`.
+- M19 remains a baseline matrix and regression radar lane only. These measurements make no promotion claim and do not re-open DFlash, LM Studio runtime validation, MoE promotion evidence, or any speculative-decoding path.
