@@ -3579,3 +3579,46 @@ DFlash controls are absent from the worker environment (`env | grep -E '^(MLX_EN
 
 - `VAL-M19-001` (baseline matrix preflight is clean and scoped): **MET** by this preflight record. It names exact selected model paths, prompt suites, run counts, route flags, cache namespaces, resource/process state, and explicit DFlash/LM Studio/MoE exclusions.
 - `VAL-M19-005` (Gemma4 benchmark practicality is decided): **MET as blocked**. The local inventory contains only GGUF Gemma4 artifacts and package/source files, not a usable MLX safetensors checkpoint for direct `mlx-engine` benchmarking. M18 focused pytest evidence remains the Gemma4 guardrail.
+
+## M19 Qwen dense baselines (2026-06-30, `m19-qwen-dense-baselines`)
+
+Feature `m19-qwen-dense-baselines` captured fresh Qwen dense text baselines on the current post-M18 checkout using direct `shared_bench.py` and `quality_compare.py --candidate` inspect mode. This is **data-only baseline evidence** for future comparison lanes, not a promotion decision.
+
+### Default direct route
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T130730.730931Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T130730.730931Z-qwen35-dense-default-quality-inspect.json`
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit`
+- **Prompt suite:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/task_diverse_deterministic_quality.json`
+- **Command shape:** direct `--engine mlx-engine`, no `--mlx-engine-force-sequential`, `--runs 3 --max-tokens 256 --temperature 0.0 --top-p 1.0 --include-output-text`.
+- **Route/config flags:** `dflash=false`, `suffix_decoding=false`, `specprefill=false`, `mlx_engine_force_sequential=false`, `max_seq_nums=4`.
+- **Row-error check:** 15/15 rows have `error: null`; completion tokens were stable per prompt (`short_nyc_det=96`, `code_python_det=95`, `reasoning_math_det=45`, `instruction_format_det=57`, `long_context_franklin_det=160`).
+- **Quality inspect status:** `pass` for all five prompts. Output text was included and the inspect found all expected keywords, no forbidden reasoning prefixes/substrings, no loop findings, and JSON exact-key coverage passed for `instruction_format_det`.
+- **Metric summary:**
+  - `short_nyc_det`: avg TTFT `0.109519s`, avg decode TPS `70.819`, avg total `1.465101s`
+  - `code_python_det`: avg TTFT `0.074676s`, avg decode TPS `70.643`, avg total `1.419470s`
+  - `reasoning_math_det`: avg TTFT `0.076273s`, avg decode TPS `71.262`, avg total `0.707761s`
+  - `instruction_format_det`: avg TTFT `0.065320s`, avg decode TPS `71.053`, avg total `0.867548s`
+  - `long_context_franklin_det`: avg TTFT `2.206151s`, avg decode TPS `66.753`, avg total `4.603420s`
+
+### Forced-sequential direct route
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T130858.441935Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T130858.441935Z-qwen35-dense-sequential-quality-inspect.json`
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit`
+- **Prompt suite:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/task_diverse_deterministic_quality.json`
+- **Command shape:** direct `--engine mlx-engine --mlx-engine-force-sequential`, `--runs 3 --max-tokens 256 --temperature 0.0 --top-p 1.0 --include-output-text`.
+- **Route/config flags:** `dflash=false`, `suffix_decoding=false`, `specprefill=false`, `mlx_engine_force_sequential=true`, `max_seq_nums=4`.
+- **Row-error check:** 15/15 rows have `error: null`; completion tokens were stable per prompt (`short_nyc_det=96`, `code_python_det=95`, `reasoning_math_det=45`, `instruction_format_det=57`, `long_context_franklin_det=160`).
+- **Quality inspect status:** `pass` for all five prompts. Output text was included and the inspect found all expected keywords, no forbidden reasoning prefixes/substrings, no loop findings, and JSON exact-key coverage passed for `instruction_format_det`.
+- **Metric summary:**
+  - `short_nyc_det`: avg TTFT `0.240832s`, avg decode TPS `70.760`, avg total `1.597523s`
+  - `code_python_det`: avg TTFT `0.227074s`, avg decode TPS `70.502`, avg total `1.574562s`
+  - `reasoning_math_det`: avg TTFT `0.223145s`, avg decode TPS `71.105`, avg total `0.856015s`
+  - `instruction_format_det`: avg TTFT `0.219927s`, avg decode TPS `71.039`, avg total `1.022303s`
+  - `long_context_franklin_det`: avg TTFT `2.351327s`, avg decode TPS `67.112`, avg total `4.735564s`
+
+### Decision and scope note
+
+- `VAL-M19-002` (Qwen dense text baselines captured and quality-inspected): **MET**. Both selected Qwen dense routes completed with zero row errors and `quality_compare.py --candidate` status `pass`.
+- M19 remains a baseline matrix and regression radar lane only. These measurements make no promotion claim and do not re-open DFlash, LM Studio runtime validation, MoE promotion evidence, or any speculative-decoding path.
