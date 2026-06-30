@@ -3995,3 +3995,72 @@ M21 is direct-harness only. The selected sweep commands must not use:
 ### Validation contract assertion
 
 - `VAL-M21-001` (prefill step-size preflight is clean and scoped): **MET** by this section. It records the current effective defaults and explicit override semantics, retained M19/M20 anchors, candidate sizes, exact model and prompt-suite paths, resource/process state, selected and omitted lanes, cache-isolation requirements, and explicit exclusions for LM Studio runtime, DFlash, adapter routes, SpecPrefill/Suffix/DFlash interactions, and MoE promotion evidence.
+
+## M21 Qwen text prefill step-size sweep (2026-06-30, `m21-qwen-text-prefill-step-size-sweep`)
+
+Feature `m21-qwen-text-prefill-step-size-sweep` ran the selected Qwen text lanes through direct `shared_bench.py` with omitted/default plus explicit `--prefill-step-size` values `1024`, `2048`, `4096`, and `8192`. This is sweep evidence only. It does not change engine defaults and does not make a promotion/default-change claim from single-sample or noisy results.
+
+### Resource and route preflight
+
+Immediately before the heavyweight Qwen runs, the worker reran process and port preflight:
+
+- Ports `3180`, `3181`, and `3182` had no listeners.
+- Port `12444` had `llmdynamix` PID `2552` listening, with `llmdynamix-engine` PID `3157`; this was treated as allowed because `GET http://127.0.0.1:11434/api/ps` returned `{"models":[]}` and `GET http://127.0.0.1:4521/v1/models` was connection-refused, so no loaded local model backend was observed.
+- No active `shared_bench.py`, `quality_compare.py`, `mlx_engine.openai_adapter`, or cheetara adapter process was found before the sweep.
+- `/Volumes/StudioStackSSD4TB` had `714 GiB` available. No `MLX_ENGINE_*DFLASH`, `DFLASH`, or `MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM` env var was set.
+
+All retained commands used direct `--engine mlx-engine`, `.venv-py312` through `--mlx-engine-python`, `prompt_suites/task_diverse_deterministic_quality.json`, `--runs 2 --max-tokens 256 --temperature 0.0 --top-p 1.0 --include-output-text`. The Qwen3.5 dense default lane omitted `--mlx-engine-force-sequential`; the Qwen3.5 sequential and Qwen2.5-Coder lanes preserved `--mlx-engine-force-sequential`. No LM Studio runtime, DFlash flag, adapter route, SpecPrefill, SuffixDecoding, loaded `draft_model`, `num_draft_tokens`, or MoE promotion evidence was used.
+
+### Qwen3.5-9B dense default route
+
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit`
+- **Route/config:** direct default Qwen dense route, no `--mlx-engine-force-sequential`, `max_seq_nums=4`, deterministic suite/config above.
+- **Row and quality result:** all retained reports have `10/10` rows with `error: null`; every `quality_compare.py --candidate` inspect returned `status=pass`.
+
+| Step | Report | Inspect | Inspect status | Avg TTFT s | Avg decode TPS | Avg total s | Long-context TTFT / total s |
+|---|---|---|---|---:|---:|---:|---:|
+| omitted/default | `reports/20260630T175140.876609Z-shared-bench.json` | `reports/20260630T175140.876609Z-shared-bench-m21-qwen35_dense_default-default-quality-inspect.json` | `pass` | `0.744583` | `69.731` | `2.061639` | `3.269959 / 5.712177` |
+| `1024` | `reports/20260630T175211.118389Z-shared-bench.json` | `reports/20260630T175211.118389Z-shared-bench-m21-qwen35_dense_default-1024-quality-inspect.json` | `pass` | `0.734894` | `69.539` | `2.052407` | `3.272296 / 5.701003` |
+| `2048` | `reports/20260630T175240.281143Z-shared-bench.json` | `reports/20260630T175240.281143Z-shared-bench-m21-qwen35_dense_default-2048-quality-inspect.json` | `pass` | `0.723627` | `69.696` | `2.038460` | `3.267863 / 5.690439` |
+| `4096` | `reports/20260630T175309.080383Z-shared-bench.json` | `reports/20260630T175309.080383Z-shared-bench-m21-qwen35_dense_default-4096-quality-inspect.json` | `pass` | `0.725747` | `69.598` | `2.041290` | `3.288746 / 5.707785` |
+| `8192` | `reports/20260630T175338.085363Z-shared-bench.json` | `reports/20260630T175338.085363Z-shared-bench-m21-qwen35_dense_default-8192-quality-inspect.json` | `pass` | `0.746653` | `69.594` | `2.064798` | `3.343636 / 5.775942` |
+
+The apparent aggregate winner was explicit `2048`, but the route-specific compare against this sweep's omitted/default report failed: `reports/20260630T175240.281143Z-m21-qwen35-dense-default-2048-vs-default-quality-compare.json` has `status=fail` because `code_python_det` warm TTFT regressed `6.067%`, above the `5%` gate. This lane therefore provides no promotion/default-change evidence.
+
+### Qwen3.5-9B forced-sequential route
+
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit`
+- **Route/config:** direct sequential text route with `--mlx-engine-force-sequential`, `max_seq_nums=4`, deterministic suite/config above.
+- **Row and quality result:** all retained reports have `10/10` rows with `error: null`; every `quality_compare.py --candidate` inspect returned `status=pass`.
+
+| Step | Report | Inspect | Inspect status | Avg TTFT s | Avg decode TPS | Avg total s | Long-context TTFT / total s |
+|---|---|---|---|---:|---:|---:|---:|
+| omitted/default | `reports/20260630T175407.705781Z-shared-bench.json` | `reports/20260630T175407.705781Z-shared-bench-m21-qwen35_dense_sequential-default-quality-inspect.json` | `pass` | `0.884386` | `69.792` | `2.195738` | `3.435726 / 5.836827` |
+| `1024` | `reports/20260630T175442.210732Z-shared-bench.json` | `reports/20260630T175442.210732Z-shared-bench-m21-qwen35_dense_sequential-1024-quality-inspect.json` | `pass` | `0.879806` | `69.906` | `2.185458` | `3.423608 / 5.797374` |
+| `2048` | `reports/20260630T175514.520761Z-shared-bench.json` | `reports/20260630T175514.520761Z-shared-bench-m21-qwen35_dense_sequential-2048-quality-inspect.json` | `pass` | `0.919002` | `67.285` | `2.268937` | `3.550900 / 5.979516` |
+| `4096` | `reports/20260630T175549.500159Z-shared-bench.json` | `reports/20260630T175549.500159Z-shared-bench-m21-qwen35_dense_sequential-4096-quality-inspect.json` | `pass` | `0.882655` | `69.462` | `2.196830` | `3.419187 / 5.782038` |
+| `8192` | `reports/20260630T175627.740606Z-shared-bench.json` | `reports/20260630T175627.740606Z-shared-bench-m21-qwen35_dense_sequential-8192-quality-inspect.json` | `pass` | `0.891921` | `69.703` | `2.202393` | `3.481108 / 5.858464` |
+
+Explicit `1024` had the best aggregate total in this two-run sample, and the compare artifact `reports/20260630T175442.210732Z-m21-qwen35-dense-sequential-1024-vs-default-quality-compare.json` returned `status=pass`. The deltas are small and mixed, for example long-context total `-0.676%`, overall total about `-0.468%`, and no repeated candidate sample was collected in this feature. This is not promotion/default-change evidence.
+
+### Qwen2.5-Coder forced-sequential route
+
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen2.5-Coder-14B-Instruct-MLX-4bit`
+- **Route/config:** direct sequential text route with `--mlx-engine-force-sequential`, `max_seq_nums=4`, deterministic suite/config above.
+- **Row and quality result:** all retained reports have `10/10` rows with `error: null`; every `quality_compare.py --candidate` inspect returned `status=pass`.
+
+| Step | Report | Inspect | Inspect status | Avg TTFT s | Avg decode TPS | Avg total s | Long-context TTFT / total s |
+|---|---|---|---|---:|---:|---:|---:|
+| omitted/default | `reports/20260630T175713.976319Z-shared-bench.json` | `reports/20260630T175713.976319Z-shared-bench-m21-qwen25_coder_sequential-default-quality-inspect.json` | `pass` | `1.374729` | `69.038` | `2.568963` | `6.082639 / 8.802451` |
+| `1024` | `reports/20260630T175801.658665Z-shared-bench.json` | `reports/20260630T175801.658665Z-shared-bench-m21-qwen25_coder_sequential-1024-quality-inspect.json` | `pass` | `1.401951` | `69.448` | `2.590749` | `6.234851 / 8.970182` |
+| `2048` | `reports/20260630T175837.366224Z-shared-bench.json` | `reports/20260630T175837.366224Z-shared-bench-m21-qwen25_coder_sequential-2048-quality-inspect.json` | `pass` | `1.386086` | `69.561` | `2.573476` | `6.160440 / 8.886144` |
+| `4096` | `reports/20260630T175916.025420Z-shared-bench.json` | `reports/20260630T175916.025420Z-shared-bench-m21-qwen25_coder_sequential-4096-quality-inspect.json` | `pass` | `1.374382` | `69.255` | `2.565349` | `6.079781 / 8.795167` |
+| `8192` | `reports/20260630T180001.932509Z-shared-bench.json` | `reports/20260630T180001.932509Z-shared-bench-m21-qwen25_coder_sequential-8192-quality-inspect.json` | `pass` | `1.374678` | `69.610` | `2.558781` | `6.083485 / 8.798509` |
+
+Explicit `8192` had the best aggregate total in this two-run sample, and the compare artifact `reports/20260630T180001.932509Z-m21-qwen25-coder-sequential-8192-vs-default-quality-compare.json` returned `status=pass`. The deltas are again small, for example long-context total `-0.045%`, short prompt total `-1.987%`, and no repeated candidate sample was collected in this feature. This is not promotion/default-change evidence.
+
+### Sweep decision for the Qwen text feature
+
+- `VAL-M21-002` (Qwen text prefill step-size sweep is captured and quality-inspected): **MET** for Qwen3.5 dense default, Qwen3.5 forced sequential, and Qwen2.5-Coder forced sequential. Every retained Qwen text report has zero row errors, `quality_compare.py --candidate` inspect status `pass`, preserved deterministic prompt suite/sampling/max-token/output-text/route settings, and recorded TTFT/decode TPS/total metrics by step size.
+- No Qwen text lane was omitted. The optional larger Qwen3.6 27B and MoE lanes remain out of this feature's scope per the preflight omissions.
+- **No default-change or promotion claim is made from this feature.** The only default-route Qwen3.5 apparent aggregate winner failed the route-specific quality/performance compare because of a warm TTFT regression. The sequential Qwen3.5 and Qwen2.5-Coder apparent winners passed compare but moved by sub-1% to about 2% prompt-specific amounts in a single two-run sample. Promotion/default-change would require a later decision feature with at least two repeated quality-passing samples that show a repeatable route/model-specific win.
