@@ -3489,3 +3489,45 @@ The next implementation lane should manually intake only the minimal Gemma4 beha
 ### Validation contract assertion
 
 - `VAL-M18-001` (Gemma4 `#340` intake is scoped without broad upstream merge) — **MET** by this audit: the upstream commit and files are named, ancestry/content gaps are recorded, direct-vs-minimal-intake is decided, and no broad merge, cherry-pick, DFlash change, or Qwen/VLM scope expansion was performed.
+
+## M18 Gemma4 #340 focused validation decision (2026-06-30, `m18-gemma4-focused-validation-decision`)
+
+Feature `m18-gemma4-focused-validation-decision` is the final M18 validation and closeout lane. It validates the manual Gemma4 `#340` intake landed in commit `3c0a0ae` (`[#1190] fix: apply Gemma4 bidirectional visual prefill policy`) and records the integration decision. The scoped behavior is now integrated: Gemma4-family configs/models with `use_bidirectional_attention == "vision"` receive the visual-prefill policy that was previously limited to `gemma4_unified*`, while non-bidirectional Gemma4 and non-Gemma models remain unchanged.
+
+### Focused pytest evidence
+
+Run from `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine` with `.venv-py312/bin/python`:
+
+```bash
+.venv-py312/bin/python -m pytest -q tests/test_patched_gemma4.py tests/test_batched_vision_model_kit.py tests/test_batched_vision_batch_generator.py -k "gemma4 or bidirectional or no_chunked_prefill or restore"
+```
+
+Observed result: **19 passed, 20 deselected, 0 failed** (exit code `0`). The run covered the required focused files:
+
+- `tests/test_patched_gemma4.py`: config and loaded-model detection for bidirectional Gemma4, unchanged unified behavior, non-bidirectional Gemma4 negative coverage, non-Gemma negative coverage, and cached visual suffix mask patch behavior.
+- `tests/test_batched_vision_model_kit.py`: global no-chunked-prefill exemption for bidirectional Gemma4, non-bidirectional normal behavior, restore image-span conflict rejection for bidirectional Gemma4, safe start/end boundaries, and non-Gemma negative coverage.
+- `tests/test_batched_vision_batch_generator.py`: bidirectional Gemma4 visual-policy prefill, restored suffix token-type padding, final-prefill padding, image-span fallback boundaries, and non-bidirectional Gemma4 normal chunking.
+
+### Scoped lint evidence
+
+Run from `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine`:
+
+```bash
+ruff check mlx_engine/model_kit/batched_vision/model_kit.py mlx_engine/model_kit/patches/gemma4.py tests/test_patched_gemma4.py tests/test_batched_vision_model_kit.py tests/test_batched_vision_batch_generator.py
+```
+
+Observed result: **All checks passed** (exit code `0`).
+
+### Scope and stability confirmation
+
+- **No broad upstream merge or broad cherry-pick occurred.** The M18 audit commit `5b4243a` recorded that direct cherry-pick of upstream `8ae2610` was unsafe because `model_kit.py` conflicted with local batched-vision changes; the implementation commit `3c0a0ae` is a manual focused diff across only Gemma4 helpers, batched-vision policy, and the three focused test files. It is not a merge commit.
+- **Qwen/VLM remains stable from M17.** M18 did not touch `mlx_engine/model_kit/patches/qwen3_5.py`, Qwen MRoPE helpers, DFlash rollback hooks, or Qwen-specific tests. The M17 focused validation remains applicable: 140 passed / 9 skipped / 0 failed across the Qwen/VLM audit-recommended files, plus the broader batched-vision regression sweep recorded 254 passed / 16 skipped / 0 failed.
+- **DFlash remains closed/no-go/default-off.** M18 did not modify `mlx_engine/utils/dflash_*`, DFlash tests, DFlash harness flags, or any `MLX_ENGINE_DFLASH*` default. The M14/M15/M16 REJECT and no-go decisions remain authoritative.
+
+### Decision: INTEGRATED
+
+M18 closes as **INTEGRATED** for the minimal Gemma4 `#340` behavior. The focused pytest suite and scoped ruff lint both pass, the implementation is limited to the manual Gemma4 bidirectional-visual prefill intake, and no precise blocker remains for `VAL-M18-004`.
+
+### Validation contract assertion
+
+- `VAL-M18-004` (focused Gemma4 validation passes without Qwen/VLM or DFlash regressions): **MET**. Focused Gemma4 and batched-vision pytest output passed on the three required files, scoped ruff passed on the implementation and test files, Qwen/VLM stability is inherited from the M17 focused regression evidence because M18 did not touch those paths, and DFlash remains no-go/default-off.
