@@ -427,6 +427,75 @@ def test_cache_store_restore_eval_barrier_materializes_disk_restore(
     assert boundary_state.item() == chunks[0].end
 
 
+def test_cache_store_diagnostic_mixed_restore_materializes_before_handoff(
+    cache_store,
+    monkeypatch,
+):
+    """Mixed KV/rotating/state restores cross the restore-time mx.eval barrier."""
+    prompt_input_ids = list(range(600))
+    chunks = build_prefix_cache_chunks(prompt_input_ids, [])
+    _save_chunk(
+        cache_store,
+        chunks[0],
+        chunks,
+        _mixed_prompt_cache(chunks[0].end),
+    )
+
+    restore_plan = cache_store.plan_longest_prefix_restore(prompt_input_ids, [])
+    assert restore_plan is not None
+
+    events = []
+    eval_calls = []
+    real_eval = cache_store_module.mx.eval
+
+    def recording_eval(*args, **kwargs):
+        eval_calls.append(args)
+        return real_eval(*args, **kwargs)
+
+    monkeypatch.setenv("MLX_ENGINE_BATCHED_TIMING", "1")
+    monkeypatch.setattr(cache_store_module.mx, "eval", recording_eval)
+    monkeypatch.setattr(
+        cache_store_module,
+        "log_batched_timing",
+        lambda logger, event, **fields: events.append(
+            {"event": event, **fields}
+        ),
+    )
+
+    loaded = cache_store.load_restore_plan(restore_plan)
+
+    restore_eval_calls = [
+        args for args in eval_calls if len(args) == 1 and isinstance(args[0], list)
+    ]
+    assert restore_eval_calls
+    restore_eval_targets = restore_eval_calls[-1][0]
+    restore_detail = next(
+        event for event in events if event["event"] == "vlm_cache_restore_detail"
+    )
+    assert len(restore_eval_targets) == restore_detail["eval_target_count"]
+    assert restore_detail["record_count_by_kind"] == {
+        RECORD_KIND_KV_DELTA: 1,
+        RECORD_KIND_ROTATING_DELTA: 1,
+        RECORD_KIND_STATE_CHECKPOINT: 1,
+    }
+    for record_kind in (
+        RECORD_KIND_KV_DELTA,
+        RECORD_KIND_ROTATING_DELTA,
+        RECORD_KIND_STATE_CHECKPOINT,
+    ):
+        assert restore_detail["eval_target_count_by_kind"][record_kind] > 0
+        assert restore_detail["materialized_bytes_by_kind"][record_kind] > 0
+
+    kv_keys, _ = loaded.prompt_cache[0].state
+    rotating_keys, _ = loaded.prompt_cache[1].state
+    state_checkpoint = loaded.prompt_cache[2][0]
+    real_eval(kv_keys, rotating_keys, state_checkpoint)
+    assert loaded.cached_prefix_len == chunks[0].end
+    assert kv_keys.shape[2] == chunks[0].end
+    assert rotating_keys.shape[2] == chunks[0].end
+    assert state_checkpoint.item() == chunks[0].end
+
+
 def test_persistent_cache_store_restores_after_reopen(tmp_path):
     """Persistent cache records survive a store reopen."""
     prompt_input_ids = list(range(600))

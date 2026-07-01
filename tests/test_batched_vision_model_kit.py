@@ -13,10 +13,18 @@ from mlx_engine.model_kit.batched_vision.model_kit import (
     _vlm_restore_freshness_flush_enabled,
 )
 import mlx_engine.model_kit.batched_vision.model_kit as model_kit_module
+from mlx_engine.model_kit.batched_vision.prompt_cache.coordinator import (
+    RestoredPromptCache,
+)
 from mlx_engine.model_kit.batched_vision.prompt_cache.types import (
     DEFAULT_PREFIX_CHUNK_SIZE,
     NON_ROTATING_PREFIX_CHUNK_SIZE,
     PromptImageSpan,
+)
+from mlx_engine.model_kit.batched_vision.prompt_inputs import PreparedPrompt
+from mlx_engine.model_kit.batched_vision.request_lifecycle import (
+    GenerationRequest,
+    PreparedInsert,
 )
 
 
@@ -92,6 +100,80 @@ def test_gemma4_restore_conflict_only_rejects_split_image_span():
         image_spans=image_spans,
         uses_bidirectional_visual_attention=True,
     )
+
+
+def test_insert_prepared_request_hands_restored_suffix_to_batch_generator(monkeypatch):
+    """Generation-thread insert receives restored cache plus one-token suffix."""
+    kit = object.__new__(BatchedVisionModelKit)
+    kit.model = object()
+    kit.model_type = "gemma4"
+    kit._uses_gemma4_bidirectional_visual_attention = True
+    kit._shutdown = SimpleNamespace(is_set=lambda: True)
+    kit._vision_feature_memoizer = object()
+    kit._prompt_cache_chunk_size = DEFAULT_PREFIX_CHUNK_SIZE
+    kit._prompt_cache_store = SimpleNamespace(can_store_records=lambda: False)
+    kit._prompt_cache_coordinator = SimpleNamespace(
+        save_prompt_cache_snapshot=lambda *args, **kwargs: None,
+    )
+    kit._new_detokenizer = lambda: SimpleNamespace()
+
+    request = GenerationRequest(
+        rqueue=Queue(),
+        prompt_tokens=[1, 2, 3],
+        request_id="warm-suffix",
+        images_b64=["image"],
+        sampler=lambda logits: logits,
+        logits_processors=[],
+        top_logprobs=0,
+        max_tokens=1,
+    )
+    restored_cache = ["restored-cache"]
+    restored = RestoredPromptCache(
+        cached_prefix_len=5,
+        prompt_cache=restored_cache,
+        rope_deltas=None,
+    )
+    prepared_prompt = PreparedPrompt(
+        prompt_input_ids=[10, 11, 12, 13, 14, 15],
+        raw_inputs=None,
+        image_spans=[],
+    )
+    prepared_insert = PreparedInsert(
+        request=request,
+        prepared_prompt=prepared_prompt,
+        restored=restored,
+    )
+    inserted = {}
+
+    class FakeBatchGenerator:
+        def insert(self, prompt, **kwargs):
+            inserted["prompt"] = prompt
+            inserted["kwargs"] = kwargs
+            return 17
+
+    monkeypatch.setattr(
+        model_kit_module,
+        "build_cached_prompt_kwargs",
+        lambda model, prompt, cached_prefix_len, rope_deltas, memoizer: {
+            "inputs_embeds": "suffix-embeds",
+            "cached_prefix_len_seen": cached_prefix_len,
+        },
+    )
+
+    active = {}
+    kit._insert_prepared_request(FakeBatchGenerator(), prepared_insert, active)
+    progress = request.rqueue.get_nowait()
+
+    assert inserted["prompt"] == [15]
+    assert inserted["kwargs"]["inputs_embeds"] == "suffix-embeds"
+    assert inserted["kwargs"]["cache"] is restored_cache
+    assert inserted["kwargs"]["all_tokens"] == [10, 11, 12, 13, 14]
+    assert inserted["kwargs"]["prompt_kwargs"] == {"cached_prefix_len_seen": 5}
+    assert inserted["kwargs"]["request_id"] == "warm-suffix"
+    assert progress.cached_tokens == 5
+    assert progress.total_prompt_tokens == 5
+    assert active[17].cached_tokens == 5
+    assert active[17].rest_tokens == 1
 
 
 def test_prefix_chunk_size_uses_larger_chunks_without_rotating_cache(monkeypatch):

@@ -4637,3 +4637,33 @@ The runner also logged:
 Decision: **REPRODUCED / diagnostic follow-up required**.
 
 `VAL-M24-001` is met by this evidence: the exact direct command/config is recorded, the report and quality-inspect paths are cited, the cold row preserves chameleon/toucan content, the warm row reaches cached-token restore behavior, the exact `RuntimeError: There is no Stream(gpu, 3) in current thread` trace is recorded, and excluded runtime surfaces are documented. The next M24 step should isolate the stream ownership/context boundary around persistent-cache restore handoff and warm suffix generation before attempting a narrow fix.
+
+## M24 stream handoff diagnostics (2026-07-01, `m24-stream-handoff-diagnostics-tests`)
+
+Feature `m24-stream-handoff-diagnostics-tests` added focused pytest diagnostics to isolate the Gemma4 warm restored request stream/context boundary without changing runtime behavior. The restore-time `mx.eval(...)` barrier remains present in `VlmPromptCacheStore._load_restore_plan`, and no cache record format changes were made.
+
+### Diagnostic coverage
+
+- **Restore-time materialization:** `tests/test_batched_vision_cache_store.py::test_cache_store_diagnostic_mixed_restore_materializes_before_handoff` saves and restores a mixed KV, rotating KV, and state-checkpoint prompt cache. It asserts that the restore-time `mx.eval(...)` call receives the same number of targets reported by `vlm_cache_restore_detail`, and that KV, rotating, and state records all contribute nonzero materialized targets/bytes before the restored cache is returned.
+- **Cache I/O thread handoff:** `tests/test_batched_vision_cache_io_thread.py::test_cache_io_thread_hands_restored_cache_to_generation_thread` proves `PromptCacheIOThread` posts the `PreparedInsert.restored` object to the generation queue intact. This separates cache-I/O-thread ownership transfer from later generation-thread evaluation.
+- **Generation-thread restored suffix insert:** `tests/test_batched_vision_model_kit.py::test_insert_prepared_request_hands_restored_suffix_to_batch_generator` proves `_insert_prepared_request` passes the restored cache, restored prefix tokens, cached-token accounting, and one-token uncached suffix to `BatchGenerator.insert`.
+- **One-token warm suffix generation:** `tests/test_batched_vision_batch_generator.py::test_batch_generator_diagnostic_warm_restore_one_token_suffix` drives a fake Gemma4 restored-prefix request with a one-token suffix. It confirms the suffix skips chunked prefill, runs `_PromptPrefill.generate`, pads Gemma4 token types to the restored key length, then enters the first decode step.
+- **Gemma4 patch behavior:** `tests/test_patched_gemma4.py::test_gemma4_suffix_visual_mask_patch_handles_one_token_warm_suffix` confirms the patched Gemma4 bidirectional visual overlay handles a one-query-row restored suffix against cached key rows.
+
+### Diagnostic conclusion
+
+The focused diagnostics distinguish the three suspected boundaries. Mixed restore materialization reaches the restore-time barrier and publishes counters before handoff; the cache I/O thread hands the restored object to the generation queue intact; the generation thread receives a one-token suffix and runs Gemma4 final prefill/decode semantics. Combined with the reproduction trace, the remaining likely boundary is the generation-thread materialization of suffix eval outputs after consuming a disk-restored Gemma4 cache whose arrays were materialized on the cache I/O thread. This diagnostic feature intentionally records that boundary and leaves any stream-context fix to `m24-gemma4-stream-stability-fix`.
+
+### Cache cleanup status
+
+The exact worker-created cache holding path requested by the feature, `/tmp/factory-worker-cache-trash/mlx-engine-vlm-cache-m24-gemma4-repro-fb0a6665-20260701`, is still present with child directory `31b15049623101bc`. An exact removal attempt was auto-denied in this delegated worker session because `rm -rf` required interactive confirmation. No broad `/tmp` cleanup or alternate destructive deletion was attempted. This status is recorded here per the feature acceptance criteria.
+
+### Verification
+
+- Focused diagnostic pytest:
+  ```bash
+  cd "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine" && .venv-py312/bin/python -m pytest -q tests/test_batched_vision_cache_store.py tests/test_batched_vision_cache_io_thread.py tests/test_batched_vision_batch_generator.py tests/test_batched_vision_model_kit.py tests/test_patched_gemma4.py
+  ```
+  Result: `71 passed`, `2 warnings`.
+
+`VAL-M24-002` is addressed by these diagnostics and this root-cause note. No LM Studio runtime, adapter route, DFlash, SuffixDecoding, forced sequential text route, or MoE evidence was used.

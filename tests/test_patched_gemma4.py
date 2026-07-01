@@ -141,3 +141,27 @@ def test_gemma4_suffix_visual_mask_patch_uses_query_rows_only():
         )
         is base_mask
     )
+
+
+def test_gemma4_suffix_visual_mask_patch_handles_one_token_warm_suffix():
+    """One-token restored suffix masks still align query rows to cached keys."""
+    text_model = _Gemma4UnifiedTextModel()
+    language_model = SimpleNamespace(
+        model_type="gemma4_text",
+        config=SimpleNamespace(use_bidirectional_attention="vision"),
+        model=text_model,
+    )
+    model = SimpleNamespace(language_model=language_model)
+
+    patch_loaded_model(model)
+
+    base_mask = mx.zeros((1, 7), dtype=mx.bool_)
+    token_types = mx.array([[0, 0, 0, 0, 1, 1, 1]], dtype=mx.int32)
+    patched = text_model._apply_blockwise_bidirectional_overlay(
+        base_mask,
+        token_types,
+    )
+
+    assert patched.shape == (1, 1, 1, 7)
+    assert bool(patched[0, 0, 0, 4].item())
+    assert not bool(base_mask[0, 4].item())

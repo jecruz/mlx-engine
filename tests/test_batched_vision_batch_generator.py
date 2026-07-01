@@ -743,6 +743,48 @@ def test_batch_generator_pads_gemma4_token_types_for_final_prefill(monkeypatch):
     assert model.calls[0]["mm_token_type_ids"] == [[0, 0, 0, 0, 0, 0, 1, 1]]
 
 
+def test_batch_generator_diagnostic_warm_restore_one_token_suffix(monkeypatch):
+    """A warm restored one-token Gemma4 suffix goes straight to final eval."""
+    monkeypatch.setattr(batcher, "wired_limit", lambda _model: contextlib.nullcontext())
+    model = _gemma4_model()
+    generator = BatchGenerator(
+        model=model,
+        stop_criteria=lambda _token: False,
+        prefill_step_size=4,
+    )
+    prompt = [42]
+
+    try:
+        generator.insert(
+            prompt,
+            inputs_embeds=mx.zeros((1, len(prompt), 2), dtype=mx.float32),
+            max_tokens=1,
+            sampler=_argmax_sampler,
+            logits_processors=[],
+            prompt_kwargs={"mm_token_type_ids": mx.array([[1]], dtype=mx.int32)},
+            prefix_cache_chunks=[],
+            cache=[_FakeScalarCache()],
+            all_tokens=[100, 101, 102, 103, 104],
+            next_prefix_cache_chunk_idx=0,
+            image_spans=[],
+            request_id="warm-one-token",
+        )
+
+        prompt_responses, generation_responses = generator.next()
+        _, final_generation_responses = generator.next()
+    finally:
+        generator.close()
+
+    assert generation_responses == []
+    assert len(prompt_responses) == 1
+    assert prompt_responses[0].progress == (6, 6)
+    assert [call["input_ids"] for call in model.calls] == [[[42]], [[0]]]
+    assert model.calls[0]["mm_token_type_ids"] == [[0, 0, 0, 0, 0, 1]]
+    assert len(final_generation_responses) == 1
+    assert final_generation_responses[0].finish_reason == "length"
+    assert final_generation_responses[0].all_tokens == [100, 101, 102, 103, 104, 42, 0]
+
+
 def test_batch_generator_applies_visual_policy_to_bidir_gemma4(monkeypatch):
     """Non-unified bidirectional Gemma4 keeps visual spans in one prefill call."""
     monkeypatch.setattr(batcher, "wired_limit", lambda _model: contextlib.nullcontext())

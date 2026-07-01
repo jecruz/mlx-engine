@@ -5,6 +5,9 @@ from types import SimpleNamespace
 import mlx.core as mx
 
 from mlx_engine.model_kit.batched_vision.cache_io_thread import PromptCacheIOThread
+from mlx_engine.model_kit.batched_vision.prompt_cache.coordinator import (
+    RestoredPromptCache,
+)
 from mlx_engine.model_kit.batched_vision.prompt_cache.types import PromptPrefixChunk
 from mlx_engine.model_kit.batched_vision.request_lifecycle import (
     FailedRestore,
@@ -127,6 +130,45 @@ def test_cache_io_thread_can_flush_matching_save_before_restore():
     assert isinstance(prepared, PreparedInsert)
     assert prepared.request is request
     assert store.calls == [("save", matching_save)]
+
+
+def test_cache_io_thread_hands_restored_cache_to_generation_thread():
+    """The cache I/O thread posts the prepared restore object without mutation."""
+    store = _FakeCacheStore()
+    generation_queue = Queue()
+    request = _request("restore")
+    restored = RestoredPromptCache(
+        cached_prefix_len=2,
+        prompt_cache=["materialized-on-cache-io-thread"],
+        rope_deltas=None,
+    )
+
+    def prepare(with_request):
+        assert with_request is request
+        return PreparedInsert(
+            request=with_request,
+            prepared_prompt=object(),
+            restored=restored,
+        )
+
+    thread = PromptCacheIOThread(
+        cache_store=store,
+        generation_queue=generation_queue,
+        prepare_request=prepare,
+    )
+    thread.enqueue_restore(request)
+    thread.start()
+
+    try:
+        prepared = generation_queue.get(timeout=1.0)
+    finally:
+        thread.close()
+
+    assert isinstance(prepared, PreparedInsert)
+    assert prepared.request is request
+    assert prepared.restored is restored
+    assert prepared.restored.prompt_cache == ["materialized-on-cache-io-thread"]
+    assert store.calls == []
 
 
 def test_cache_io_thread_leaves_unrelated_save_queued_during_restore():
