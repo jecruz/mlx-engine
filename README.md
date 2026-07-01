@@ -276,6 +276,18 @@ lanes passed quality with zero row errors, but the apparent wins were
 single-sample and prompt-local, so no default changed. User-testing passed
 VAL-M25-001 through VAL-M25-005.
 
+M26-M28 closeout completed the non-OS-restart enhancement mission as evidence
+and diagnostics only. M26 retained Qwen3.6 `max_seq_nums=2` controlled evidence
+from same-session and fresh-anchor runs without an OS restart; the limitation is
+explicitly preserved, and the final decision is keep/no-default-change with no
+promotion. M27 closed restore-layout and rotating-delta diagnostics as
+diagnostics-only REJECT/no-default-change: rotating-delta remained irreducible
+final-state materialization, and restore safety invariants were preserved. M28
+added scoped typecheck infrastructure with `pyrightconfig.json`;
+`npx --yes pyright@1.1.403 --project pyrightconfig.json` passes with zero
+diagnostics, and the ruff and pytest gates pass. Mission validation passed all
+M26-M28 user-testing assertions.
+
 ## Development Setup
 
 ### Pre-commit Hooks
