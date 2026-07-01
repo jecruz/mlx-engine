@@ -4566,3 +4566,74 @@ The requested Qwen3.6 27B 4-bit checkpoint loaded through the direct VLM/batched
 `VAL-M23-004` is met by the metrics and batched-timing evidence recorded above, with an explicit data-only/no-promotion/no-default-change decision.
 
 `VAL-M23-005` is met by the command/config/process evidence and explicit confirmation that no LM Studio runtime, LLMDYNAMIX route, adapter route, DFlash, or MoE evidence was used.
+
+## M24 Gemma4 stream-stability reproduction preflight (2026-07-01, `m24-gemma4-stream-reproduction-preflight`)
+
+Feature `m24-gemma4-stream-reproduction-preflight` re-validated Redmine `#1282` on the current checkout before any M24 fix work. The direct Gemma4 12B long-pair persistent-cache process-restart lane still reproduces the warm-row stream failure, scoped to the warm persistent-cache restore path.
+
+### Config, model, and resource preflight
+
+- **Engine branch:** `mlx-vlm-restore-eval-followup`, clean and tracking `origin/mlx-vlm-restore-eval-followup`.
+- **Interpreter and harness:** mission `init.sh` verified `.venv-py312` imports `mlx.core` and `mlx.nn`; the harness imports `shared_bench`.
+- **Model path:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit`.
+- **Model metadata:** `model_type="gemma4_unified"`, `architectures=["Gemma4UnifiedForConditionalGeneration"]`, `text_config.use_bidirectional_attention="vision"`.
+- **Weights:** `3` safetensors files, `12,716,202,713` bytes.
+- **Prompt suite:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/vlm_image_long_pair_quality.json`, one prompt `image_long_pair`, two images (`chameleon.webp`, `toucan.jpeg`), expected keywords `chameleon` and `toucan`.
+- **Disk headroom:** `/tmp` had `22.88 GiB` free before the run; `/Volumes/StudioStackSSD4TB` had `713.96 GiB` free.
+- **Process/resource isolation:** no `shared_bench.py`, `quality_compare.py`, `mlx_engine.openai_adapter`, or `vmlx_engine.cli` workload was active before the run. Ports `3180`, `3181`, and `3182` had no listeners. Ollama and LLMDYNAMIX listeners were observed on `11434` and `12444`, and `GET http://127.0.0.1:11434/api/ps` returned `{"models":[]}`. These listeners were not used as evidence or runtime routes.
+- **Excluded surfaces:** no LM Studio runtime, adapter route, DFlash, SuffixDecoding, SpecPrefill, forced sequential text route, or MoE evidence was used.
+
+### Direct reproduction command
+
+```bash
+cd "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness" && python3 shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --mlx-engine-vlm-prompt-cache-root /tmp/mlx-engine-vlm-cache-m24-gemma4-repro-fb0a6665-20260701 --mlx-engine-vlm-prompt-cache-namespace m24-gemma4-repro-fb0a6665-20260701 --mlx-engine-process-restart --prompt-suite-json prompt_suites/vlm_image_long_pair_quality.json --runs 2 --max-tokens 96 --temperature 0.0 --top-p 1.0 --max-seq-nums 1 --mlx-engine-batched-timing --include-output-text --timeout 1200
+```
+
+### Reproduction artifacts
+
+- **Shared-bench report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T041539.771194Z-shared-bench.json`.
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T041539.771194Z-m24-gemma4-repro-quality-inspect.json`, `status=fail` as expected because the warm row errored.
+- **Cache root and namespace:** `/tmp/mlx-engine-vlm-cache-m24-gemma4-repro-fb0a6665-20260701`, namespace `m24-gemma4-repro-fb0a6665-20260701`.
+- **Cache footprint after run:** `2.7G`.
+
+### Row observations
+
+| Run | Persistent-cache state | Row result | Output or failure |
+|---|---|---|---|
+| `1` cold | `cached_tokens=0` | `error=null`, `completion_tokens=16`, `finish_reason="eos_token"`, `ttft_s=14.231418`, `decode_tps=32.036051`, `total_s=14.730855` | `The first image shows a chameleon. The second image shows a toucan.` |
+| `2` warm | Restore reached `cached_tokens=7619`, `chunks=15`, `records=4`, `eval_target_count=48`, `materialized_bytes=460,374,016` before generation-thread failure | `error` populated, no completion tokens, no output text | `RuntimeError: There is no Stream(gpu, 3) in current thread.` |
+
+The cold row preserves both required image subjects, `chameleon` and `toucan`. The warm row reaches persistent-cache restore and cached-token accounting before failing, so the reproduced defect is not a cold-run image-quality issue.
+
+### Exact warm-row failure trace
+
+The warm row failed in `mlx_engine/model_kit/batched_vision/batch_generator.py` while evaluating the one-token warm suffix after restore:
+
+```text
+[model_kit][ERROR]: Encountered fatal exception in the backend generation thread: Traceback (most recent call last):
+  File "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/model_kit.py", line 426, in _generate_with_exception_handling
+    self._generate()
+  File "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/model_kit.py", line 855, in _generate
+    controller.step_generation()
+  File "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/request_lifecycle.py", line 217, in step_generation
+    prompt_responses, generation_responses = state.batch_generator.next()
+  File "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/batch_generator.py", line 1285, in next
+    return self._next()
+  File "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/batch_generator.py", line 1364, in _next
+    gen_batch, prompt_responses = self._prompt_batch.generate(
+  File "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/batch_generator.py", line 1110, in generate
+    mx.eval(*eval_targets)
+RuntimeError: There is no Stream(gpu, 3) in current thread.
+```
+
+The runner also logged:
+
+```text
+[mlx_lm_stream][ERROR]: MLX generation failed after stream preparation reason=batched-generation request_id=mlx-bench-image_long_pair-1 rank=none thread=MainThread thread_ident=8491146880 device=Device(gpu, 0) default_stream=Stream(Device(gpu, 0), 4) stream=ThreadLocalStream(Device(gpu, 0), 0)
+```
+
+### Decision
+
+Decision: **REPRODUCED / diagnostic follow-up required**.
+
+`VAL-M24-001` is met by this evidence: the exact direct command/config is recorded, the report and quality-inspect paths are cited, the cold row preserves chameleon/toucan content, the warm row reaches cached-token restore behavior, the exact `RuntimeError: There is no Stream(gpu, 3) in current thread` trace is recorded, and excluded runtime surfaces are documented. The next M24 step should isolate the stream ownership/context boundary around persistent-cache restore handoff and warm suffix generation before attempting a narrow fix.
