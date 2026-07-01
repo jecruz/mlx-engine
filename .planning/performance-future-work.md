@@ -4896,3 +4896,72 @@ This lane extended the passing M25 direct VLM baseline into persistent-cache lon
 Decision: **data-only PASS / no promotion / no default change**.
 
 The retained long-lane evidence passed quality with zero row errors, stable warm cached-token reuse, and no `Stream(gpu, ...)` or cache-shape failures in the retained evidence. The long-pair stress lane was retained because the single-image long lane was clean and it also passed inspect.
+
+## M25 Qwen3.6 27B 4-bit synthesis decision (2026-07-01)
+
+**Final decision: data-only PASS / no promotion / no default change.**
+
+The Qwen3.6 27B 4-bit sweep evidence is clean, but it does not satisfy the promotion bar. The repeated baseline stayed healthy on the direct VLM/batched-vision route, all requested prefill and `max_seq_nums` cells passed inspect, and the persistent-cache long lanes also passed quality. However, the sweep cells are single-sample comparisons and their apparent wins are prompt-local, not repeated quality-passing wins with a repeatable metric improvement across the sweep dimensions.
+
+### Retained evidence
+
+- **Baseline retained anchor:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T130407.875982Z-shared-bench.json`
+- **Baseline inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T130407.875982Z-quality-inspect.json`
+- **Sweep summary:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/summary.json`
+
+### Retained compare/report paths
+
+- `prefill-default`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-default/20260701T131413.146071Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-default/quality-compare.json`
+  - `status=pass`, `report_errors=0`
+- `prefill-1024`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-1024/20260701T131442.875554Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-1024/quality-compare.json`
+  - `status=pass`, `report_errors=0`
+- `prefill-2048`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-2048/20260701T131509.627006Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-2048/quality-compare.json`
+  - `status=pass`, `report_errors=0`
+- `prefill-4096`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-4096/20260701T131535.591658Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-4096/quality-compare.json`
+  - `status=pass`, `report_errors=0`
+- `maxseq-1`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-1/20260701T131601.581675Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-1/quality-compare.json`
+  - `status=pass`, `report_errors=0`
+- `maxseq-2`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-2/20260701T131627.233763Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-2/quality-compare.json`
+  - `status=pass`, `report_errors=0`
+- `maxseq-4`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-4/20260701T131652.714706Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-4/quality-compare.json`
+  - `status=pass`, `report_errors=0`
+
+### Long-lane retained evidence
+
+- **Single-image long report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-long/single/20260701T132515.653537Z-shared-bench.json`
+- **Single-image long inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-long/single/quality-inspect.json`
+- **Single-image long clean rerun:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-long/single/quality-inspect-clean.json`
+- **Long-pair stress report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-long/pair/20260701T132702.030626Z-shared-bench.json`
+- **Long-pair stress inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-long/pair/quality-inspect.json`
+
+### Resource and scope notes
+
+- Fresh cache roots/namespaces were used for the persistent-cache lanes, with immediate footprint capture (`1.5G` for both retained long-lane cache roots).
+- No LM Studio runtime, LLMDYNAMIX route, adapter route, DFlash, or MoE evidence was used.
+- No text-only sequential evidence was run for this milestone, so there is nothing to label separately.
+- The optional `8192` stress cell was not attempted, because no extra headroom reservation was established beyond the core serial matrix.
+
+### Why no default change
+
+The best-looking prompt-local deltas do not repeat cleanly across the sweep:
+
+- `prefill-1024` is strong for `image_toucan`, but `image_pair` is only a minor TTFT move and total latency regresses or stays near-flat.
+- `prefill-2048` and `prefill-4096` stay quality-passing, but their prompt-level wins are mixed and small.
+- `maxseq-1`, `maxseq-2`, and `maxseq-4` show similar prompt-local behavior, with `image_toucan` improving more than `image_pair`, which is not enough for a default change.
+- The persistent-cache long lanes prove warm-cache reuse and quality stability, but they are validation evidence, not a repeatable candidate-vs-baseline promotion win.
+
+Per the milestone rule, promotion/default-change needs repeated quality-passing samples with a repeatable win in TTFT, decode TPS, total latency, or relevant timing. That threshold was not met, so the final synthesis remains **data-only / no-default-change**.
