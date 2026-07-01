@@ -4466,3 +4466,103 @@ Rationale:
 `VAL-M22-004` is met by the direct-harness evidence above: report and inspect/compare paths are recorded, row errors and quality statuses are inspected, LFM2.5-VL and Gemma4 materialization counters/timing are captured from `vlm_cache_restore_detail`, TTFT/decode/total metrics are recorded through the shared-bench reports, cache footprints are captured with `du -sh`, and the Gemma4 heavy lane has a precise repeated stream-stability blocker.
 
 `VAL-M22-005` is met by this rejection decision: there are not two repeated quality-passing candidate samples with repeatable materialization or end-to-end wins, and the Gemma4 lane has repeated quality/stream failures. The M22 decision is therefore **REJECT / no promotion**, with instrumentation retained for future diagnosis only.
+
+## M23 Qwen3.6 27B 4-bit direct VLM smoke (2026-07-01, `m23-qwen36-27b-4bit-direct-vlm-smoke`)
+
+Feature `m23-qwen36-27b-4bit-direct-vlm-smoke` tested the user-requested local checkpoint `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit` through the direct `shared_bench.py` VLM/batched-vision route. This is data-only model readiness, quality, and performance evidence. It is not an optimization lane, not a default-change lane, and not promotion evidence.
+
+### Checkpoint inventory and preflight
+
+- **Model path:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit`.
+- **Checkpoint classification:** Qwen3.5-family VLM/image-text checkpoint.
+  - `model_type="qwen3_5"`.
+  - `architectures=["Qwen3_5ForConditionalGeneration"]`.
+  - `language_model_only=false`.
+  - `processor_class="Qwen3VLProcessor"`.
+  - `image_token_id=248056`, `vision_start_token_id=248053`, `vision_end_token_id=248054`.
+  - `text_config.model_type="qwen3_5_text"`, `num_hidden_layers=64`, `vocab_size=248320`.
+  - `vision_config.model_type="qwen3_5"`, `depth=27`, `out_hidden_size=5120`, `patch_size=16`.
+- **Quantization:** 4-bit affine quantization with `group_size=64`; both `quantization` and `quantization_config` report `bits=4`, `mode="affine"`.
+- **Required files present:** `config.json`, `processor_config.json`, `preprocessor_config.json`, `tokenizer.json`, `tokenizer_config.json`, `vocab.json`, and `model.safetensors.index.json`.
+- **Safetensors inventory:** `3` shards, `16,054,541,599` bytes (`14.951957 GiB`):
+  - `model-00001-of-00003.safetensors`: `5,343,268,752` bytes.
+  - `model-00002-of-00003.safetensors`: `5,354,185,100` bytes.
+  - `model-00003-of-00003.safetensors`: `5,357,087,747` bytes.
+  - `model.safetensors.index.json` metadata `total_size=16,054,262,240`, weight-map entries `2180`.
+- **Prompt suite selected:** full `prompt_suites/vlm_image_quality.json`, not the fallback. The suite contains `image_toucan` (`expected_keywords=["toucan"]`) and `image_pair` (`expected_keywords=["chameleon","toucan"]`).
+- **Fallback status:** the documented `prompt_suites/m5_image.json` fallback was not used because the full VLM image suite completed with zero row errors and quality inspect passed.
+- **Resource/process preflight:**
+  - Mission `init.sh` re-verified `.venv-py312` imports `mlx.core` and `mlx.nn`, confirmed the harness is importable, and cleaned stale `/private/tmp/mlx-engine-vlm-cache-*`.
+  - Model volume had `714 GiB` available at init.
+  - Memory preflight reported `33.32 GiB` free/inactive/speculative/purgeable and `memory_pressure` free percentage `62%`, which was sufficient for the roughly `14.952 GiB` checkpoint plus runtime headroom.
+  - No active `shared_bench.py`, `quality_compare.py`, `mlx_engine.openai_adapter`, `vmlx_engine.cli`, or `llama-server` process was found.
+  - Ports `3180`, `3181`, and `3182` had no listeners.
+  - `llmdynamix` was listening on `*:12444` with low RSS (`125,504 KiB`), but it was not used as a route or benchmark surface. This M23 run used only direct `shared_bench.py` with `.venv-py312`.
+
+### Direct benchmark evidence
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T021407.298827Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T021407.298827Z-m23-qwen36-27b-4bit-quality-inspect.json`
+- **Command shape:**
+
+  ```bash
+  cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+  python3 shared_bench.py \
+    --engine mlx-engine \
+    --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit \
+    --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+    --prompt-suite-json prompt_suites/vlm_image_quality.json \
+    --runs 1 \
+    --max-tokens 64 \
+    --temperature 0.0 \
+    --top-p 1.0 \
+    --max-seq-nums 1 \
+    --mlx-engine-batched-timing \
+    --include-output-text \
+    --timeout 1800
+  ```
+
+- **Route and opt-in checks from report config:** `mlx_engine_force_sequential=false`, `max_seq_nums=1`, `dflash=false`, `suffix_decoding=false`, `specprefill=false`, `prefill_step_size=null`, `include_output_text=true`.
+- **Row errors:** both rows have `error=null`; runner process return code was `0`.
+- **Quality inspect status:** `status=pass`; failed prompts `[]`.
+- **Completion-token status:** both rows generated `64` tokens, above the inspect threshold `min_completion_tokens=16`; both ended with `finish_reason="token_limit"`.
+- **Keyword checks:** `image_toucan` hit `toucan=true`; `image_pair` hit `chameleon=true` and `toucan=true`.
+
+### Metrics and output previews
+
+| Prompt | Images | Prompt tokens | Cached tokens | Completion tokens | TTFT (s) | Decode TPS | Total (s) | Keyword status | Output preview |
+|---|---:|---:|---:|---:|---:|---:|---:|---|---|
+| `image_toucan` | 1 | 38 | 0 | 64 | `4.006216` | `38.714430` | `5.659346` | pass (`toucan`) | `This image features a vibrant toucan perched on a mossy branch, showcasing its iconic large, colorful beak with a gradient of red, yellow, green, and blue. Its body is predominantly black, contrasted by a bright yellow throat and chest, while its legs are a striking blue. The bird’s alert` |
+| `image_pair` | 2 | 47 | 0 | 64 | `1.863995` | `37.836418` | `3.555487` | pass (`chameleon`, `toucan`) | `Of course. Here is a comparison of the animals shown in the two images.\n\nThe first image features a **chameleon**, and the second image features a **toucan**.\n\nHere is a detailed comparison based on their visible characteristics:\n\n- **Chameleon (Image 1):**\n    - **Type:**` |
+
+### Batched-timing fields observed
+
+The report captured batched-vision timing events in runner stderr:
+
+| Event | `image_toucan` | `image_pair` |
+|---|---:|---:|
+| `vlm_model_load.duration_ms` | `5892.428` | same process |
+| `vlm_cache_restore_plan.duration_ms` | `0.004` (`outcome="miss"`) | `0.042` (`outcome="miss"`) |
+| `vlm_request_prepare.duration_ms` | `38.512` | `83.663` |
+| `vlm_request_insert.ready_to_insert_ms` | `3136.429` | `202.723` |
+| `vlm_prefill_chunk.duration_ms` | `525.315` for `102` tokens | `1491.138` for `460` tokens |
+| `vlm_prefill_final.duration_ms` | `274.562` | `50.920` |
+| first `vlm_decode_step.duration_ms` | `25.129` | `25.788` |
+| `vlm_first_token.prepare_to_first_token_ms` | `3963.781` | `1777.495` |
+| `vlm_first_token.insert_to_first_token_ms` | `827.260` | `1574.678` |
+
+### Decision
+
+Decision: **data-only PASS / no promotion / no default change**.
+
+The requested Qwen3.6 27B 4-bit checkpoint loaded through the direct VLM/batched-vision route, completed the full `vlm_image_quality.json` suite with zero row errors, and passed `quality_compare.py --candidate` inspect mode with expected image-grounded keyword behavior. The results are retained as model readiness and performance evidence only. No LM Studio runtime, LLMDYNAMIX/OpenAI-compatible route, adapter route, forced sequential text route, DFlash flag, SuffixDecoding flag, SpecPrefill flag, or MoE evidence was used.
+
+`VAL-M23-001` is met by the checkpoint inventory, Qwen3.5-family VLM/image-text classification, quantization metadata, safetensors count/size, prompt-suite selection, and resource/process preflight above.
+
+`VAL-M23-002` is met by the direct `shared_bench.py` report with zero row errors and `mlx_engine_force_sequential=false`.
+
+`VAL-M23-003` is met by the quality inspect artifact with `status=pass`, passing row checks, completion-token checks, and expected image keyword hits.
+
+`VAL-M23-004` is met by the metrics and batched-timing evidence recorded above, with an explicit data-only/no-promotion/no-default-change decision.
+
+`VAL-M23-005` is met by the command/config/process evidence and explicit confirmation that no LM Studio runtime, LLMDYNAMIX route, adapter route, DFlash, or MoE evidence was used.
