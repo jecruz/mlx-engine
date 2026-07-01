@@ -5078,3 +5078,22 @@ Decision: **REJECT / no default change**. The retained direct persistent-cache p
 ### Outcome
 
 Keep the current backward-readable persistent record format and restore-time `mx.eval(...)` barrier. The M27 diagnostics are useful for future layout work, but they do not justify a promoted restore-layout change, because there is no repeated quality-passing byte win and no candidate layout that clearly reduces rotating bytes instead of just reshaping them.
+
+## M28 scoped Pyright typecheck infrastructure (2026-07-01)
+
+Add a minimal, low-noise Pyright gate instead of a broad repo-wide typecheck. The initial scope is limited to the small utility slice that already has the highest signal-to-noise ratio:
+
+- `mlx_engine/utils/batched_timing.py`
+- `mlx_engine/utils/chat_template_args.py`
+- `mlx_engine/utils/generation_result.py`
+- `mlx_engine/utils/request_state.py`
+- `mlx_engine/utils/token.py`
+
+The checked command is recorded in `services.yaml` as `typecheck:m28:pyright-scoped` and resolves against `pyrightconfig.json` with pinned `pyright@1.1.403`, `typeCheckingMode=basic`, and the `.venv-py312` virtual environment.
+
+Ratchet / noise plan:
+
+1. Keep the include list file-scoped and only widen it when a new feature touches an adjacent module.
+2. Prefer adding one file at a time over a broad annotation rewrite.
+3. If Pyright noise appears, freeze the scope and record the exact file/diagnostic pair before widening.
+4. Keep the gate cheap enough that it can run alongside the existing ruff + focused pytest checks without becoming a new source of churn.

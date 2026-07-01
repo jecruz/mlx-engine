@@ -1,0 +1,22 @@
+{
+  "typeCheckingMode": "basic",
+  "pythonVersion": "3.12",
+  "venvPath": ".",
+  "venv": ".venv-py312",
+  "include": [
+    "mlx_engine/utils/batched_timing.py",
+    "mlx_engine/utils/chat_template_args.py",
+    "mlx_engine/utils/generation_result.py",
+    "mlx_engine/utils/request_state.py",
+    "mlx_engine/utils/token.py"
+  ],
+  "exclude": [
+    ".planning",
+    ".worktrees",
+    "benchmarks",
+    "demo-data",
+    "scripts",
+    "tests",
+    "**/__pycache__"
+  ]
+}
