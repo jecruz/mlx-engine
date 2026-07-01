@@ -5035,3 +5035,18 @@ Both candidate inspect artifacts returned `status=pass`, `failed_prompts=-`. Bot
 ### Decision: reaffirm no-default-change
 
 The controlled rerun does not justify promotion. The large `image_toucan` TTFT/total win from run 1 collapsed to near-neutral in run 2, while `image_pair` stayed neutral to slightly noisy across both comparisons. Decode TPS moved by less than `0.2%` in every prompt/run pair. This supports the M25 diagnosis that the strongest sweep deltas were warmup/order effects rather than repeated independent wins. The final decision remains **data-only / no promotion / no default change** until true cold-host repeated evidence or another controlled repeated comparison shows quality-passing wins that repeat across independent anchors.
+
+## M27 restore-layout rotating-delta diagnostics and no-go evidence (2026-07-01, `m27-restore-rotating-diagnostics-cost-model`)
+
+Feature `m27-restore-rotating-diagnostics-cost-model` adds opt-in restore diagnostics for the persistent VLM restore path. The new `vlm_cache_restore_cost_model` timing event sits alongside `vlm_cache_restore_detail` and separates the rotating surface into:
+
+- rotating record count / bytes,
+- concat bytes versus materialized bytes,
+- rotating eval target count,
+- load / assemble / eval timing, plus the existing restore duration.
+
+The implementation is diagnostics-only. It does not alter record formats, does not remove the restore-time `mx.eval(...)` barrier, and does not change runtime behavior unless `MLX_ENGINE_BATCHED_TIMING=1` is already enabled.
+
+Current interpretation: the retained rotating-delta surface still looks like irreducible final-state materialization rather than a proven reducible overhead. The diagnostic cost model therefore records `no-go` unless a future candidate shows a real byte reduction in the rotating surface together with repeated quality-passing TTFT / decode / total / restore-eval wins and preserved image fidelity.
+
+No layout change was implemented in this slice. The no-go criteria are now explicit: keep the existing backward-readable records and barrier behavior, and only revisit layout work if future evidence proves that fewer rotating bytes or eval targets actually reduce end-to-end restore cost instead of just reshaping it.

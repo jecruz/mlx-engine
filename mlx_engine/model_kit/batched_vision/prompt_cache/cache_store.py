@@ -219,6 +219,72 @@ def _restore_eval_materialization_counters(
     }
 
 
+def _restore_rotating_cost_model(
+    *,
+    cached_tokens: int,
+    chunks: int,
+    records: int,
+    record_count_by_kind: dict[str, int],
+    record_bytes_by_kind: dict[str, int],
+    materialization_counters: dict[str, Any],
+    load_chunks_ms: float,
+    assemble_ms: float,
+    eval_ms: float,
+    touch_ms: float,
+    duration_ms: float,
+) -> dict[str, Any]:
+    """Summarize restore diagnostics into a rotating-delta cost model."""
+    rotating_record_count = record_count_by_kind[RECORD_KIND_ROTATING_DELTA]
+    rotating_record_bytes = record_bytes_by_kind[RECORD_KIND_ROTATING_DELTA]
+    rotating_eval_target_count = materialization_counters[
+        "eval_target_count_by_kind"
+    ][RECORD_KIND_ROTATING_DELTA]
+    rotating_materialized_bytes = materialization_counters[
+        "materialized_bytes_by_kind"
+    ][RECORD_KIND_ROTATING_DELTA]
+    concat_bytes = rotating_record_bytes
+    materialization_bytes = rotating_materialized_bytes
+    reducible_overhead_bytes = max(0, concat_bytes - materialization_bytes)
+    reducible_overhead = reducible_overhead_bytes >= max(
+        _MIB_BYTES,
+        materialization_bytes // 100,
+    )
+    if reducible_overhead:
+        decision = "candidate"
+        reason = (
+            "rotating record bytes still exceed the final-state materialization "
+            "surface, so the pre-barrier work may be reducible"
+        )
+    else:
+        decision = "no-go"
+        reason = (
+            "rotating load/concat work already matches the final-state "
+            "materialization surface, or the byte gap is below the diagnostic "
+            "threshold, so record-count changes alone do not prove a "
+            "reducible overhead"
+        )
+
+    return {
+        "cached_tokens": cached_tokens,
+        "chunks": chunks,
+        "records": records,
+        "rotating_record_count": rotating_record_count,
+        "rotating_record_bytes": rotating_record_bytes,
+        "rotating_eval_target_count": rotating_eval_target_count,
+        "rotating_concat_bytes": concat_bytes,
+        "rotating_materialized_bytes": materialization_bytes,
+        "rotating_reducible_overhead_bytes": reducible_overhead_bytes,
+        "rotating_reducible_overhead": reducible_overhead,
+        "rotating_reducible_overhead_decision": decision,
+        "rotating_reducible_overhead_reason": reason,
+        "load_chunks_ms": load_chunks_ms,
+        "assemble_ms": assemble_ms,
+        "eval_ms": eval_ms,
+        "touch_ms": touch_ms,
+        "duration_ms": duration_ms,
+    }
+
+
 class VlmPromptCacheStore:
     """Cache-I/O-thread-owned index and temporary safetensor blob store.
 
@@ -436,6 +502,19 @@ class VlmPromptCacheStore:
         touch_ms = elapsed_ms(touch_start) if timing_enabled else 0.0
 
         if timing_enabled:
+            cost_model = _restore_rotating_cost_model(
+                cached_tokens=plan.cached_prefix_len,
+                chunks=len(plan.chunks),
+                records=record_count,
+                record_count_by_kind=record_count_by_kind,
+                record_bytes_by_kind=record_bytes_by_kind,
+                materialization_counters=materialization_counters,
+                load_chunks_ms=load_chunks_ms,
+                assemble_ms=assemble_ms,
+                eval_ms=eval_ms,
+                touch_ms=touch_ms,
+                duration_ms=elapsed_ms(restore_start),
+            )
             log_batched_timing(
                 logger,
                 "vlm_cache_restore_detail",
@@ -451,6 +530,11 @@ class VlmPromptCacheStore:
                 **materialization_counters,
                 touch_ms=touch_ms,
                 duration_ms=elapsed_ms(restore_start),
+            )
+            log_batched_timing(
+                logger,
+                "vlm_cache_restore_cost_model",
+                **cost_model,
             )
 
         return LoadedDiskPromptCache(

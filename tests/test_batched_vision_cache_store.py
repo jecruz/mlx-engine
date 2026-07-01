@@ -392,6 +392,107 @@ def test_cache_store_logs_restore_materialization_counters(
         assert restore_detail["materialized_bytes_by_kind"][record_kind] > 0
 
 
+def test_cache_store_logs_restore_rotating_cost_model(
+    cache_store,
+    monkeypatch,
+):
+    """Cost-model diagnostics should summarize the rotating-delta restore surface."""
+    prompt_input_ids = list(range((3 * C) + 100))
+    chunks = build_prefix_cache_chunks(prompt_input_ids, [])
+    for chunk in chunks[:3]:
+        _save_chunk(cache_store, chunk, chunks, _rotating_prompt_cache(chunk.end))
+
+    restore_plan = cache_store.plan_longest_prefix_restore(prompt_input_ids, [])
+    assert restore_plan is not None
+
+    events = []
+    monkeypatch.setenv("MLX_ENGINE_BATCHED_TIMING", "1")
+    monkeypatch.setattr(
+        cache_store_module,
+        "log_batched_timing",
+        lambda logger, event, **fields: events.append(
+            {"event": event, **fields}
+        ),
+    )
+    cache_store.load_restore_plan(restore_plan)
+
+    restore_detail = next(
+        event for event in events if event["event"] == "vlm_cache_restore_detail"
+    )
+    cost_model = next(
+        event for event in events if event["event"] == "vlm_cache_restore_cost_model"
+    )
+
+    assert cost_model["cached_tokens"] == restore_detail["cached_tokens"]
+    assert cost_model["chunks"] == restore_detail["chunks"]
+    assert cost_model["records"] == restore_detail["records"]
+    assert cost_model["rotating_record_count"] == restore_detail[
+        "record_count_by_kind"
+    ][RECORD_KIND_ROTATING_DELTA]
+    assert cost_model["rotating_record_bytes"] == restore_detail[
+        "record_bytes_by_kind"
+    ][RECORD_KIND_ROTATING_DELTA]
+    assert cost_model["rotating_eval_target_count"] == restore_detail[
+        "eval_target_count_by_kind"
+    ][RECORD_KIND_ROTATING_DELTA]
+    assert cost_model["rotating_materialized_bytes"] == restore_detail[
+        "materialized_bytes_by_kind"
+    ][RECORD_KIND_ROTATING_DELTA]
+    assert cost_model["load_chunks_ms"] == restore_detail["load_chunks_ms"]
+    assert cost_model["assemble_ms"] == restore_detail["assemble_ms"]
+    assert cost_model["eval_ms"] == restore_detail["eval_ms"]
+    assert cost_model["rotating_reducible_overhead"] is False
+    assert cost_model["rotating_reducible_overhead_decision"] == "no-go"
+    assert "final-state materialization surface" in cost_model[
+        "rotating_reducible_overhead_reason"
+    ]
+
+
+def test_restore_rotating_cost_model_marks_equal_bytes_as_no_go():
+    """The rotating-delta cost model should reject equal-byte no-op candidates."""
+    model = cache_store_module._restore_rotating_cost_model(
+        cached_tokens=4608,
+        chunks=9,
+        records=4,
+        record_count_by_kind={
+            RECORD_KIND_KV_DELTA: 1,
+            RECORD_KIND_ROTATING_DELTA: 3,
+            RECORD_KIND_STATE_CHECKPOINT: 0,
+        },
+        record_bytes_by_kind={
+            RECORD_KIND_KV_DELTA: 117_440_512,
+            RECORD_KIND_ROTATING_DELTA: 335_544_320,
+            RECORD_KIND_STATE_CHECKPOINT: 0,
+        },
+        materialization_counters={
+            "eval_target_count_by_kind": {
+                RECORD_KIND_KV_DELTA: 16,
+                RECORD_KIND_ROTATING_DELTA: 80,
+                RECORD_KIND_STATE_CHECKPOINT: 0,
+            },
+            "materialized_bytes_by_kind": {
+                RECORD_KIND_KV_DELTA: 117_440_512,
+                RECORD_KIND_ROTATING_DELTA: 335_544_320,
+                RECORD_KIND_STATE_CHECKPOINT: 0,
+            },
+        },
+        load_chunks_ms=1.25,
+        assemble_ms=0.5,
+        eval_ms=4.75,
+        touch_ms=0.25,
+        duration_ms=6.75,
+    )
+
+    assert model["rotating_record_count"] == 3
+    assert model["rotating_record_bytes"] == 335_544_320
+    assert model["rotating_eval_target_count"] == 80
+    assert model["rotating_concat_bytes"] == 335_544_320
+    assert model["rotating_materialized_bytes"] == 335_544_320
+    assert model["rotating_reducible_overhead_bytes"] == 0
+    assert model["rotating_reducible_overhead"] is False
+    assert model["rotating_reducible_overhead_decision"] == "no-go"
+
+
 def test_cache_store_restore_eval_barrier_materializes_disk_restore(
     cache_store,
     monkeypatch,
