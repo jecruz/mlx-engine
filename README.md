@@ -220,6 +220,39 @@ and user-testing passed VAL-M21-001 through VAL-M21-005. See commits `ecd7f13`,
 route, or MoE promotion evidence was used, and explicit `--prefill-step-size`
 overrides remain preserved.
 
+M22 closeout completed the persistent VLM cache materialization reduction lane
+as instrumentation-only REJECT / no promotion. Added materialization counters
+cover record counts, eval target counts, materialized bytes by cache kind,
+record bytes, and restore timing fields while preserving the restore-time
+`mx.eval(...)` barrier and old-cache readability. LFM2.5-VL persistent long
+evidence passed quality but was not repeatably faster: reports
+`reports/20260701T011556.206278Z-shared-bench.json` and
+`reports/20260701T012718.987501Z-shared-bench.json` both inspect/compare pass,
+with warm `cached_tokens` `7373`, materialized bytes `90,681,344`, and eval
+targets `16`. Gemma4 12B persistent long-pair was retained only as
+rejection/blocker evidence: reports
+`reports/20260701T012908.173985Z-shared-bench.json` and
+`reports/20260701T013133.799506Z-shared-bench.json`; cold rows passed but warm
+rows failed with `RuntimeError: There is no Stream(gpu, 3) in current thread`.
+Gemma4 materialized bytes reached `460,374,016` with eval targets `48` before
+failure. Scrutiny passed `414` passed / `16` skipped / `52` subtests and ruff
+clean, and user-testing passed VAL-M22-001 through VAL-M22-005.
+
+M23 closeout completed the user-requested direct test of
+`/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit`
+as data-only PASS / no promotion / no default change. The checkpoint was
+classified as Qwen3.5-family VLM/image-text, 4-bit affine, about `14.952 GiB`
+safetensors. Report:
+`reports/20260701T021407.298827Z-shared-bench.json`; inspect:
+`reports/20260701T021407.298827Z-m23-qwen36-27b-4bit-quality-inspect.json`.
+The run used the direct VLM/batched-vision route, with no forced sequential
+text, no LM Studio runtime, no LLMDYNAMIX route, no adapter, no DFlash, and no
+MoE. The full `vlm_image_quality.json` suite had zero row errors and quality
+inspect pass. Metrics: `image_toucan` TTFT `5.245937s`, decode TPS `42.678`,
+total `7.495293s`, completion `96`; `image_pair` TTFT `5.418849s`, decode TPS
+`42.595`, total `7.672431s`, completion `96`. Scrutiny and user-testing passed
+VAL-M23-001 through VAL-M23-005.
+
 ## Development Setup
 
 ### Pre-commit Hooks
