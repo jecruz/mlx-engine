@@ -4377,3 +4377,92 @@ Rationale:
 - This feature did not implement a byte-reduction behavior change because the safe, test-supported first slice was central target collection and counters. A reduction candidate should be attempted only after benchmark workers use these counters to identify a repeatable byte/timing target.
 - `VAL-M22-002` is met by the focused code/tests preserving backward readability, existing timing fields, new materialization counters, and the restore barrier.
 - `VAL-M22-003` is met by focused tests plus the LFM2.5-VL persistent process-restart smoke with warm cached-token accounting, toucan fidelity, zero row errors, and no stream failure.
+
+## M22 direct materialization benchmark evidence and decision (2026-07-01, `m22-materialization-benchmark-evidence`)
+
+Feature `m22-materialization-benchmark-evidence` captured direct persistent-cache process-restart evidence for the instrumentation-only M22 materialization candidate. This evidence uses the direct `shared_bench.py` harness only. It does not use DFlash, LM Studio runtime, adapter routes, or MoE promotion evidence.
+
+### Resource and validator preflight
+
+- Mission `init.sh` re-verified `.venv-py312` imports `mlx.core` and `mlx.nn`, confirmed the harness is importable, and cleaned stale `/private/tmp/mlx-engine-vlm-cache-*` roots before benchmarking.
+- Resource isolation check found no listeners on ports `3180`, `3181`, or `3182`. `llmdynamix` was still listening on `*:12444`, but `GET http://127.0.0.1:11434/api/ps` returned `{"models":[]}`, so no loaded local Ollama model was observed.
+- Focused M22 cache tests were rerun before benchmarks:
+  - `.venv-py312/bin/python -m pytest -q tests/test_batched_vision_records.py tests/test_batched_vision_restore_planner.py tests/test_batched_vision_cache_store.py tests/test_batched_vision_batch_generator.py`
+  - Result: `53 passed`.
+
+### LFM2.5-VL long persistent restore
+
+New repeated direct evidence was captured against the retained M21 omitted/default persistent-cache anchor:
+
+- **Anchor baseline report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T181752.284497Z-shared-bench.json`
+- **Candidate report 1:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T011556.206278Z-shared-bench.json`
+- **Candidate inspect 1:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T011556.206278Z-m22-lfm25-candidate-quality-inspect.json`, `status=pass`
+- **Candidate compare 1:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T011556.206278Z-m22-lfm25-candidate-vs-m21-default-quality-compare.json`, `status=pass`
+- **Candidate cache footprint 1:** `/tmp/mlx-engine-vlm-cache-m22-lfm25-candidate-a8dc2963`, `87M`
+- **Candidate report 2:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T012718.987501Z-shared-bench.json`
+- **Candidate inspect 2:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T012718.987501Z-shared-bench-m22-lfm25-evidence-r1-quality-inspect.json`, `status=pass`
+- **Candidate compare 2:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T012718.987501Z-shared-bench-m22-lfm25-evidence-r1-vs-m21-default-quality-compare.json`, `status=pass`
+- **Candidate cache footprint 2:** `/tmp/mlx-engine-vlm-cache-m22-lfm25-evidence-d2bcd2dd-20260701-r1`, `87M`
+
+Row and quality inspection:
+
+- Both retained candidate reports have two rows each with `error=null`, completion tokens `5`, and output text `A toucan.`.
+- Warm rows show `cached_tokens=7373`, preserving the expected persistent VLM cache hit.
+- No `RuntimeError: There is no Stream(...)` text appeared in either LFM2.5-VL report stderr.
+- Materialization counters were stable across the repeated LFM2.5-VL warm restores:
+  - `records=2`, `record_count_by_kind={"kv_delta": 1, "rotating_delta": 0, "state_checkpoint": 1}`
+  - `record_bytes=90683491`, `record_bytes_by_kind={"kv_delta": 90600551, "rotating_delta": 0, "state_checkpoint": 82940}`
+  - `eval_target_count=16`, `eval_target_count_by_kind={"kv_delta": 6, "rotating_delta": 0, "state_checkpoint": 10}`
+  - `materialized_bytes=90681344`, `materialized_bytes_by_kind={"kv_delta": 90599424, "rotating_delta": 0, "state_checkpoint": 81920}`
+  - Report 1 timing: `load_chunks_ms=0.608`, `assemble_ms=0.014`, `eval_ms=0.032`, `touch_ms=0.034`, `duration_ms=0.691`
+  - Report 2 timing: `load_chunks_ms=0.742`, `assemble_ms=0.014`, `eval_ms=0.036`, `touch_ms=0.062`, `duration_ms=0.858`
+
+Measured LFM2.5-VL deltas versus the M21 omitted/default anchor were not repeatably promotable:
+
+| Candidate | Inspect | Compare | Average TTFT | Decode TPS | Average total | Warm TTFT | Warm total |
+|---|---|---|---:|---:|---:|---:|---:|
+| `20260701T011556.206278Z` | pass | pass | `+2.524%` | `-4.642%` | `+2.599%` | `+3.920%` | `+4.988%` |
+| `20260701T012718.987501Z` | pass | pass | `+4.405%` | `+2.911%` | `+4.191%` | `-7.476%` | `-7.504%` |
+
+The LFM2.5-VL results show useful counters and stable fidelity, but they do not show a repeatable end-to-end or restore-timing win. The second report had faster warm TTFT/total, while the first report regressed warm TTFT/total and both reports regressed average TTFT/total. This is not promotion evidence.
+
+### Gemma4 12B long-pair persistent restore
+
+Gemma4 persistent long-pair was feasible to start, but both fresh process-restart attempts reproduced a warm-row stream failure. These reports are retained only as rejection/blocker evidence, not as passing benchmark evidence:
+
+- **Gemma4 report 1:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T012908.173985Z-shared-bench.json`
+- **Gemma4 inspect 1:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T012908.173985Z-shared-bench-m22-gemma4-evidence-r1-quality-inspect.json`, `status=fail`
+- **Gemma4 cache footprint 1:** `/tmp/mlx-engine-vlm-cache-m22-gemma4-evidence-d2bcd2dd-20260701-r1`, `2.7G`
+- **Gemma4 report 2:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T013133.799506Z-shared-bench.json`
+- **Gemma4 inspect 2:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T013133.799506Z-shared-bench-m22-gemma4-evidence-r2-quality-inspect.json`, `status=fail`
+- **Gemma4 cache footprint 2:** `/tmp/mlx-engine-vlm-cache-m22-gemma4-evidence-d2bcd2dd-20260701-r2`, `1.2G`
+
+Gemma4 row and counter observations:
+
+- In both reports, the cold row had `error=null` and preserved both image subjects: `The first image shows a chameleon. The second image shows a toucan.`
+- In both reports, the warm row failed with `RuntimeError: There is no Stream(gpu, 3) in current thread` from `batch_generator.py` while processing the warm restored request. This is a stream-stability failure and fails the M22 quality gate.
+- The warm restore did reach cache-hit and materialization instrumentation before the generation-thread failure:
+  - `cached_tokens=7619`, `chunks=15`, `records=4`
+  - `record_count_by_kind={"kv_delta": 1, "rotating_delta": 3, "state_checkpoint": 0}`
+  - `record_bytes=608188858`, `record_bytes_by_kind={"kv_delta": 124831216, "rotating_delta": 483357642, "state_checkpoint": 0}`
+  - `eval_target_count=48`, `eval_target_count_by_kind={"kv_delta": 8, "rotating_delta": 40, "state_checkpoint": 0}`
+  - `materialized_bytes=460374016`, `materialized_bytes_by_kind={"kv_delta": 124829696, "rotating_delta": 335544320, "state_checkpoint": 0}`
+  - Report 1 representative timing: `load_chunks_ms=2.807`, `assemble_ms=0.484`, `eval_ms=0.052`, `touch_ms=0.071`, `duration_ms=3.418`
+  - Report 2 representative timing: `load_chunks_ms=2.696`, `assemble_ms=0.646`, `eval_ms=0.085`, `touch_ms=0.079`, `duration_ms=3.514`
+
+Because Gemma4 produced repeated warm-row stream failures, there is no retained Gemma4 passing persistent-cache baseline in M22. Future Gemma4 persistent-cache work should first fix or isolate the warm restored request stream failure before using Gemma4 as promotion evidence.
+
+### Decision: REJECT / no promotion
+
+M22 materialization remains **instrumentation-only** and is **not promoted** as a materialization-reduction candidate.
+
+Rationale:
+
+- The only implemented candidate is instrumentation. It preserves the restore barrier and exposes counters, but it does not reduce materialized bytes, target count, record count, or restore timing.
+- LFM2.5-VL repeated samples passed quality, preserved warm `cached_tokens=7373`, retained `toucan`, and exposed stable counters, but did not show a repeatable TTFT, decode, total, or restore `eval_ms` win.
+- Gemma4 12B long-pair exposed the larger rotating-delta materialization surface (`460374016` materialized bytes, `48` eval targets, `40` rotating-delta targets) but repeatedly failed the warm row with `RuntimeError: There is no Stream(gpu, 3) in current thread`, so it cannot support promotion.
+- No DFlash, LM Studio runtime, adapter route, or MoE promotion evidence was used.
+
+`VAL-M22-004` is met by the direct-harness evidence above: report and inspect/compare paths are recorded, row errors and quality statuses are inspected, LFM2.5-VL and Gemma4 materialization counters/timing are captured from `vlm_cache_restore_detail`, TTFT/decode/total metrics are recorded through the shared-bench reports, cache footprints are captured with `du -sh`, and the Gemma4 heavy lane has a precise repeated stream-stability blocker.
+
+`VAL-M22-005` is met by this rejection decision: there are not two repeated quality-passing candidate samples with repeatable materialization or end-to-end wins, and the Gemma4 lane has repeated quality/stream failures. The M22 decision is therefore **REJECT / no promotion**, with instrumentation retained for future diagnosis only.
