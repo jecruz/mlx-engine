@@ -4965,3 +4965,73 @@ The best-looking prompt-local deltas do not repeat cleanly across the sweep:
 - The persistent-cache long lanes prove warm-cache reuse and quality stability, but they are validation evidence, not a repeatable candidate-vs-baseline promotion win.
 
 Per the milestone rule, promotion/default-change needs repeated quality-passing samples with a repeatable win in TTFT, decode TPS, total latency, or relevant timing. That threshold was not met, so the final synthesis remains **data-only / no-default-change**.
+
+## Qwen3.6 27B 4-bit controlled follow-up, maxseq-2 vs fresh anchors (2026-07-01)
+
+This follow-up reran the strongest M25 prompt-local candidate cell, `maxseq-2`, against two fresh same-session default anchors before any promotion claim. True cold-host verification was **not achieved** because it would require an OS restart or externally clearing Metal/file-system/cache state outside this worker's safe scope. The closest safe control used fresh `shared_bench.py` invocations, fresh runner processes, temporary model-load-lifetime VLM caches, and a fresh anchor immediately before each candidate run.
+
+- **Scope:** direct `shared_bench.py` plus `quality_compare.py` only, through `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python`.
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit`
+- **Stable settings:** `--engine mlx-engine --prompt-suite-json prompt_suites/vlm_image_quality.json --runs 3 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text --mlx-engine-batched-timing`
+- **Candidate-only change:** `--max-seq-nums 2`
+- **Excluded:** LM Studio runtime, LLMDYNAMIX/OpenAI route, adapter route, DFlash, MoE, and forced sequential text.
+
+### Commands and exit codes
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+mkdir -p reports/20260701-qwen36-cold-host-followup
+
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --mlx-engine-batched-timing --prompt-suite-json prompt_suites/vlm_image_quality.json --runs 3 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text --out-dir reports/20260701-qwen36-cold-host-followup
+# exit 0, anchor 1
+
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --mlx-engine-batched-timing --prompt-suite-json prompt_suites/vlm_image_quality.json --runs 3 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text --max-seq-nums 2 --out-dir reports/20260701-qwen36-cold-host-followup
+# exit 0, candidate 1
+
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python quality_compare.py --baseline reports/20260701-qwen36-cold-host-followup/20260701T141807.479693Z-shared-bench.json --candidate reports/20260701-qwen36-cold-host-followup/20260701T141851.120979Z-shared-bench.json --out reports/20260701-qwen36-cold-host-followup/20260701T141851.120979Z-quality-compare.json
+# exit 0
+
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python quality_compare.py --candidate reports/20260701-qwen36-cold-host-followup/20260701T141851.120979Z-shared-bench.json --out reports/20260701-qwen36-cold-host-followup/20260701T141851.120979Z-quality-inspect.json
+# exit 0
+
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --mlx-engine-batched-timing --prompt-suite-json prompt_suites/vlm_image_quality.json --runs 3 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text --out-dir reports/20260701-qwen36-cold-host-followup
+# exit 0, anchor 2
+
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --mlx-engine-batched-timing --prompt-suite-json prompt_suites/vlm_image_quality.json --runs 3 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text --max-seq-nums 2 --out-dir reports/20260701-qwen36-cold-host-followup
+# exit 0, candidate 2
+
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python quality_compare.py --baseline reports/20260701-qwen36-cold-host-followup/20260701T141944.418761Z-shared-bench.json --candidate reports/20260701-qwen36-cold-host-followup/20260701T142025.571451Z-shared-bench.json --out reports/20260701-qwen36-cold-host-followup/20260701T142025.571451Z-quality-compare.json
+# exit 0
+
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python quality_compare.py --candidate reports/20260701-qwen36-cold-host-followup/20260701T142025.571451Z-shared-bench.json --out reports/20260701-qwen36-cold-host-followup/20260701T142025.571451Z-quality-inspect.json
+# exit 0
+```
+
+### Artifacts
+
+- **Run 1 anchor report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701-qwen36-cold-host-followup/20260701T141807.479693Z-shared-bench.json`
+- **Run 1 candidate report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701-qwen36-cold-host-followup/20260701T141851.120979Z-shared-bench.json`
+- **Run 1 candidate inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701-qwen36-cold-host-followup/20260701T141851.120979Z-quality-inspect.json`
+- **Run 1 compare:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701-qwen36-cold-host-followup/20260701T141851.120979Z-quality-compare.json`
+- **Run 2 anchor report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701-qwen36-cold-host-followup/20260701T141944.418761Z-shared-bench.json`
+- **Run 2 candidate report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701-qwen36-cold-host-followup/20260701T142025.571451Z-shared-bench.json`
+- **Run 2 candidate inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701-qwen36-cold-host-followup/20260701T142025.571451Z-quality-inspect.json`
+- **Run 2 compare:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701-qwen36-cold-host-followup/20260701T142025.571451Z-quality-compare.json`
+
+### Metrics and quality checks
+
+Both candidate inspect artifacts returned `status=pass`, `failed_prompts=-`. Both candidate-vs-anchor compares returned `status=pass`, `failed_prompts=[]`. Anchor and candidate reports had `0` row errors in both comparisons, and all candidate row keyword checks passed with `output_text` present:
+
+- `image_pair`: `chameleon=true`, `toucan=true` on all 3 candidate rows in both comparisons.
+- `image_toucan`: `toucan=true` on all 3 candidate rows in both comparisons.
+
+| Comparison | Prompt | TTFT delta | Decode TPS delta | Total delta | Warm TTFT p50 delta | Warm total p50 delta |
+|---|---|---:|---:|---:|---:|---:|
+| Run 1 | `image_pair` | `+0.797%` | `-0.136%` | `+0.277%` | `+3.375%` | `+0.181%` |
+| Run 1 | `image_toucan` | `-52.640%` | `+0.183%` | `-12.421%` | `+1.743%` | `+0.170%` |
+| Run 2 | `image_pair` | `-0.965%` | `+0.180%` | `-0.349%` | `-3.333%` | `-0.196%` |
+| Run 2 | `image_toucan` | `-3.405%` | `+0.129%` | `-0.485%` | `-2.179%` | `-0.190%` |
+
+### Decision: reaffirm no-default-change
+
+The controlled rerun does not justify promotion. The large `image_toucan` TTFT/total win from run 1 collapsed to near-neutral in run 2, while `image_pair` stayed neutral to slightly noisy across both comparisons. Decode TPS moved by less than `0.2%` in every prompt/run pair. This supports the M25 diagnosis that the strongest sweep deltas were warmup/order effects rather than repeated independent wins. The final decision remains **data-only / no promotion / no default change** until true cold-host repeated evidence or another controlled repeated comparison shows quality-passing wins that repeat across independent anchors.
