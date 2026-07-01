@@ -4202,3 +4202,114 @@ No future default-change feature is justified by the current evidence. If the us
 `VAL-M21-004` is **MET** by this rejection decision: apparent winners were either quality-failing, small/noisy, route-local, or missing the required repeated quality-passing confirmation, so M21 records REJECT / no default change with report/compare paths, quality statuses, row-error status, metric deltas, and route/model scope.
 
 `VAL-M21-005` is **MET** by this synthesis: defaults stay unchanged, explicit `--prefill-step-size` overrides remain preserved, no broad model-family default change is justified, no LM Studio runtime/DFlash/adapter/MoE promotion evidence was used, and DFlash remains no-go/default-off.
+
+## M22 persistent VLM cache materialization preflight (2026-07-01, `m22-materialization-preflight`)
+
+Feature `m22-materialization-preflight` scopes the next persistent VLM cache materialization lane before any M22 code change. This is a planning and evidence-gating step only. It does not add instrumentation, does not run benchmarks, and does not make a promotion claim.
+
+### Preconditions and current environment
+
+- **Validation state:** `/Users/jeffreycruz/.factory/missions/dbaf7c9f-269e-49f0-993a-ded7115a0792/validation-state.json` records all assertions from `VAL-M1-001` through `VAL-M21-005` as `passed`; `VAL-M22-*` assertions were pending before this note.
+- **Working trees before edit:** both `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine` and `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness` were clean before this planning edit.
+- **Interpreter and harness:** mission `init.sh` confirmed `.venv-py312` imports `mlx.core` and `mlx.nn`, `mlx-bench-harness` can import `shared_bench`, and system `ruff 0.15.7` is available.
+- **Persistent cache hygiene:** `init.sh` found no stale `/private/tmp/mlx-engine-vlm-cache-*`; a follow-up check found zero matching cache roots.
+- **Model roots:** both selected roots are mounted:
+  - LFM2.5-VL: `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`, `model_type=lfm2_vl`, `architectures=["Lfm2VlForConditionalGeneration"]`, `1` safetensors file, `2,083,497,259` bytes.
+  - Gemma4 12B: `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit`, `model_type=gemma4_unified`, `architectures=["Gemma4UnifiedForConditionalGeneration"]`, `text_config.use_bidirectional_attention=vision`, `3` safetensors files, `12,716,202,713` bytes.
+- **Prompt suites present:** `prompt_suites/vlm_image_long_quality.json`, `prompt_suites/vlm_image_long_pair_quality.json`, and `prompt_suites/vlm_image_quality.json` exist in `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/`.
+- **Resource/process snapshot:** ports `3180`, `3181`, and `3182` had no listeners. `llmdynamix` was listening on `*:12444`, but `GET http://127.0.0.1:11434/api/ps` returned `{"models":[]}`, so no loaded local Ollama model was observed. No active `shared_bench.py`, `quality_compare.py`, `mlx_engine.openai_adapter`, or cheetara adapter process was found. Future M22 benchmark workers must rerun this check immediately before every heavy lane.
+
+### Persistent VLM materialization code surfaces
+
+The M22 implementation surface is limited to persistent VLM cache restore and materialization:
+
+| Surface | File and symbols | M22 relevance |
+|---|---|---|
+| Cache store and restore barrier | `mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py`, `VlmPromptCacheStore`, `DiskPromptCacheRestorePlan`, `_load_restore_plan`, `_load_one_chunk`, `prepare_save`, `commit_pending_save`, `snapshot_stats` | Owns persistent index/blob-store state, loads selected records, assembles prompt cache, and runs the mandatory restore-time `mx.eval([value for _, value in tree_flatten(...)])` barrier. Current `vlm_cache_restore_detail` is emitted here. |
+| Records and materialization assembly | `mlx_engine/model_kit/batched_vision/prompt_cache/records.py`, `record_kind_for_prompt_cache`, `prepare_prompt_cache_records_for_chunk`, `_slice_kv_cache`, `_slice_rotating_kv_cache`, `assemble_prompt_cache_chunks`, `_concat_kv_delta_caches`, `_concat_rotating_delta_caches` | Classifies layer records as `kv_delta`, `rotating_delta`, or `state_checkpoint`, slices live cache state, concatenates selected chunks, applies `mx.contiguous`, and reconstructs runtime cache objects. This is the main place to count materialized arrays/bytes by cache kind without changing behavior. |
+| Restore planner | `mlx_engine/model_kit/batched_vision/prompt_cache/restore_planner.py`, `PromptCacheRestorePlanner.restore_record_keys_for_chunk_chain`, `_select_kv_record_key`, `_rotating_chunk_overlaps_target_window` | Selects which physical records are needed for a prefix restore. It already keeps KV bounded to current plus predecessor except terminal-packed targets, loads rotating deltas only inside the target sliding window, and requires state checkpoints only at the exact restore target. |
+| Blob store | `mlx_engine/model_kit/batched_vision/prompt_cache/blob_store.py`, `TemporarySafetensorBlobStore`, `PersistentSafetensorBlobStore`, `load_record_profiled`, `_load_record_from_file_profiled` | Persists one safetensors blob per physical record in persistent mode and can provide deserialization timing fields (`safetensor_load_ms`, `unflatten_ms`, `cache_rebuild_ms`) for `vlm_cache_record_load`. |
+| Coordinator and cache I/O | `mlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py`, `VlmPromptCacheCoordinator.restore`, `_plan_disk_restore`, `_load_disk_restore_plan`, `save_prompt_cache_snapshot`; `mlx_engine/model_kit/batched_vision/cache_io_thread.py`, `PromptCacheIOThread`, `_flush_matching_save_jobs` | Chooses hot vs disk restore, records `cached_tokens` hit/miss accounting, emits `vlm_cache_restore_plan`, and serializes restore/save work on the cache I/O thread. Freshness flush remains retained and must not be weakened. |
+| Batch generator and model kit | `mlx_engine/model_kit/batched_vision/batch_generator.py`, `_PromptPrefill` save-snapshot/final-chunk alignment logic; `mlx_engine/model_kit/batched_vision/model_kit.py`, `BatchedVisionModelKit`, `_prepare_request_for_insert`, `_insert_prepared_request` | Preserves final short-chunk state alignment from the M1 warm-fidelity fix and prepares requests for insertion after restore. Any materialization change must keep warm image fidelity and `cached_tokens` accounting intact. |
+| Entrypoints and harness | `mlx_engine/generate.py` VLM prompt-cache args; `mlx-bench-harness/shared_bench.py`; `mlx-bench-harness/runners/mlx_engine_runner.py`; `mlx-bench-harness/quality_compare.py` | Existing direct-harness flags already support persistent cache root/namespace, process restart, batched timing, row-error inspection, and warm-row quality gates. No adapter route is needed for M22. |
+
+### Current timing and detail fields
+
+Existing timing is opt-in through `--mlx-engine-batched-timing`, which sets `MLX_ENGINE_BATCHED_TIMING=1` in the runner.
+
+- `vlm_cache_restore_plan` from `prompt_cache/coordinator.py::_plan_disk_restore`: `prompt_tokens`, `images`, `cached_tokens`, `chunks`, `outcome`, `duration_ms`.
+- `vlm_cache_record_load` from `prompt_cache/cache_store.py::_load_one_chunk`: `record_kind`, `layers`, `bytes`, `duration_ms`, `safetensor_load_ms`, `unflatten_ms`, `cache_rebuild_ms`.
+- `vlm_cache_restore_detail` from `prompt_cache/cache_store.py::_load_restore_plan`: `cached_tokens`, `chunks`, `records`, `load_chunks_ms`, `assemble_ms`, `eval_ms`, `touch_ms`, `duration_ms`.
+- Existing harness rows contain `cached_tokens`, `prompt_tokens`, `engine_reported_prompt_tokens`, `completion_tokens`, `ttft_s`, `decode_s`, `decode_tps`, `total_s`, `finish_reason`, `output_preview`, optional `output_text`, and `error`.
+- Current gap: timing events are captured in runner stderr, not normalized into row fields. M22 evidence workers must inspect the JSON plus `runner_process.stderr` or add instrumentation that preserves existing fields while making materialization counters easier to extract.
+
+### Retained strategy anchors
+
+M22 must retain these existing decisions:
+
+- The restore-time `mx.eval(...)` safety barrier in `VlmPromptCacheStore._load_restore_plan`.
+- Path-based safetensor loading, one-step KV span coalescing, redundant current-only KV record skip, terminal-packed final KV, bounded KV span selection, indexed KV-record lookup, and the default-on restore freshness flush.
+- `MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN` default-enabled behavior that fixed the prior warm `image_long_toucan` wrong-subject regression.
+- Backward-readable persistent cache records with `format_version=1` and readable versions `{1}`.
+
+### Rejected or out-of-scope strategies
+
+The M22 lane must not retry or rely on:
+
+- Restore-barrier removal or any weakening of the `mx.eval(...)` disk-restore barrier.
+- Full-prefix KV span packing, which regressed persistent-cache warm restore.
+- Naive grouped rotating by target count, especially post-assembly grouping that reduced target count but slowed list eval.
+- Target-count-only changes without materialized-byte and latency benefit.
+- `MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1` as a default path, because M1 rejected it after repeated quality/performance failures.
+- Removing `mx.contiguous`, because it was measured below threshold.
+- DFlash, LM Studio runtime, adapter routes, SpecPrefill/SuffixDecoding interactions, loaded `draft_model`, `num_draft_tokens`, or MoE promotion evidence.
+
+### Anchor evidence for M22 comparison
+
+Retained and diagnostic anchors to cite before new M22 runs:
+
+| Lane | Anchor paths | Use in M22 |
+|---|---|---|
+| LFM2.5-VL persistent long from M19 | Report `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T133031.773011Z-shared-bench.json`; inspect `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T133031.773011Z-vlm-long-persistent-quality-inspect.json` | Retained persistent-cache anchor. Rows were error-free, inspect passed, cached tokens were `[0, 7373]`, cold/warm TTFT was `1.100714s / 0.034358s`, cold/warm total was `1.113707s / 0.049736s`, and both rows output `A toucan.` |
+| LFM2.5-VL persistent long from M21 default sweep | Report `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T181752.284497Z-shared-bench.json`; inspect `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T181752.284497Z-shared-bench-m21-lfm25_vlm_long_persistent-default-quality-inspect.json` | Most recent omitted/default persistent-cache anchor. Rows were error-free, inspect passed, cached tokens were `[0, 7373]`, cold/warm TTFT was `1.085616s / 0.032786s`, and cold/warm total was `1.098567s / 0.049742s`. |
+| LFM2.5-VL persistent long explicit 8192 from M21 | Report `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T181835.576021Z-shared-bench.json`; inspect `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T181835.576021Z-shared-bench-m21-lfm25_vlm_long_persistent-8192-quality-inspect.json`; compare `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T181835.576021Z-shared-bench-m21-lfm25_vlm_long_persistent-8192-vs-default-quality-compare.json` | Diagnostic sensitivity anchor only, not a default change. It had one candidate sample with cached tokens `[0, 7373]`, inspect and compare passed, and total changed `-2.320%` versus omitted/default. |
+| Gemma4 12B long-pair from M20 | Report `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T162050.589588Z-shared-bench.json`; inspect `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T162050.589588Z-gemma4-12b-vlm-long-pair-quality-inspect.json` | Retained Gemma4 VLM quality/stress anchor, but not persistent-cache evidence. It was error-free, inspect passed, hit both `chameleon` and `toucan`, and measured TTFT `12.350718s`, decode TPS `34.796`, total `12.810545s`. M22 must capture fresh Gemma4 persistent-cache baseline/candidate reports before using Gemma4 for materialization claims. |
+| M21 VLM/Gemma4 sweep indexes | `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T181722Z-m21-vlm-gemma4-sweep-manifest.json` and `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260630T181722Z-m21-vlm-gemma4-sweep-manifest-analysis.json` | Machine-readable index of recent VLM/Gemma4 step-size reports, useful for locating retained inspect/compare artifacts. |
+
+### Selected M22 lanes, cache roots, and command shapes
+
+M22 benchmarking should use direct persistent-cache VLM process-restart lanes only. Run everything serially, with no LM Studio runtime, no adapter routes, no DFlash flags/env vars, and no MoE evidence.
+
+1. **Primary lane, LFM2.5-VL long persistent restore**
+   - Model: `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`.
+   - Suite: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/vlm_image_long_quality.json`.
+   - Baseline root/namespace pattern: `/tmp/mlx-engine-vlm-cache-m22-lfm25-baseline-<UTC>` and `m22-lfm25-vlm-long-baseline-<UTC>`.
+   - Candidate root/namespace pattern: `/tmp/mlx-engine-vlm-cache-m22-lfm25-candidate-r<N>-<UTC>` and `m22-lfm25-vlm-long-candidate-r<N>-<UTC>`.
+   - Command shape: use the `services.yaml` `bench:m22:lfm-long-persistent` template with `--mlx-engine-process-restart`, `--runs 2`, `--max-tokens 32`, deterministic sampling, `--include-output-text`, and `--mlx-engine-batched-timing`.
+   - Required checks: row `error: null`, inspect/compare status, warm `cached_tokens=7373` or equivalent retained-prefix evidence, warm `toucan` keyword, no stream failure text, `du -sh` immediately after each run.
+2. **Secondary lane, Gemma4 12B long-pair persistent restore, if resource/process preflight remains clean**
+   - Model: `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit`.
+   - Suite: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/vlm_image_long_pair_quality.json`.
+   - Baseline root/namespace pattern: `/tmp/mlx-engine-vlm-cache-m22-gemma4-baseline-<UTC>` and `m22-gemma4-vlm-long-baseline-<UTC>`.
+   - Candidate root/namespace pattern: `/tmp/mlx-engine-vlm-cache-m22-gemma4-candidate-r<N>-<UTC>` and `m22-gemma4-vlm-long-candidate-r<N>-<UTC>`.
+   - Command shape: use the `services.yaml` `bench:m22:gemma4-long-persistent` template with `--mlx-engine-process-restart`, `--runs 2`, `--max-tokens 96`, `--max-seq-nums 1`, deterministic sampling, `--include-output-text`, `--mlx-engine-batched-timing`, and `--timeout 1200`.
+   - Required checks: row `error: null`, inspect/compare status, warm `cached_tokens > 0` or precise blocker, both `chameleon` and `toucan` retained, no stream failure text, `du -sh` immediately after each run. Because no retained Gemma4 persistent-cache anchor exists yet, capture a fresh same-checkout baseline before any candidate comparison.
+
+### Planned materialization counters
+
+The candidate/instrumentation worker should preserve existing timing fields and add counters where available:
+
+- `eval_target_count`: number of flattened MLX arrays/values passed through the restore `mx.eval(...)` barrier.
+- `materialized_bytes`: total byte footprint of arrays/values crossing the barrier, computed best-effort from shape and dtype itemsize.
+- `materialized_bytes_by_kind` and `eval_target_count_by_kind`: breakdown for `kv_delta`, `rotating_delta`, and `state_checkpoint`.
+- `record_count` and `record_count_by_kind`: physical records used by the selected restore chain.
+- `record_bytes_by_kind`: existing per-record `bytes` aggregated from `vlm_cache_record_load`.
+- Existing timing preservation: `vlm_cache_restore_plan.duration_ms`, `vlm_cache_record_load.{duration_ms,safetensor_load_ms,unflatten_ms,cache_rebuild_ms}`, and `vlm_cache_restore_detail.{records,load_chunks_ms,assemble_ms,eval_ms,touch_ms,duration_ms}`.
+- Harness metrics: row-level `cached_tokens`, `ttft_s`, `decode_tps`, `total_s`, `completion_tokens`, image keyword hits, and `error`.
+- Cache footprint: `du -sh <cache-root>` immediately after every persistent-cache run, plus persistent store record count and footprint where report/log fields expose them.
+
+The first implementation slice should prefer instrumentation-only if a safe byte-reduction candidate is not obvious. Any behavior change must reduce materialized bytes or restore timing before the existing barrier, keep old cache records readable, and preserve warm VLM fidelity. Fewer targets without bytes or latency movement is not a promotion criterion.
+
+### Validation contract assertion
+
+- `VAL-M22-001` (persistent VLM cache materialization preflight is scoped and anchored): **MET** by this section. It records the relevant code surfaces, current timing/detail fields, retained and rejected strategies, M19/M20/M21 anchor evidence, selected LFM2.5-VL and Gemma4 lanes, exact model and prompt-suite paths, fresh cache root/namespace patterns, resource/process checks, planned materialization counters, and explicit exclusions for DFlash, LM Studio runtime, adapter routes, MoE promotion evidence, and restore-barrier removal.
