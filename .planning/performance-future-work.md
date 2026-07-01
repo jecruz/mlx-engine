@@ -4667,3 +4667,33 @@ The exact worker-created cache holding path requested by the feature, `/tmp/fact
   Result: `71 passed`, `2 warnings`.
 
 `VAL-M24-002` is addressed by these diagnostics and this root-cause note. No LM Studio runtime, adapter route, DFlash, SuffixDecoding, forced sequential text route, or MoE evidence was used.
+
+## M24 Gemma4 stream-stability fix (2026-07-01, `m24-gemma4-stream-stability-fix`)
+
+Feature `m24-gemma4-stream-stability-fix` implemented the narrow cache-store fix for Redmine `#1282`. The root cause was that the restore-time barrier walked full cache objects first, but MLX cache objects are not reliably pytree-visible as objects. For Gemma4 disk restores this left the actual `cache.state` arrays lazy on the cache-I/O thread stream, so the generation thread failed when the one-token warm suffix reached final timing eval. The fix keeps the restore-time barrier in `VlmPromptCacheStore._load_restore_plan`, explicitly collects each restored cache state array, deduplicates any arrays already found by the historic full-cache walk, and calls `mx.eval(*eval_targets)` before returning the restored cache.
+
+### Safety properties retained
+
+- Restore-time `mx.eval(...)` barrier remains present before the restored cache is handed to generation.
+- Persistent cache format version and record metadata are unchanged, so existing records remain backward-readable.
+- Cached-token accounting is unchanged. The retained direct Gemma4 warm row reports `cached_tokens=7619`.
+- Existing `vlm_cache_restore_detail` materialization counters and timing fields remain available. After the fix, the retained Gemma4 restore detail reports `eval_target_count=96`, `materialized_bytes=460374016`, `record_count_by_kind={"kv_delta": 1, "rotating_delta": 3, "state_checkpoint": 0}`, and separate per-kind target/byte counters.
+- Non-Gemma behavior is covered by the focused cache-store tests, including KV, rotating, and state-checkpoint cache records.
+- No LM Studio runtime, adapter route, DFlash, SuffixDecoding, forced sequential text route, or MoE evidence was used.
+
+### Verification
+
+- Focused TDD proof: `tests/test_batched_vision_cache_store.py::test_cache_store_restore_eval_barrier_materializes_disk_restore` and `::test_cache_store_diagnostic_mixed_restore_materializes_before_handoff` were changed to require the restore barrier to receive real MLX array targets rather than a single Python list wrapper. They failed before the fix and pass after it.
+- Focused M24 pytest:
+  ```bash
+  cd "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine" && .venv-py312/bin/python -m pytest -q tests/test_batched_vision_cache_store.py tests/test_batched_vision_batch_generator.py tests/test_batched_vision_model_kit.py tests/test_batched_vision_prompt_inputs.py tests/test_patched_gemma4.py
+  ```
+  Result: `83 passed`, `2 warnings`.
+- Direct Gemma4 long-pair persistent-cache process-restart validation:
+  - Shared-bench report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T051923.925343Z-shared-bench.json`.
+  - Quality inspect: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T051923.925343Z-m24-gemma4-fix-quality-inspect.json`, `status=pass`.
+  - Command used a fresh cache root `/tmp/mlx-engine-vlm-cache-m24-gemma4-fix-59936332`, namespace `m24-gemma4-fix-59936332`, direct `.venv-py312` mlx-engine, process restart, `prompt_suites/vlm_image_long_pair_quality.json`, `--max-seq-nums 1`, `--max-tokens 96`, and `--mlx-engine-batched-timing`.
+  - Cold row: `error=null`, `cached_tokens=0`, `completion_tokens=16`, output `The first image shows a chameleon. The second image shows a toucan.`
+  - Warm row: `error=null`, `cached_tokens=7619`, `completion_tokens=16`, output `The first image shows a chameleon. The second image shows a toucan.`
+
+`VAL-M24-003` is met by the narrow restore-barrier fix, focused cache compatibility tests, preserved counters/accounting, and commit evidence. The direct retained report also shows the current checkout satisfies the warm-row stream-stability condition needed by the following M24 validation/decision lane.

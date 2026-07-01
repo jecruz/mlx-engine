@@ -415,10 +415,12 @@ def test_cache_store_restore_eval_barrier_materializes_disk_restore(
     loaded = cache_store.load_restore_plan(restore_plan)
 
     restore_eval_calls = [
-        args for args in eval_calls if len(args) == 1 and isinstance(args[0], list)
+        args
+        for args in eval_calls
+        if args and all(isinstance(arg, mx.array) for arg in args)
     ]
     assert restore_eval_calls
-    assert restore_eval_calls[-1][0]
+    assert restore_eval_calls[-1]
     kv_keys, _ = loaded.prompt_cache[0].state
     boundary_state = loaded.prompt_cache[1][0]
     real_eval(kv_keys, boundary_state)
@@ -465,10 +467,12 @@ def test_cache_store_diagnostic_mixed_restore_materializes_before_handoff(
     loaded = cache_store.load_restore_plan(restore_plan)
 
     restore_eval_calls = [
-        args for args in eval_calls if len(args) == 1 and isinstance(args[0], list)
+        args
+        for args in eval_calls
+        if args and all(isinstance(arg, mx.array) for arg in args)
     ]
     assert restore_eval_calls
-    restore_eval_targets = restore_eval_calls[-1][0]
+    restore_eval_targets = restore_eval_calls[-1]
     restore_detail = next(
         event for event in events if event["event"] == "vlm_cache_restore_detail"
     )

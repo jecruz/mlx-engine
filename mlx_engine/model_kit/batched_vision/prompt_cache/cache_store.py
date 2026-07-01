@@ -158,6 +158,35 @@ def _materialized_byte_count(value: Any) -> int:
         return 0
 
 
+def _flatten_mlx_arrays(value: Any) -> list[mx.array]:
+    """Return MLX array leaves for a cache object or state payload."""
+    return [leaf for _, leaf in tree_flatten(value) if isinstance(leaf, mx.array)]
+
+
+def _cache_restore_eval_targets(cache: Any, *, state_only: bool) -> list[mx.array]:
+    """Return arrays that must cross the restore-time stream-safety barrier."""
+    if state_only:
+        eval_objects = (getattr(cache, "state", cache),)
+    else:
+        # Keep the historic full-cache walk, then explicitly include `.state`.
+        # Some MLX cache classes are not fully pytree-visible as objects, but
+        # their state payload is what later generation-thread suffix eval
+        # consumes. Missing those arrays leaves lazy disk-loaded work tied to
+        # the cache-I/O thread stream.
+        eval_objects = (cache, getattr(cache, "state", cache))
+
+    targets = []
+    seen = set()
+    for eval_object in eval_objects:
+        for target in _flatten_mlx_arrays(eval_object):
+            target_id = id(target)
+            if target_id in seen:
+                continue
+            seen.add(target_id)
+            targets.append(target)
+    return targets
+
+
 def _restore_eval_materialization_counters(
     prompt_cache: list[Any],
     layout: PromptCacheLayout,
@@ -173,12 +202,11 @@ def _restore_eval_materialization_counters(
         if cache is None:
             continue
         record_kind = layout.layer_kinds[layer_idx]
-        eval_object = cache.state if state_only else cache
-        flattened_values = [value for _, value in tree_flatten(eval_object)]
-        eval_targets.extend(flattened_values)
-        target_count_by_kind[record_kind] += len(flattened_values)
+        cache_targets = _cache_restore_eval_targets(cache, state_only=state_only)
+        eval_targets.extend(cache_targets)
+        target_count_by_kind[record_kind] += len(cache_targets)
         byte_count_by_kind[record_kind] += sum(
-            _materialized_byte_count(value) for value in flattened_values
+            _materialized_byte_count(value) for value in cache_targets
         )
 
     materialized_bytes = sum(byte_count_by_kind.values())
@@ -394,7 +422,8 @@ class VlmPromptCacheStore:
                 ),
             )
         )
-        mx.eval(eval_targets)
+        if eval_targets:
+            mx.eval(*eval_targets)
         eval_ms = elapsed_ms(eval_start) if timing_enabled else 0.0
 
         # Restore access refreshes exactly the records used by this chain.
