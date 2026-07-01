@@ -253,6 +253,29 @@ total `7.495293s`, completion `96`; `image_pair` TTFT `5.418849s`, decode TPS
 `42.595`, total `7.672431s`, completion `96`. Scrutiny and user-testing passed
 VAL-M23-001 through VAL-M23-005.
 
+M24 closeout fixed the Gemma4 12B persistent-cache warm restore
+`Stream(gpu, 3)` failure. The repro report
+`reports/20260701T041539.771194Z-shared-bench.json` reached warm
+`cached_tokens=7619` before failing; the final decision report
+`reports/20260701T052904.546758Z-shared-bench.json` and inspect
+`reports/20260701T052904.546758Z-m24-gemma4-decision-quality-inspect.json`
+passed with zero row errors, warm cached-token reuse, and chameleon/toucan
+fidelity. Final decision: FIXED for the current checkout, with the restore-time
+`mx.eval(...)` barrier and backward-readable cache records preserved. See
+commits `805d86a`, `63c0b36`, `20d1cb9`, and `30065ef`; user-testing passed
+VAL-M24-001 through VAL-M24-005.
+
+M25 closeout completed the Qwen3.6 27B 4-bit direct VLM sweep as data-only PASS
+/ no promotion / no default change. The retained baseline is
+`reports/20260701T130407.875982Z-shared-bench.json` with inspect
+`reports/20260701T130407.875982Z-quality-inspect.json`; sweep cells are
+summarized in `reports/m25-qwen36-sweeps/summary.json`; persistent-cache long
+lanes are retained under `reports/m25-qwen36-long/single/` and
+`reports/m25-qwen36-long/pair/`. All prefill-step, `max_seq_nums`, and long
+lanes passed quality with zero row errors, but the apparent wins were
+single-sample and prompt-local, so no default changed. User-testing passed
+VAL-M25-001 through VAL-M25-005.
+
 ## Development Setup
 
 ### Pre-commit Hooks
