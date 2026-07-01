@@ -4790,3 +4790,77 @@ This baseline follows the passing M23 smoke above and re-captures the Qwen3.6 27
 Decision: **data-only PASS / no promotion / no default change**.
 
 The retained baseline confirms the Qwen3.6 27B 4-bit direct VLM route still passes inspect with zero row errors, expected image keywords, and stable repeated-sample metrics. This is baseline evidence only, not an optimization claim. No forced sequential text, LM Studio runtime, LLMDYNAMIX/OpenAI route, adapter route, DFlash flags, or MoE evidence was used.
+
+## M25 Qwen3.6 27B 4-bit prefill and max_seq sweeps (2026-07-01, `m25-qwen36-prefill-and-maxseq-sweeps`)
+
+This sweep kept the direct VLM/batched-vision route stable and varied only the requested prefill-step or `max_seq_nums` setting. The retained baseline remained `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T130407.875982Z-shared-bench.json`.
+
+### Execution summary
+
+- Model: `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit`
+- Prompt suite: `prompt_suites/vlm_image_quality.json`
+- Stable settings: `--runs 3 --max-tokens 96 --temperature 0.0 --top-p 1.0 --include-output-text --mlx-engine-batched-timing`
+- All retained candidate reports had `error: null` on every row.
+- All `quality_compare.py` runs returned `status=pass`.
+- Sweep summary artifact: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/summary.json`
+
+### Prefill-step cells (`max_seq_nums=1`)
+
+- `prefill-default`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-default/20260701T131413.146071Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-default/quality-compare.json`
+  - `compare_status=pass`, `report_errors=0`
+  - `image_pair`: TTFT `-2.30%`, total `-0.81%`
+  - `image_toucan`: TTFT `+1.22%`, total `+0.44%`
+
+- `prefill-1024`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-1024/20260701T131442.875554Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-1024/quality-compare.json`
+  - `compare_status=pass`, `report_errors=0`
+  - `image_pair`: TTFT `-1.96%`, total `+0.13%`
+  - `image_toucan`: TTFT `-59.08%`, total `-16.39%`
+
+- `prefill-2048`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-2048/20260701T131509.627006Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-2048/quality-compare.json`
+  - `compare_status=pass`, `report_errors=0`
+  - `image_pair`: TTFT `-1.88%`, total `-0.25%`
+  - `image_toucan`: TTFT `-61.63%`, total `-16.93%`
+
+- `prefill-4096`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-4096/20260701T131535.591658Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/prefill-4096/quality-compare.json`
+  - `compare_status=pass`, `report_errors=0`
+  - `image_pair`: TTFT `-1.51%`, total `+0.05%`
+  - `image_toucan`: TTFT `-62.44%`, total `-17.26%`
+
+### `max_seq_nums` cells
+
+- `maxseq-1`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-1/20260701T131601.581675Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-1/quality-compare.json`
+  - `compare_status=pass`, `report_errors=0`
+  - `image_pair`: TTFT `-2.75%`, total `+0.22%`
+  - `image_toucan`: TTFT `-69.50%`, total `-19.03%`
+
+- `maxseq-2`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-2/20260701T131627.233763Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-2/quality-compare.json`
+  - `compare_status=pass`, `report_errors=0`
+  - `image_pair`: TTFT `-2.19%`, total `-0.56%`
+  - `image_toucan`: TTFT `-69.17%`, total `-19.18%`
+
+- `maxseq-4`
+  - Report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-4/20260701T131652.714706Z-shared-bench.json`
+  - Compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-sweeps/maxseq-4/quality-compare.json`
+  - `compare_status=pass`, `report_errors=0`
+  - `image_pair`: TTFT `-1.35%`, total `-0.16%`
+  - `image_toucan`: TTFT `-68.78%`, total `-18.63%`
+
+### Skipped optional lane
+
+- `8192` was not attempted. It is optional stress only, and no separate extra-headroom reservation was established beyond the core serial matrix.
+
+### Decision
+
+No default change or promotion claim is made from this sweep. The candidate cells all passed quality inspection, but this was a single-sample sweep with likely host/model warmup effects across later cells, so the data is recorded as evidence only. The later `image_toucan` speedups are notable, but not repeatable promotion evidence by themselves.
