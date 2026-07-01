@@ -4864,3 +4864,35 @@ This sweep kept the direct VLM/batched-vision route stable and varied only the r
 ### Decision
 
 No default change or promotion claim is made from this sweep. The candidate cells all passed quality inspection, but this was a single-sample sweep with likely host/model warmup effects across later cells, so the data is recorded as evidence only. The later `image_toucan` speedups are notable, but not repeatable promotion evidence by themselves.
+
+## M25 Qwen3.6 27B 4-bit persistent-cache long lanes (2026-07-01, `m25-qwen36-persistent-cache-long-lanes`)
+
+This lane extended the passing M25 direct VLM baseline into persistent-cache long-image work, starting with `vlm_image_long_quality.json` and then, because the single-image lane was clean, attempting the long-pair stress lane as well. Both runs stayed on the direct VLM/batched-vision route with fresh cache roots/namespaces, process restart, `--max-seq-nums 1`, `--mlx-engine-batched-timing`, and immediate cache-footprint capture.
+
+### Single-image long lane
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-long/single/20260701T132515.653537Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-long/single/quality-inspect.json` and clean rerun `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-long/single/quality-inspect-clean.json`
+- **Cache footprint:** `/private/tmp/mlx-engine-vlm-cache-m25-qwen36-long-ePgI9J`, `1.5G`
+- **Row checks:** 3/3 rows `error: null`
+- **Quality status:** `status=pass`
+- **Keyword check:** `image_long_toucan` retained `toucan=true`
+- **Metrics:** cold TTFT `23.509s`, warm TTFT `0.414s`, avg TTFT `8.112s`, avg decode TPS `35.617`, avg total `8.792s`, `cached_tokens` `0 -> 7283`, completion tokens `24`
+- **Output preview:** `The animal in the image is a toucan. The provided text about Benjamin Franklin is unrelated to the visual content.`
+
+### Long-pair stress lane
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-long/pair/20260701T132702.030626Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/m25-qwen36-long/pair/quality-inspect.json`
+- **Cache footprint:** `/private/tmp/mlx-engine-vlm-cache-m25-qwen36-pair-BE5Pdi`, `1.5G`
+- **Row checks:** 3/3 rows `error: null`
+- **Quality status:** `status=pass`
+- **Keyword check:** `image_long_pair` retained both `chameleon=true` and `toucan=true`
+- **Metrics:** cold TTFT `24.155s`, warm TTFT `0.236s`, avg TTFT `8.209s`, avg decode TPS `35.591`, avg total `8.693s`, `cached_tokens` `0 -> 7649`, completion tokens `17`
+- **Output preview:** `The first image features a chameleon. The second image features a toucan.`
+
+### Decision
+
+Decision: **data-only PASS / no promotion / no default change**.
+
+The retained long-lane evidence passed quality with zero row errors, stable warm cached-token reuse, and no `Stream(gpu, ...)` or cache-shape failures in the retained evidence. The long-pair stress lane was retained because the single-image long lane was clean and it also passed inspect.
