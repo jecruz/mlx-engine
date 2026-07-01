@@ -133,6 +133,64 @@ def _terminal_packed_final_kv_enabled() -> bool:
     return value.lower() not in {"0", "false", "no", "off"}
 
 
+def _zero_record_kind_counts() -> dict[RecordKind, int]:
+    return {record_kind: 0 for record_kind in RECORD_WRITE_ORDER}
+
+
+def _materialized_byte_count(value: Any) -> int:
+    """Return best-effort byte footprint for one eval target."""
+    nbytes = getattr(value, "nbytes", None)
+    if nbytes is not None:
+        try:
+            return int(nbytes)
+        except (TypeError, ValueError):
+            return 0
+    shape = getattr(value, "shape", None)
+    itemsize = getattr(value, "itemsize", None)
+    if shape is None or itemsize is None:
+        return 0
+    try:
+        element_count = 1
+        for dim in shape:
+            element_count *= int(dim)
+        return element_count * int(itemsize)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _restore_eval_materialization_counters(
+    prompt_cache: list[Any],
+    layout: PromptCacheLayout,
+    *,
+    state_only: bool,
+) -> tuple[list[Any], dict[str, Any]]:
+    """Collect restore eval targets and materialization counters by record kind."""
+    eval_targets = []
+    target_count_by_kind = _zero_record_kind_counts()
+    byte_count_by_kind = _zero_record_kind_counts()
+
+    for layer_idx, cache in enumerate(prompt_cache):
+        if cache is None:
+            continue
+        record_kind = layout.layer_kinds[layer_idx]
+        eval_object = cache.state if state_only else cache
+        flattened_values = [value for _, value in tree_flatten(eval_object)]
+        eval_targets.extend(flattened_values)
+        target_count_by_kind[record_kind] += len(flattened_values)
+        byte_count_by_kind[record_kind] += sum(
+            _materialized_byte_count(value) for value in flattened_values
+        )
+
+    materialized_bytes = sum(byte_count_by_kind.values())
+    eval_target_count = sum(target_count_by_kind.values())
+    return eval_targets, {
+        "eval_target_count": eval_target_count,
+        "eval_target_count_by_kind": target_count_by_kind,
+        "materialized_bytes": materialized_bytes,
+        "materialized_bytes_by_kind": byte_count_by_kind,
+    }
+
+
 class VlmPromptCacheStore:
     """Cache-I/O-thread-owned index and temporary safetensor blob store.
 
@@ -292,10 +350,20 @@ class VlmPromptCacheStore:
         # Load each chunk's physical records into sparse per-layer cache lists.
         load_chunks_start = perf_counter() if timing_enabled else None
         record_count = 0
+        record_count_by_kind = _zero_record_kind_counts()
+        record_bytes_by_kind = _zero_record_kind_counts()
         for chunk in plan.chunks:
-            record_count += len(plan.record_keys_by_chunk_key[chunk.key])
+            record_keys = plan.record_keys_by_chunk_key[chunk.key]
+            record_count += len(record_keys)
+            for record_key in record_keys:
+                record_metadata = self._record_metadata_by_key[record_key]
+                record_count_by_kind[record_metadata.record_kind] += 1
+                record_bytes_by_kind[record_metadata.record_kind] += self._key_sizes.get(
+                    record_key,
+                    0,
+                )
             prompt_cache = self._load_one_chunk(
-                plan.record_keys_by_chunk_key[chunk.key],
+                record_keys,
                 layout,
                 timing_enabled=timing_enabled,
             )
@@ -316,15 +384,17 @@ class VlmPromptCacheStore:
         # compatibility. Set MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1 to evaluate
         # just cache state payloads, which can reduce materialization work.
         eval_start = perf_counter() if timing_enabled else None
-        restore_cache_for_eval = (
-            [cache.state for cache in prompt_cache if cache is not None]
-            if os.environ.get(_RESTORE_EVAL_STATE_ONLY_ENV, "").lower()
-            in {"1", "true", "yes", "on"}
-            else prompt_cache
+        eval_targets, materialization_counters = (
+            _restore_eval_materialization_counters(
+                prompt_cache,
+                layout,
+                state_only=(
+                    os.environ.get(_RESTORE_EVAL_STATE_ONLY_ENV, "").lower()
+                    in {"1", "true", "yes", "on"}
+                ),
+            )
         )
-        mx.eval(
-            [value for _, value in tree_flatten(restore_cache_for_eval)]
-        )
+        mx.eval(eval_targets)
         eval_ms = elapsed_ms(eval_start) if timing_enabled else 0.0
 
         # Restore access refreshes exactly the records used by this chain.
@@ -343,9 +413,13 @@ class VlmPromptCacheStore:
                 cached_tokens=plan.cached_prefix_len,
                 chunks=len(plan.chunks),
                 records=record_count,
+                record_count_by_kind=record_count_by_kind,
+                record_bytes=sum(record_bytes_by_kind.values()),
+                record_bytes_by_kind=record_bytes_by_kind,
                 load_chunks_ms=load_chunks_ms,
                 assemble_ms=assemble_ms,
                 eval_ms=eval_ms,
+                **materialization_counters,
                 touch_ms=touch_ms,
                 duration_ms=elapsed_ms(restore_start),
             )

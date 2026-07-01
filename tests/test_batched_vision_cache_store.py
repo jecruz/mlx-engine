@@ -67,6 +67,14 @@ def _rotating_prompt_cache(prefix_len: int):
     return [_kv_cache(prefix_len), _rotating_cache(prefix_len)]
 
 
+def _mixed_prompt_cache(prefix_len: int):
+    return [
+        _kv_cache(prefix_len),
+        _rotating_cache(prefix_len),
+        _arrays_cache(prefix_len),
+    ]
+
+
 def _save_chunk(
     cache_store,
     chunk,
@@ -323,6 +331,102 @@ def test_cache_store_logs_profiled_record_load_timing(
         assert event["cache_rebuild_ms"] >= 0.0
 
 
+def test_cache_store_logs_restore_materialization_counters(
+    cache_store,
+    monkeypatch,
+):
+    """Restore detail timing includes eval/materialization counters by kind."""
+    prompt_input_ids = list(range(600))
+    chunks = build_prefix_cache_chunks(prompt_input_ids, [])
+    _save_chunk(
+        cache_store,
+        chunks[0],
+        chunks,
+        _mixed_prompt_cache(chunks[0].end),
+    )
+
+    restore_plan = cache_store.plan_longest_prefix_restore(prompt_input_ids, [])
+    assert restore_plan is not None
+
+    events = []
+    monkeypatch.setenv("MLX_ENGINE_BATCHED_TIMING", "1")
+    monkeypatch.setattr(
+        cache_store_module,
+        "log_batched_timing",
+        lambda logger, event, **fields: events.append(
+            {"event": event, **fields}
+        ),
+    )
+    cache_store.load_restore_plan(restore_plan)
+
+    restore_detail = next(
+        event for event in events if event["event"] == "vlm_cache_restore_detail"
+    )
+    assert restore_detail["eval_target_count"] > 0
+    assert restore_detail["materialized_bytes"] > 0
+    assert restore_detail["eval_target_count"] == sum(
+        restore_detail["eval_target_count_by_kind"].values()
+    )
+    assert restore_detail["materialized_bytes"] == sum(
+        restore_detail["materialized_bytes_by_kind"].values()
+    )
+    assert restore_detail["record_count_by_kind"] == {
+        RECORD_KIND_KV_DELTA: 1,
+        RECORD_KIND_ROTATING_DELTA: 1,
+        RECORD_KIND_STATE_CHECKPOINT: 1,
+    }
+    assert set(restore_detail["record_bytes_by_kind"]) == {
+        RECORD_KIND_KV_DELTA,
+        RECORD_KIND_ROTATING_DELTA,
+        RECORD_KIND_STATE_CHECKPOINT,
+    }
+    assert restore_detail["record_bytes"] == sum(
+        restore_detail["record_bytes_by_kind"].values()
+    )
+    for record_kind in (
+        RECORD_KIND_KV_DELTA,
+        RECORD_KIND_ROTATING_DELTA,
+        RECORD_KIND_STATE_CHECKPOINT,
+    ):
+        assert restore_detail["eval_target_count_by_kind"][record_kind] > 0
+        assert restore_detail["materialized_bytes_by_kind"][record_kind] > 0
+
+
+def test_cache_store_restore_eval_barrier_materializes_disk_restore(
+    cache_store,
+    monkeypatch,
+):
+    """Disk restore keeps the mx.eval barrier before returning restored cache."""
+    prompt_input_ids = list(range(600))
+    chunks = build_prefix_cache_chunks(prompt_input_ids, [])
+    _save_chunk(cache_store, chunks[0], chunks, _prompt_cache(chunks[0].end))
+
+    restore_plan = cache_store.plan_longest_prefix_restore(prompt_input_ids, [])
+    assert restore_plan is not None
+
+    eval_calls = []
+    real_eval = cache_store_module.mx.eval
+
+    def recording_eval(*args, **kwargs):
+        eval_calls.append(args)
+        return real_eval(*args, **kwargs)
+
+    monkeypatch.setattr(cache_store_module.mx, "eval", recording_eval)
+    loaded = cache_store.load_restore_plan(restore_plan)
+
+    restore_eval_calls = [
+        args for args in eval_calls if len(args) == 1 and isinstance(args[0], list)
+    ]
+    assert restore_eval_calls
+    assert restore_eval_calls[-1][0]
+    kv_keys, _ = loaded.prompt_cache[0].state
+    boundary_state = loaded.prompt_cache[1][0]
+    real_eval(kv_keys, boundary_state)
+    assert loaded.cached_prefix_len == chunks[0].end
+    assert kv_keys.shape[2] == chunks[0].end
+    assert boundary_state.item() == chunks[0].end
+
+
 def test_persistent_cache_store_restores_after_reopen(tmp_path):
     """Persistent cache records survive a store reopen."""
     prompt_input_ids = list(range(600))
@@ -351,6 +455,47 @@ def test_persistent_cache_store_restores_after_reopen(tmp_path):
         mx.eval(kv_keys)
         assert loaded.cached_prefix_len == chunks[0].end
         assert kv_keys.shape[2] == chunks[0].end
+    finally:
+        reopened.close()
+
+
+def test_persistent_cache_store_loads_legacy_v1_record_metadata(tmp_path):
+    """Format-v1 records remain readable when optional metadata keys are absent."""
+    prompt_input_ids = list(range(600))
+    chunks = build_prefix_cache_chunks(prompt_input_ids, [])
+    storage_root = tmp_path / "prompt-cache"
+    cache_store = VlmPromptCacheStore(
+        storage_root=storage_root,
+        cache_namespace="model-a",
+    )
+
+    try:
+        _save_chunk(cache_store, chunks[0], chunks, _prompt_cache(chunks[0].end))
+    finally:
+        cache_store.close()
+
+    [index_path] = storage_root.glob("*/prompt-cache-index.json")
+    data = cache_store_module.json.loads(index_path.read_text())
+    assert data["format_version"] == 1
+    for record_metadata in data["records"].values():
+        record_metadata.pop("chunk_span", None)
+        record_metadata.pop("is_terminal_packed", None)
+    index_path.write_text(cache_store_module.json.dumps(data, sort_keys=True))
+
+    reopened = VlmPromptCacheStore(
+        storage_root=storage_root,
+        cache_namespace="model-a",
+    )
+    try:
+        restore_plan = reopened.plan_longest_prefix_restore(prompt_input_ids, [])
+        assert restore_plan is not None
+        loaded = reopened.load_restore_plan(restore_plan)
+        kv_keys, _ = loaded.prompt_cache[0].state
+        boundary_state = loaded.prompt_cache[1][0]
+        mx.eval(kv_keys, boundary_state)
+        assert loaded.cached_prefix_len == chunks[0].end
+        assert kv_keys.shape[2] == chunks[0].end
+        assert boundary_state.item() == chunks[0].end
     finally:
         reopened.close()
 

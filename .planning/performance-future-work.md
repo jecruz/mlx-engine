@@ -4313,3 +4313,67 @@ The first implementation slice should prefer instrumentation-only if a safe byte
 ### Validation contract assertion
 
 - `VAL-M22-001` (persistent VLM cache materialization preflight is scoped and anchored): **MET** by this section. It records the relevant code surfaces, current timing/detail fields, retained and rejected strategies, M19/M20/M21 anchor evidence, selected LFM2.5-VL and Gemma4 lanes, exact model and prompt-suite paths, fresh cache root/namespace patterns, resource/process checks, planned materialization counters, and explicit exclusions for DFlash, LM Studio runtime, adapter routes, MoE promotion evidence, and restore-barrier removal.
+
+## M22 persistent VLM cache materialization instrumentation candidate (2026-07-01, `m22-persistent-cache-materialization-candidate`)
+
+Feature `m22-persistent-cache-materialization-candidate` adds instrumentation only. No materialization-reduction behavior is promoted in this slice because the safe first change is measurement, not a restore-layout change. The restore-time `mx.eval(...)` barrier remains in `VlmPromptCacheStore._load_restore_plan`, old format-v1 records stay readable, and persistent-cache warm restore fidelity was verified on the LFM2.5-VL long image lane.
+
+### Code and counters added
+
+- `mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py` now centralizes restore eval target collection in `_restore_eval_materialization_counters(...)`.
+- Existing `vlm_cache_restore_detail` fields remain unchanged: `cached_tokens`, `chunks`, `records`, `load_chunks_ms`, `assemble_ms`, `eval_ms`, `touch_ms`, and `duration_ms`.
+- New `vlm_cache_restore_detail` fields:
+  - `eval_target_count`
+  - `eval_target_count_by_kind`
+  - `materialized_bytes`
+  - `materialized_bytes_by_kind`
+  - `record_bytes`
+  - `record_bytes_by_kind`
+  - `record_count_by_kind`
+- The counters use the same flattened eval target list that is passed to the mandatory restore-time `mx.eval(...)` barrier, so instrumentation should reflect the actual barrier payload without changing restored cache state.
+
+### Focused validation
+
+- Focused M22 cache tests passed:
+  - `.venv-py312/bin/python -m pytest -q tests/test_batched_vision_records.py tests/test_batched_vision_restore_planner.py tests/test_batched_vision_cache_store.py tests/test_batched_vision_batch_generator.py`
+  - Result: `53 passed`.
+- Full promotion pytest group passed:
+  - Result: `414 passed / 16 skipped / 52 subtests passed`.
+- Lint passed:
+  - `ruff check mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py tests/test_batched_vision_cache_store.py`
+  - `ruff check --exclude .worktrees .`
+- Added tests prove:
+  - `vlm_cache_restore_detail` includes materialization counters and kind breakdowns for `kv_delta`, `rotating_delta`, and `state_checkpoint`.
+  - Disk restore still calls the `mx.eval(...)` barrier before returning restored cache.
+  - Legacy `format_version=1` persistent record metadata without optional `chunk_span` / `is_terminal_packed` keys still loads and restores.
+
+### Direct LFM2.5-VL warm-restore smoke
+
+- Command surface: direct `shared_bench.py`, persistent cache, process restart, `--mlx-engine-batched-timing`, no DFlash, no LM Studio runtime, no adapter route, no MoE.
+- Candidate report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T011556.206278Z-shared-bench.json`
+- Quality inspect: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T011556.206278Z-m22-lfm25-candidate-quality-inspect.json`
+- Compare vs M21 omitted/default anchor: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T011556.206278Z-m22-lfm25-candidate-vs-m21-default-quality-compare.json`
+- Cache footprint after run: `/tmp/mlx-engine-vlm-cache-m22-lfm25-candidate-a8dc2963`, `87M`.
+- Row inspection:
+  - `error=null` for both rows.
+  - `cached_tokens`: cold `0`, warm `7373`.
+  - Output: cold `A toucan.`, warm `A toucan.`, inspect `status=pass`.
+  - Warm TTFT `0.034071s`, warm total `0.052223s`.
+  - No `RuntimeError: There is no Stream(...)` text in the report stderr.
+- Warm restore materialization counters from `vlm_cache_restore_detail`:
+  - `records=2`, `record_count_by_kind={"kv_delta": 1, "rotating_delta": 0, "state_checkpoint": 1}`.
+  - `record_bytes=90683491`, `record_bytes_by_kind={"kv_delta": 90600551, "rotating_delta": 0, "state_checkpoint": 82940}`.
+  - `eval_target_count=16`, `eval_target_count_by_kind={"kv_delta": 6, "rotating_delta": 0, "state_checkpoint": 10}`.
+  - `materialized_bytes=90681344`, `materialized_bytes_by_kind={"kv_delta": 90599424, "rotating_delta": 0, "state_checkpoint": 81920}`.
+  - `load_chunks_ms=0.608`, `assemble_ms=0.014`, `eval_ms=0.032`, `touch_ms=0.034`, `duration_ms=0.691`.
+
+### Decision
+
+Decision: **instrumentation-only / no promotion in this feature**.
+
+Rationale:
+
+- The counter payload is now visible and quality passed, but the anchor compare showed no end-to-end win: `ttft_change_pct=+2.524`, `decode_tps_change_pct=-4.642`, `total_change_pct=+2.599`.
+- This feature did not implement a byte-reduction behavior change because the safe, test-supported first slice was central target collection and counters. A reduction candidate should be attempted only after benchmark workers use these counters to identify a repeatable byte/timing target.
+- `VAL-M22-002` is met by the focused code/tests preserving backward readability, existing timing fields, new materialization counters, and the restore barrier.
+- `VAL-M22-003` is met by focused tests plus the LFM2.5-VL persistent process-restart smoke with warm cached-token accounting, toucan fidelity, zero row errors, and no stream failure.
