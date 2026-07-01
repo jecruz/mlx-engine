@@ -4734,3 +4734,59 @@ The quality inspect row checks pass for both runs with `keyword_hits={"chameleon
 The validation kept the restore-time `mx.eval(...)` barrier, backward-readable cache record format, cached-token accounting, and materialization timing/counter fields from the fix lane. The evidence used only direct `.venv-py312` `mlx-engine` through `shared_bench.py` on the Gemma4 VLM/batched-vision route. It did **not** use LM Studio runtime, LLMDYNAMIX/OpenAI-compatible route, adapter route, DFlash, SuffixDecoding, forced sequential text route, or MoE evidence. This is a stream-stability closeout, not a promotion/default-change claim.
 
 `VAL-M24-004` is met by the retained direct report and passing inspect artifact. `VAL-M24-005` is met by this fixed decision, the cited report/inspect/test paths, the retained safety constraints, the unsupported-route exclusion, and the Redmine `#1282` update note from this worker.
+
+## M25 Qwen3.6 27B 4-bit repeated baseline and preflight (2026-07-01, `m25-qwen36-sweep-preflight-baseline`)
+
+This baseline follows the passing M23 smoke above and re-captures the Qwen3.6 27B 4-bit direct VLM route with repeated samples before any later sweep cells. It stays on the direct VLM/batched-vision path, not forced sequential text, and serves as the retained baseline anchor for M25.
+
+### Config, weights, and resource/process preflight
+
+- **Engine branch:** `mlx-vlm-restore-eval-followup`, clean against `origin/mlx-vlm-restore-eval-followup`.
+- **Interpreter and harness:** mission `init.sh` re-verified `.venv-py312` imports `mlx.core` and `mlx.nn`, confirmed the harness import, and cleaned stale `/private/tmp/mlx-engine-vlm-cache-*`.
+- **Model path:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit`.
+- **Model metadata:** `model_type="qwen3_5"`, `architectures=["Qwen3_5ForConditionalGeneration"]`, `language_model_only=false`, `text_config.model_type="qwen3_5_text"`, `text_config.num_hidden_layers=64`, `quantization.bits=4`, `quantization.mode="affine"`, `quantization.group_size=64`.
+- **Weights:** `3` safetensors files, total bytes `16,054,541,599`.
+- **Prompt suite:** full `prompt_suites/vlm_image_quality.json` with `image_toucan` and `image_pair`.
+- **Process/resource isolation:** no active `shared_bench.py`, `quality_compare.py`, `mlx_engine.openai_adapter`, or `vmlx_engine.cli` workload was present; ports `3180`, `3181`, and `3182` had no listeners. `llmdynamix` remained listening on `*:12444`, but no local MLX/Metal-heavy benchmark or route evidence used it.
+
+### Direct repeated baseline evidence
+
+- **Report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T130407.875982Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T130407.875982Z-quality-inspect.json`
+- **Command shape:**
+
+  ```bash
+  cd "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness"
+  python3 shared_bench.py \
+    --engine mlx-engine \
+    --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit \
+    --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+    --prompt-suite-json prompt_suites/vlm_image_quality.json \
+    --runs 3 \
+    --max-tokens 96 \
+    --temperature 0.0 \
+    --top-p 1.0 \
+    --max-seq-nums 1 \
+    --mlx-engine-batched-timing \
+    --include-output-text \
+    --timeout 1800
+  ```
+
+- **Route/config flags from report:** `mlx_engine_force_sequential=false`, `max_seq_nums=1`, `dflash=false`, `suffix_decoding=false`, `specprefill=false`, `prefill_step_size=null`, `include_output_text=true`.
+- **Row errors:** all `6` rows have `error=null`; runner process returncode was `0`.
+- **Quality inspect status:** `status=pass`; failed prompts `[]`.
+- **Keyword checks:** `image_toucan` retained `toucan=true`; `image_pair` retained `chameleon=true` and `toucan=true`.
+- **Repeatability note:** the warm repeats stayed stable, with cached-token reuse on run 2/3 for both prompts and no row-level errors.
+
+### Metrics
+
+| Prompt | Runs | Avg prompt tokens | Avg cached tokens | Avg TTFT (s) | Avg decode TPS | Avg total (s) | Completion tokens | Output preview |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `image_toucan` | 3 | 38.0 | 68.0 | 0.837 | 39.233 | 3.055 | 87 | `This image features a vibrant toucan perched on a mossy branch...` |
+| `image_pair` | 3 | 47.0 | 306.7 | 0.675 | 38.916 | 3.142 | 96 | `Of course. Here is a comparison of the animals shown in the two images.` |
+
+### Decision
+
+Decision: **data-only PASS / no promotion / no default change**.
+
+The retained baseline confirms the Qwen3.6 27B 4-bit direct VLM route still passes inspect with zero row errors, expected image keywords, and stable repeated-sample metrics. This is baseline evidence only, not an optimization claim. No forced sequential text, LM Studio runtime, LLMDYNAMIX/OpenAI route, adapter route, DFlash flags, or MoE evidence was used.
