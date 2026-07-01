@@ -5050,3 +5050,31 @@ The implementation is diagnostics-only. It does not alter record formats, does n
 Current interpretation: the retained rotating-delta surface still looks like irreducible final-state materialization rather than a proven reducible overhead. The diagnostic cost model therefore records `no-go` unless a future candidate shows a real byte reduction in the rotating surface together with repeated quality-passing TTFT / decode / total / restore-eval wins and preserved image fidelity.
 
 No layout change was implemented in this slice. The no-go criteria are now explicit: keep the existing backward-readable records and barrier behavior, and only revisit layout work if future evidence proves that fewer rotating bytes or eval targets actually reduce end-to-end restore cost instead of just reshaping it.
+
+### M27 benchmark decision (2026-07-01, `m27-restore-layout-benchmark-decision`)
+
+Decision: **REJECT / no default change**. The retained direct persistent-cache process-restart VLM evidence is quality-clean and stream-stable, but it does not show a repeatable layout win or a byte-reduction candidate that justifies promotion.
+
+### Evidence paths
+
+- Shared-bench report, retained direct process-restart run 1: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T051923.925343Z-shared-bench.json`
+- Quality inspect, run 1: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T051923.925343Z-m24-gemma4-fix-quality-inspect.json`, `status=pass`
+- Shared-bench report, retained direct process-restart run 2: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T052904.546758Z-shared-bench.json`
+- Quality inspect, run 2: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T052904.546758Z-m24-gemma4-decision-quality-inspect.json`, `status=pass`
+
+### Repeated evidence summary
+
+- Both runs used the Gemma4 12B persistent-cache long-pair process-restart lane with `.venv-py312`, `prompt_suites/vlm_image_long_pair_quality.json`, `--max-seq-nums 1`, `--max-tokens 96`, `--mlx-engine-batched-timing`, and fresh cache roots/namespaces.
+- Row errors were `null` on both cold and warm rows, and the expected `chameleon` / `toucan` keywords passed on both runs.
+- No `RuntimeError: There is no Stream(...)` or `Stream(gpu, ...)` failure text appeared in runner stderr.
+- Warm restore remained stable at `cached_tokens=7619` with `completion_tokens=16` and identical output text on both runs.
+
+### Materialization and timing signal
+
+- Warm restore on the decision run reported `record_count_by_kind={"kv_delta": 1, "rotating_delta": 3, "state_checkpoint": 0}`, `records=4`, `eval_target_count=96`, `materialized_bytes=460374016`, `record_bytes=608188858`, `load_chunks_ms=3.021`, `assemble_ms=0.503`, `eval_ms=172.962`, and warm `restore_ms=33.526`.
+- The earlier retained run reported the same quality shape with `record_count_by_kind={"kv_delta": 1, "rotating_delta": 3, "state_checkpoint": 0}`, `records=4`, `eval_target_count=96`, `materialized_bytes=460374016`, `record_bytes=608188858`, `load_chunks_ms=2.465`, `assemble_ms=0.476`, `eval_ms=171.887`, and warm `restore_ms=33.629`.
+- The rotating surface still dominates the barrier, with `rotating_delta` accounting for `3` records, `483357642` record bytes, `335544320` materialized bytes, and `80` eval targets on the decision run. That is diagnostics-consistent, but not a demonstrated layout reduction.
+
+### Outcome
+
+Keep the current backward-readable persistent record format and restore-time `mx.eval(...)` barrier. The M27 diagnostics are useful for future layout work, but they do not justify a promoted restore-layout change, because there is no repeated quality-passing byte win and no candidate layout that clearly reduces rotating bytes instead of just reshaping them.
