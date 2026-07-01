@@ -4697,3 +4697,40 @@ Feature `m24-gemma4-stream-stability-fix` implemented the narrow cache-store fix
   - Warm row: `error=null`, `cached_tokens=7619`, `completion_tokens=16`, output `The first image shows a chameleon. The second image shows a toucan.`
 
 `VAL-M24-003` is met by the narrow restore-barrier fix, focused cache compatibility tests, preserved counters/accounting, and commit evidence. The direct retained report also shows the current checkout satisfies the warm-row stream-stability condition needed by the following M24 validation/decision lane.
+
+## M24 Gemma4 real validation decision (2026-07-01, `m24-gemma4-real-validation-decision`)
+
+Decision: **FIXED** for Redmine `#1282` on the current checkout. A fresh direct Gemma4 12B long-pair persistent-cache process-restart validation run passes on the fixed checkout with zero row errors, warm cached-token reuse, chameleon/toucan fidelity, no `Stream(gpu, ...)` failure, and `quality_compare.py --candidate` `status=pass`.
+
+### Evidence paths
+
+- Focused M24 pytest command:
+  ```bash
+  cd "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine" && .venv-py312/bin/python -m pytest -q tests/test_batched_vision_cache_store.py tests/test_batched_vision_batch_generator.py tests/test_batched_vision_model_kit.py tests/test_batched_vision_prompt_inputs.py tests/test_patched_gemma4.py
+  ```
+  Result: `83 passed`, `2 warnings`.
+- Shared-bench report: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T052904.546758Z-shared-bench.json`.
+- Quality inspect: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260701T052904.546758Z-m24-gemma4-decision-quality-inspect.json`, `status=pass`.
+- Cache root and namespace: `/tmp/mlx-engine-vlm-cache-m24-gemma4-decision-71733171-20260701`, namespace `m24-gemma4-decision-71733171-20260701`.
+- Cache footprint after run: `1.2G`.
+
+### Direct run configuration
+
+```bash
+cd "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness" && python3 shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/gemma-4-12B-it-8bit --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --mlx-engine-vlm-prompt-cache-root /tmp/mlx-engine-vlm-cache-m24-gemma4-decision-71733171-20260701 --mlx-engine-vlm-prompt-cache-namespace m24-gemma4-decision-71733171-20260701 --mlx-engine-process-restart --prompt-suite-json prompt_suites/vlm_image_long_pair_quality.json --runs 2 --max-tokens 96 --temperature 0.0 --top-p 1.0 --max-seq-nums 1 --mlx-engine-batched-timing --include-output-text --timeout 1200
+```
+
+### Row inspection
+
+| Row | `cached_tokens` | `error` | `completion_tokens` | TTFT / total | Output |
+|---|---:|---|---:|---|---|
+| `1` cold | `0` | `null` | `16` | `12.964577s` / `13.415667s` | `The first image shows a chameleon. The second image shows a toucan.` |
+| `2` warm | `7619` | `null` | `16` | `0.389915s` / `0.771116s` | `The first image shows a chameleon. The second image shows a toucan.` |
+
+The quality inspect row checks pass for both runs with `keyword_hits={"chameleon": true, "toucan": true}` and no repeated-output findings. Embedded runner stderr contains no `RuntimeError: There is no Stream(...)` or `Stream(gpu, ...)` failure text. Warm restore details remain visible, including `eval_target_count=96`, `materialized_bytes=460374016`, `record_count_by_kind={"kv_delta": 1, "rotating_delta": 3, "state_checkpoint": 0}`, and `records=4`.
+
+### Safety and unsupported-route statement
+
+The validation kept the restore-time `mx.eval(...)` barrier, backward-readable cache record format, cached-token accounting, and materialization timing/counter fields from the fix lane. The evidence used only direct `.venv-py312` `mlx-engine` through `shared_bench.py` on the Gemma4 VLM/batched-vision route. It did **not** use LM Studio runtime, LLMDYNAMIX/OpenAI-compatible route, adapter route, DFlash, SuffixDecoding, forced sequential text route, or MoE evidence. This is a stream-stability closeout, not a promotion/default-change claim.
+
+`VAL-M24-004` is met by the retained direct report and passing inspect artifact. `VAL-M24-005` is met by this fixed decision, the cited report/inspect/test paths, the retained safety constraints, the unsupported-route exclusion, and the Redmine `#1282` update note from this worker.
