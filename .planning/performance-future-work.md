@@ -5097,3 +5097,48 @@ Ratchet / noise plan:
 2. Prefer adding one file at a time over a broad annotation rewrite.
 3. If Pyright noise appears, freeze the scope and record the exact file/diagnostic pair before widening.
 4. Keep the gate cheap enough that it can run alongside the existing ruff + focused pytest checks without becoming a new source of churn.
+
+### M29 Pi/Ollama `glm-5.2:cloud` judge integration (2026-07-01, `m29-pi-glm-judge-secondary-integration`)
+
+This lane integrates the optional secondary LLM judge scoring into the M29 `quality_score.py` harness. The deterministic reference/rubric score remains authoritative; the Pi judge is recorded as secondary only.
+
+**Scope**
+
+- `--judge-command` is the opt-in switch. The scorer never shells out to a judge unless `--judge-command` is supplied.
+- The judge prompt template in `_build_judge_prompt` explicitly requires STRICT JSON ONLY with the schema `{"score": <float 0..1>, "rationale": "<text>", "flags": [<list>]}`.
+- `parse_judge_output` accepts only valid JSON with `score` in `[0.0, 1.0]`, a string `rationale`, and a list `flags`. Any deviation returns `None` and surfaces as `judge.parse_status="failed"`.
+- The judge block always records `authoritative: "deterministic"` and `score_kind: "secondary"`. The deterministic score drives the top-level `status`; the judge score cannot promote a deterministic failure.
+- New `--judge-provider` and `--judge-model` flags let callers override the metadata that is auto-parsed from the canonical M29 Pi command (`pi --provider ollama --model 'glm-5.2:cloud' ...`).
+- `invoke_judge` was rewritten to pipe the prompt through stdin instead of passing it as a positional argument; Pi 0.80.3 silently produces empty stdout on the positional shape, so the new shape is required for the canonical route to actually return the strict-JSON payload.
+
+**Fixture tests** (pytest in `tests/test_quality_score.py`, 46 passed including 11 new M29-002 fixtures)
+
+- `test_parse_judge_output_strict_json_passes`, `test_parse_judge_output_returns_none_on_non_json`, `test_parse_judge_output_returns_none_on_missing_score`, `test_parse_judge_output_returns_none_on_out_of_range_score` — strict JSON parser coverage.
+- `test_score_report_judge_path_is_secondary_and_does_not_override` — judge is recorded as secondary only and cannot flip a deterministic failure to pass.
+- `test_score_report_judge_path_records_parse_failure` — non-JSON judge output is recorded as `parse_status="failed"`.
+- `test_parse_flag_value_extracts_provider`, `test_parse_flag_value_extracts_model_and_strips_quotes`, `test_parse_flag_value_handles_equals_form`, `test_parse_flag_value_returns_none_when_absent` — flag-value parser coverage.
+- `test_resolve_judge_metadata_explicit_wins_over_command_parse`, `test_resolve_judge_metadata_parses_canonical_pi_command`, `test_resolve_judge_metadata_returns_none_when_command_unparsable` — metadata resolver coverage.
+- `test_judge_prompt_requires_strict_json_schema` — judge prompt includes STRICT JSON ONLY plus the score/rationale/flags schema and explicit secondary-only wording.
+- `test_score_report_judge_block_records_provider_and_model`, `test_score_report_judge_block_explicit_metadata_overrides`, `test_score_report_no_judge_block_when_command_omitted` — judge block metadata and opt-in coverage.
+
+**Verification (2026-07-01 session)**
+
+- `pi --version` returned `0.80.3` (canonical M29 judge route, captured at `.planning/m29-pi-glm-judge/pi-version.txt`).
+- `pi --provider ollama --model 'glm-5.2:cloud' --print --no-tools --no-session --thinking off` smoke (prompt piped via stdin) returned strict JSON `{"score": 0.7, "rationale": "ok", "flags": []}` (captured at `.planning/m29-pi-glm-judge/pi-glm-5.2-cloud-smoke.txt`).
+- `python3 quality_score.py --candidate .planning/m29-pi-glm-judge/synthetic-pi-smoke-report.json --out .planning/m29-pi-glm-judge/synthetic-pi-smoke-score.json --rubric prompt_suites/m29_reference_rubric.json --judge-command "pi --provider ollama --model 'glm-5.2:cloud' --print --no-tools --no-session --thinking off"` returned `status=pass`, deterministic `mean_score=1.000`, and a fully-populated judge block (`provider=ollama`, `model=glm-5.2:cloud`, `command=...`, `parse_status=ok`, `score=0.95`, `rationale=...`, `flags=["perfect-score-single-prompt"]`, `authoritative=deterministic`, `score_kind=secondary`). Synthetic report + score captured under `.planning/m29-pi-glm-judge/`.
+- `env PYTHONPATH=. python3 -m pytest tests -q` from `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness` — **125 passed**, no skips.
+- `ruff check quality_score.py tests/test_quality_score.py` — **All checks passed**.
+
+**Fallback route policy**
+
+- The Pi/Ollama `glm-5.2:cloud` primary judge route succeeded during readiness smokes.
+- OpenRouter (`z-ai/glm-5.2` and `liquid/lfm-2.5-1.2b-thinking:free`) returned 401 in this session and are not part of the M29 contract. `VAL-M29-002` does not require them, and their failure must not block M29. `quality_score.py` does not implement an OpenRouter or LLMDYNAMIX fallback path.
+- `--judge-command` itself is opt-in. If the supplied judge shell command exits non-zero, returns empty stdout, or emits non-JSON output, the judge block surfaces `parse_status="failed"` and the deterministic score alone decides the top-level `status`. The M29 contract therefore satisfies the "Fallback route failures do not block M29" expected behavior by policy rather than by implementation.
+
+**Files changed**
+
+- `mlx-bench-harness/quality_score.py` — added `--judge-provider`, `--judge-model` arguments; rewrote `_build_judge_prompt` for stricter STRICT JSON ONLY wording; added `parse_flag_value`, `resolve_judge_metadata` helpers; rewrote `invoke_judge` to pipe the prompt through stdin; threaded `provider`/`model` into the judge block.
+- `mlx-bench-harness/tests/test_quality_score.py` — added 11 new fixture tests covering flag parsing, metadata resolution, strict prompt wording, judge-block metadata, opt-in behavior, and the stdin prompt shape.
+- `mlx-bench-harness/README.md` — documented the opt-in judge flag, strict JSON requirement, provider/model/command metadata block, and fallback-route non-contract.
+- `mlx-engine/.planning/performance-future-work.md` — this M29-002 evidence section.
+- `mlx-engine/.planning/m29-pi-glm-judge/` — Pi version file, judge smoke output, synthetic shared-bench report, and synthetic score JSON used as end-to-end evidence.
