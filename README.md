@@ -288,6 +288,77 @@ added scoped typecheck infrastructure with `pyrightconfig.json`;
 diagnostics, and the ruff and pytest gates pass. Mission validation passed all
 M26-M28 user-testing assertions.
 
+M29 closeout completed Qwen3.6 27B deeper quality scoring and balanced sweeps.
+A new deterministic reference/rubric scorer `mlx-bench-harness/quality_score.py`
+consumes existing `shared_bench.py` JSON reports plus prompt metadata and an
+optional rubric (`prompt_suites/m29_reference_rubric.json`); it emits per-row,
+per-prompt, and aggregate quality scores plus blocking findings without altering
+the benchmark inference route. The scorer is paired with an opt-in secondary
+LLM judge invoked through the primary M29 route:
+
+```bash
+python3 quality_score.py \
+  --candidate reports/<ts>-shared-bench.json \
+  --out reports/<ts>-quality-score.json \
+  --rubric prompt_suites/m29_reference_rubric.json \
+  --judge-command "pi --provider ollama --model 'glm-5.2:cloud' --print --no-tools --no-session --thinking off"
+```
+
+Judge mode is opt-in, requires `STRICT JSON ONLY` output containing `score`,
+`rationale`, and `flags`, and the judge block is always labeled
+`authoritative: "deterministic"` and `score_kind: "secondary"`. OpenRouter and
+LLMDYNAMIX judge fallback routes returned `401` during readiness and are not
+part of the M29 contract; the deterministic score alone drives the top-level
+status when the judge route is unreachable or returns non-JSON.
+
+The balanced sweep used the curated suite `prompt_suites/m29_balanced_text_vlm.json`
+(four text deterministic prompts plus two VLM prompts) with `--runs 3`, deterministic
+sampling, the direct `shared_bench.py --engine mlx-engine` route through
+`.venv-py312`, and serial concurrency. Retained evidence paths:
+
+- 4-bit Qwen3.6 27B baseline:
+  `reports/20260702T035155.543416Z-shared-bench.json` +
+  `reports/20260702T035155.543416Z-qwen36-4bit-quality-inspect.json` +
+  `reports/20260702T035155.543416Z-qwen36-4bit-quality-score.json`.
+- 8-bit Qwen3.6 27B baseline:
+  `reports/20260702T035313.633242Z-shared-bench.json` +
+  `reports/20260702T035313.633242Z-qwen36-8bit-quality-inspect.json` +
+  `reports/20260702T035313.633242Z-qwen36-8bit-quality-score.json`.
+- Balanced matrix manifest and per-cell summary:
+  `.planning/m29-balanced-matrix-manifest.json` and
+  `.planning/m29-balanced-matrix-summary.json`.
+- Cell B sampling (4-bit, temp=0.7 / top-p=0.9), Cell C prefill=4096, and
+  Cell D max_seq_nums=2: `reports/20260702T040622.549703Z-*`,
+  `reports/20260702T040747.091671Z-*`, and `reports/20260702T040852.322437Z-*`.
+- Pi/Ollama judge evidence under `.planning/m29-pi-glm-judge/`.
+
+All retained cells passed `quality_compare.py --candidate` inspect (`status=pass`)
+and `quality_score.py` deterministic scoring (`status=pass`), with `mean_score=1.000`
+and `pass_rate=1.000` across all six prompts. The deterministic tie cannot
+distinguish 4-bit from 8-bit on the curated suite, but the 4-bit is
+`1.69x` faster on decode TPS and `1.85x` faster end-to-end than the 8-bit, so
+the retained safe-per-workload pick is the 4-bit Qwen3.6 27B; the 8-bit is
+retained as a quality-ceiling reference only.
+
+The final M29 decision is **data-only / no-default-change / no promotion**:
+
+- The 4-bit-vs-8-bit comparison is safe-to-prefer but not a default change.
+- Sampling at temp=0.7/top-p=0.9, `--prefill-step-size 4096`, and
+  `--max-seq-nums 2` are recorded as single-sample data-capture-only cells;
+  the existing `temperature=0.0`, `top_p=1.0`, default prefill-step-size, and
+  `max_seq_nums=4` defaults remain in force, and explicit overrides remain
+  available for callers that need them.
+- Single-sample cold-TTFT spread and per-cell data-capture-only scope are
+  recorded as non-promotion caveats.
+- The Pi/Ollama `glm-5.2:cloud` judge route is safe as an opt-in secondary
+  signal; OpenRouter and LLMDYNAMIX fallback routes are not contractual.
+- DFlash, LM Studio runtime, adapter inference on `:3180/:3181/:3182`,
+  MoE (`Qwen3.6-35B-A3B`), and `--mlx-engine-force-sequential` were not used
+  for M29 inference-under-test.
+- See commits `eda017a`, `30044ca`, `576fceb`, and `42d6da0`; the synthesis
+  decision lives in `.planning/performance-future-work.md` under the M29
+  heading. User-testing passed VAL-M29-001 through VAL-M29-006.
+
 ## Development Setup
 
 ### Pre-commit Hooks
