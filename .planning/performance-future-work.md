@@ -5266,3 +5266,146 @@ This is a rubric-calibration fix, not an engine behavior change. The fix improve
 #### Validation contract assertion
 
 - `VAL-M29-003` (Balanced 4-bit versus 8-bit Qwen3.6 quality comparison is captured): **MET**. Both model variants produced zero row errors, `quality_compare.py --candidate` inspect returned `status=pass` on both reports, `quality_score.py` deterministic scoring emitted identical authoritative `mean_score=1.000` summaries for both models, the secondary Pi/Ollama `glm-5.2:cloud` judge returned valid strict-JSON scores (`4-bit=0.95`, `8-bit=1.00`) without a judge blocker, and the latency-versus-quality tradeoff is summarized above.
+
+### M29 balanced temperature/config sensitivity matrix (2026-07-02, `m29-balanced-temperature-config-sensitivity`)
+
+Feature `m29-balanced-temperature-config-sensitivity` runs a curated balanced-but-limited matrix for Qwen3.6 27B 4-bit quality sensitivity across selected `temperature`/`top-p` and config cells (`prefill_step_size`, `max_seq_nums`) without exhaustive combinatorics. Each retained cell is direct `shared_bench.py --runs 3`, `quality_compare.py --candidate` inspect, deterministic `quality_score.py` scoring, and explicit row-error checks. This is data-capture evidence only; no default change is proposed and no promotion claim is made from single-sample or judge-only evidence.
+
+#### Balanced matrix manifest
+
+- **Manifest artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m29-balanced-matrix-manifest.json`
+- **Summary artifact (per-cell metrics and decisions):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m29-balanced-matrix-summary.json`
+
+| Cell | Label | Description | Source |
+|---|---|---|---|
+| A | `A_baseline` | Reference baseline (already produced by `m29-balanced-qwen36-4bit-8bit-quality-comparison`). temp=0.0, top-p=1.0, default config, max_seq_nums=1. | cited only |
+| B | `B_sampling_07_09` | Temperature/top-p sampling sensitivity: temp=0.7, top-p=0.9. Otherwise default. | new run, this feature |
+| C | `C_prefill_4096` | Explicit `--prefill-step-size 4096`. Otherwise deterministic baseline. | new run, this feature |
+| D | `D_max_seq_2` | Explicit `--max-seq-nums 2`. Otherwise deterministic baseline. | new run, this feature |
+
+Skipped/deferred cells (with explicit rationale) live in the manifest file: the combined `temp × prefill × max_seq` 2×2×2 cell is deferred to avoid combinatorial blow-up, and the Qwen3.6 27B 8-bit cell set is out of scope because the prior M29-001 8-bit baseline already covers the 8-bit quality ceiling at temp=0.0/top-p=1.0.
+
+#### Model path and shared configuration
+
+- **Model:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit` (15G, 3 safetensors, 4-bit affine, `model_type=qwen3_5`).
+- **Python:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python`.
+- **Prompt suite:** `prompt_suites/m29_balanced_text_vlm.json` (6 curated prompts: `short_nyc_det`, `code_python_det`, `reasoning_math_det`, `instruction_format_det`, `image_toucan`, `image_pair`).
+- **Stable flags (all cells):** `--runs 3 --max-tokens 128 --max-seq-nums 1 --mlx-engine-batched-timing --include-output-text --timeout 2400`.
+- **Excluded routes:** LM Studio runtime, adapter inference on `:3180/3181/3182`, DFlash flags, MoE (`Qwen3.6-35B-A3B`), and `--mlx-engine-force-sequential`. LLMDYNAMIX is not used for inference-under-test.
+- **Concurrency:** 1 (heavyweight Qwen3.6 27B cells run serially).
+
+#### Per-cell direct-harness command shape
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+
+# Cell A: cited only (already produced by m29-balanced-qwen36-4bit-8bit-quality-comparison).
+# Cells B/C/D use the same command, varying temperature, top-p, prefill-step-size, max-seq-nums:
+python3 shared_bench.py --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --prompt-suite-json prompt_suites/m29_balanced_text_vlm.json \
+  --runs 3 --max-tokens 128 \
+  --temperature <cell-temp> --top-p <cell-top-p> \
+  --max-seq-nums <cell-max-seq> \
+  [--prefill-step-size <cell-prefill>] \
+  --mlx-engine-batched-timing --include-output-text \
+  --timeout 2400 --out-dir reports
+```
+
+After each `shared_bench.py` invocation, the cell is inspected and scored:
+
+```bash
+python3 quality_compare.py --candidate <report> --out <inspect>
+python3 quality_score.py --candidate <report> --out <score> --rubric prompt_suites/m29_reference_rubric.json
+```
+
+#### Report, inspect, and score paths (per cell)
+
+| Cell | Report | Inspect | Score |
+|---|---|---|---|
+| A_baseline | `reports/20260702T035155.543416Z-shared-bench.json` | `reports/20260702T035155.543416Z-qwen36-4bit-quality-inspect.json` | `reports/20260702T035155.543416Z-qwen36-4bit-quality-score.json` |
+| B_sampling_07_09 | `reports/20260702T040622.549703Z-shared-bench.json` | `reports/20260702T040622.549703Z-qwen36-4bit-cell-B-quality-inspect.json` | `reports/20260702T040622.549703Z-qwen36-4bit-cell-B-quality-score.json` |
+| C_prefill_4096 | `reports/20260702T040747.091671Z-shared-bench.json` | `reports/20260702T040747.091671Z-qwen36-4bit-cell-C-quality-inspect.json` | `reports/20260702T040747.091671Z-qwen36-4bit-cell-C-quality-score.json` |
+| D_max_seq_2 | `reports/20260702T040852.322437Z-shared-bench.json` | `reports/20260702T040852.322437Z-qwen36-4bit-cell-D-quality-inspect.json` | `reports/20260702T040852.322437Z-qwen36-4bit-cell-D-quality-score.json` |
+
+#### Row-error inspection (every cell)
+
+- **A_baseline:** `0/18` rows have `error: null`. Runner process exit code `0`.
+- **B_sampling_07_09:** `0/18` rows have `error: null`. Runner process exit code `0`. Sampling at temp=0.7/top-p=0.9 produced varying outputs across runs (verified by per-run text diff in `short_nyc_det` and `reasoning_math_det`), confirming sampling was active.
+- **C_prefill_4096:** `0/18` rows have `error: null`. Runner process exit code `0`.
+- **D_max_seq_2:** `0/18` rows have `error: null`. Runner process exit code `0`.
+
+#### quality_compare.py --candidate inspect status (every cell)
+
+| Cell | Inspect status | Failed prompts |
+|---|---|---|
+| A_baseline | `pass` | `-` |
+| B_sampling_07_09 | `pass` | `-` |
+| C_prefill_4096 | `pass` | `-` |
+| D_max_seq_2 | `pass` | `-` |
+
+#### quality_score.py deterministic scoring (authoritative)
+
+| Cell | Aggregate mean_score | Successful/total runs | All per-prompt pass_rate |
+|---|---|---|---|
+| A_baseline | `1.000` | `18/18` | `1.000` on every prompt |
+| B_sampling_07_09 | `1.000` | `18/18` | `1.000` on every prompt |
+| C_prefill_4096 | `1.000` | `18/18` | `1.000` on every prompt |
+| D_max_seq_2 | `1.000` | `18/18` | `1.000` on every prompt |
+
+#### Per-cell latency and quality summary
+
+| Cell | temp | top-p | prefill | max-seq | avg TTFT (cold / warm) | avg decode TPS | avg total | completion tokens avg | mean_score | row errors |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A_baseline | 0.0 | 1.0 | default | 1 | 0.400s / 0.092s (1.015s cold sample of first-run only) | 38.85 | 2.531s | 82.7 | 1.000 | 0/18 |
+| B_sampling_07_09 | 0.7 | 0.9 | default | 1 | 0.284s / 0.088s (0.676s cold sample of first-run only) | 38.78 | 2.551s | 87.8 | 1.000 | 0/18 |
+| C_prefill_4096 | 0.0 | 1.0 | 4096 | 1 | 0.279s / 0.087s (0.664s cold sample of first-run only) | 39.23 | 2.390s | 82.7 | 1.000 | 0/18 |
+| D_max_seq_2 | 0.0 | 1.0 | default | 2 | 0.269s / 0.088s (0.633s cold sample of first-run only) | 39.34 | 2.375s | 82.7 | 1.000 | 0/18 |
+
+#### Mean/variance quality and latency observations
+
+- **Deterministic quality is identical** across all four cells: every cell achieves `mean_score=1.000` with `pass_rate=1.000` on every prompt. There is no quality regression from sampling at temp=0.7/top-p=0.9 nor from the explicit config overrides (`prefill=4096`, `max_seq_nums=2`) on the curated suite.
+- **Image-keyword fidelity preserved across all cells:** `image_toucan` retained `toucan` on every run; `image_pair` retained both `chameleon` and `toucan` on every run.
+- **Warm TTFT is consistent** across cells (0.0870-0.0923s) and represents prompt-cache reuse within the same runner process. Cold TTFT is single-sample per prompt and varies because the very first request in a freshly-loaded process carries model-load cost; it is not a stable A/B signal on its own.
+- **Decode TPS is stable** across cells (38.78-39.34). Cell B (sampling) is within 0.2% of Cell A, confirming sampling does not change decode throughput.
+- **Cells C (prefill=4096) and D (max_seq_nums=2) show ~1-2% decode TPS improvement and ~5% avg_total improvement versus Cell A baseline.** This is consistent with prior M21 sweep evidence but is single-sample evidence from this balanced matrix; it is NOT promotion evidence.
+- **Per-prompt variance within each cell** is small for warm TTFT (typically 0.082-0.092s). Total latency varies by prompt type: text prompts ~1.7-3.3s, VLM prompts ~2.5-4.0s, as expected because VLM has higher prompt-processing load.
+
+#### Decisions per cell
+
+- **B_sampling_07_09:** `data_capture_only`. Single-sample evidence. Sampling at temp=0.7/top-p=0.9 produces rubric-passing output, but no default or promotion change is proposed from single-sample or judge-only evidence. Existing default (temp=0.0, top-p=1.0) remains in force.
+- **C_prefill_4096:** `data_capture_only`. Single-sample evidence. `prefill_step_size=4096` is quality-passing and shows marginal TPS/total improvement vs default, but no promotion claim is made. Existing explicit `--prefill-step-size` override remains available for callers that need it.
+- **D_max_seq_2:** `data_capture_only`. Single-sample evidence. `max_seq_nums=2` is quality-passing and shows marginal TPS/total improvement vs default `max_seq_nums=1`, but no promotion claim is made. Existing explicit `--max-seq-nums` override remains available for callers that need it.
+
+#### No-default-change and no-single-sample statements
+
+- **No default change** is proposed by this feature. The default `temperature=0.0`, `top_p=1.0`, `max_seq_nums=4`, and omitted/`default` prefill-step-size all remain in force.
+- **No single-sample evidence** is treated as promotion evidence. Each retained cell is the mean of `--runs 3` repeated samples per prompt; this lane runs `18` rows per cell and `72` rows total across the three new cells (B, C, D). The M29-001 baseline cell (A) contributed an additional 18 rows.
+- **No forbidden route** was used for inference-under-test: no LM Studio runtime, no `:3180/3181/3182` adapter inference, no DFlash flag, no MoE evidence, no `--mlx-engine-force-sequential`. Direct `shared_bench.py --engine mlx-engine` only, through `.venv-py312`.
+
+#### Resource and process preflight
+
+- Disk headroom on `/Volumes/StudioStackSSD4TB`: ~540 GiB available before this lane; ample after the four cells finished.
+- Memory headroom: ~26.5 GiB free, no heavy local MLX/Metal contender (other than the serial Qwen3.6 27B cells themselves).
+- No active `shared_bench.py`, `quality_compare.py`, `mlx_engine.openai_adapter`, or cheetara adapter process was running before each cell started.
+- LLMDYNAMIX on `127.0.0.1:12444` was a cloud-only listener (no local model loaded); not a contention risk.
+
+#### Files added/changed
+
+- `mlx-engine/.planning/m29-balanced-matrix-manifest.json` — curated balanced matrix manifest (4 cells + skipped/deferred rationale).
+- `mlx-engine/.planning/m29-balanced-matrix-summary.json` — per-cell metrics, decisions, and observations (machine-readable summary).
+- `mlx-bench-harness/reports/20260702T040622.549703Z-shared-bench.json` — Cell B sampling shared-bench report.
+- `mlx-bench-harness/reports/20260702T040622.549703Z-qwen36-4bit-cell-B-quality-inspect.json` — Cell B inspect.
+- `mlx-bench-harness/reports/20260702T040622.549703Z-qwen36-4bit-cell-B-quality-score.json` — Cell B deterministic score.
+- `mlx-bench-harness/reports/20260702T040747.091671Z-shared-bench.json` — Cell C prefill shared-bench report.
+- `mlx-bench-harness/reports/20260702T040747.091671Z-qwen36-4bit-cell-C-quality-inspect.json` — Cell C inspect.
+- `mlx-bench-harness/reports/20260702T040747.091671Z-qwen36-4bit-cell-C-quality-score.json` — Cell C deterministic score.
+- `mlx-bench-harness/reports/20260702T040852.322437Z-shared-bench.json` — Cell D max-seq-nums shared-bench report.
+- `mlx-bench-harness/reports/20260702T040852.322437Z-qwen36-4bit-cell-D-quality-inspect.json` — Cell D inspect.
+- `mlx-bench-harness/reports/20260702T040852.322437Z-qwen36-4bit-cell-D-quality-score.json` — Cell D deterministic score.
+- `mlx-engine/.planning/performance-future-work.md` — this M29 evidence section.
+
+#### Validation contract assertion
+
+- `VAL-M29-004` (Balanced temperature/top-p/config sensitivity matrix is recorded): **MET**. The curated balanced matrix manifest was defined before any cell ran (`m29-balanced-matrix-manifest.json`); per-cell shared-bench report, inspect, and score paths are recorded (`reports/20260702T040622.549703Z-*`, `reports/20260702T040747.091671Z-*`, `reports/20260702T040852.322437Z-*`); mean/variance quality and latency metrics are summarized in `m29-balanced-matrix-summary.json` and in the table above; explicit row-error checks confirmed `0/18` errors per cell; explicit skipped cells (combined temp × prefill × max-seq 2×2×2 sweep, 8-bit cell set, other models) carry rationale in the manifest; and no default or promotion claim is made from single-sample or judge-only evidence.

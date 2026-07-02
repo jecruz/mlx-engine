@@ -1,0 +1,169 @@
+{
+  "feature_id": "m29-balanced-temperature-config-sensitivity",
+  "milestone": "m29-qwen36-deeper-quality-sweeps",
+  "completed_at": "2026-07-02",
+  "model": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit",
+  "python": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python",
+  "prompt_suite": "prompt_suites/m29_balanced_text_vlm.json",
+  "inference_under_test": "direct shared_bench.py",
+  "concurrency": 1,
+  "shared_flags": ["--runs 3", "--max-tokens 128", "--max-seq-nums 1", "--mlx-engine-batched-timing", "--include-output-text", "--timeout 2400"],
+  "excluded_routes": ["lm_studio_runtime", "adapter_inference", "dflash", "moe_promotion", "forced_sequential_text"],
+  "cells": [
+    {
+      "label": "A_baseline",
+      "cell_type": "reference_baseline",
+      "description": "Reproduced from m29-balanced-qwen36-4bit-8bit-quality-comparison. temp=0.0, top-p=1.0, default config, max_seq_nums=1.",
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "prefill_step_size": null,
+      "max_seq_nums": 1,
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035155.543416Z-shared-bench.json",
+      "inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035155.543416Z-qwen36-4bit-quality-inspect.json",
+      "score": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035155.543416Z-qwen36-4bit-quality-score.json",
+      "row_errors": 0,
+      "row_total": 18,
+      "inspect_status": "pass",
+      "deterministic_mean_score": 1.0,
+      "per_prompt_pass_rate": {"short_nyc_det": 1.0, "code_python_det": 1.0, "reasoning_math_det": 1.0, "instruction_format_det": 1.0, "image_toucan": 1.0, "image_pair": 1.0},
+      "per_prompt_metrics": {
+        "short_nyc_det": {"avg_ttft_s": 0.8636, "cold_ttft_s": 2.4053, "warm_ttft_s": 0.0928, "avg_decode_tps": 38.88, "avg_total_s": 3.282, "avg_completion_tokens": 94},
+        "code_python_det": {"avg_ttft_s": 0.2040, "cold_ttft_s": 0.4373, "warm_ttft_s": 0.0874, "avg_decode_tps": 38.99, "avg_total_s": 1.948, "avg_completion_tokens": 68},
+        "reasoning_math_det": {"avg_ttft_s": 0.2027, "cold_ttft_s": 0.4353, "warm_ttft_s": 0.0864, "avg_decode_tps": 38.90, "avg_total_s": 1.694, "avg_completion_tokens": 58},
+        "instruction_format_det": {"avg_ttft_s": 0.1717, "cold_ttft_s": 0.3441, "warm_ttft_s": 0.0855, "avg_decode_tps": 39.16, "avg_total_s": 1.730, "avg_completion_tokens": 61},
+        "image_toucan": {"avg_ttft_s": 0.2694, "cold_ttft_s": 0.6278, "warm_ttft_s": 0.0903, "avg_decode_tps": 38.72, "avg_total_s": 2.516, "avg_completion_tokens": 87},
+        "image_pair": {"avg_ttft_s": 0.6878, "cold_ttft_s": 1.8402, "warm_ttft_s": 0.1116, "avg_decode_tps": 38.45, "avg_total_s": 4.017, "avg_completion_tokens": 128}
+      }
+    },
+    {
+      "label": "B_sampling_07_09",
+      "cell_type": "sampling_sensitivity",
+      "description": "Temperature/top-p sampling sensitivity: temp=0.7, top-p=0.9. Otherwise default.",
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "prefill_step_size": null,
+      "max_seq_nums": 1,
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040622.549703Z-shared-bench.json",
+      "inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040622.549703Z-qwen36-4bit-cell-B-quality-inspect.json",
+      "score": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040622.549703Z-qwen36-4bit-cell-B-quality-score.json",
+      "row_errors": 0,
+      "row_total": 18,
+      "inspect_status": "pass",
+      "deterministic_mean_score": 1.0,
+      "per_prompt_pass_rate": {"short_nyc_det": 1.0, "code_python_det": 1.0, "reasoning_math_det": 1.0, "instruction_format_det": 1.0, "image_toucan": 1.0, "image_pair": 1.0},
+      "per_prompt_metrics": {
+        "short_nyc_det": {"avg_ttft_s": 0.2306, "cold_ttft_s": 0.5149, "warm_ttft_s": 0.0885, "avg_decode_tps": 38.83, "avg_total_s": 2.703, "avg_completion_tokens": 96},
+        "code_python_det": {"avg_ttft_s": 0.1960, "cold_ttft_s": 0.4217, "warm_ttft_s": 0.0831, "avg_decode_tps": 38.89, "avg_total_s": 2.244, "avg_completion_tokens": 80},
+        "reasoning_math_det": {"avg_ttft_s": 0.1970, "cold_ttft_s": 0.4225, "warm_ttft_s": 0.0843, "avg_decode_tps": 39.05, "avg_total_s": 1.485, "avg_completion_tokens": 50},
+        "instruction_format_det": {"avg_ttft_s": 0.1685, "cold_ttft_s": 0.3359, "warm_ttft_s": 0.0848, "avg_decode_tps": 38.87, "avg_total_s": 2.072, "avg_completion_tokens": 74},
+        "image_toucan": {"avg_ttft_s": 0.2422, "cold_ttft_s": 0.5539, "warm_ttft_s": 0.0864, "avg_decode_tps": 38.74, "avg_total_s": 2.789, "avg_completion_tokens": 99},
+        "image_pair": {"avg_ttft_s": 0.6708, "cold_ttft_s": 1.8051, "warm_ttft_s": 0.1036, "avg_decode_tps": 38.30, "avg_total_s": 4.013, "avg_completion_tokens": 128}
+      }
+    },
+    {
+      "label": "C_prefill_4096",
+      "cell_type": "prefill_step_sensitivity",
+      "description": "Explicit prefill_step_size=4096. Otherwise deterministic baseline.",
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "prefill_step_size": 4096,
+      "max_seq_nums": 1,
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040747.091671Z-shared-bench.json",
+      "inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040747.091671Z-qwen36-4bit-cell-C-quality-inspect.json",
+      "score": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040747.091671Z-qwen36-4bit-cell-C-quality-score.json",
+      "row_errors": 0,
+      "row_total": 18,
+      "inspect_status": "pass",
+      "deterministic_mean_score": 1.0,
+      "per_prompt_pass_rate": {"short_nyc_det": 1.0, "code_python_det": 1.0, "reasoning_math_det": 1.0, "instruction_format_det": 1.0, "image_toucan": 1.0, "image_pair": 1.0},
+      "per_prompt_metrics": {
+        "short_nyc_det": {"avg_ttft_s": 0.2136, "cold_ttft_s": 0.4716, "warm_ttft_s": 0.0846, "avg_decode_tps": 39.35, "avg_total_s": 2.602, "avg_completion_tokens": 94},
+        "code_python_det": {"avg_ttft_s": 0.1951, "cold_ttft_s": 0.4207, "warm_ttft_s": 0.0823, "avg_decode_tps": 39.45, "avg_total_s": 1.919, "avg_completion_tokens": 68},
+        "reasoning_math_det": {"avg_ttft_s": 0.1978, "cold_ttft_s": 0.4240, "warm_ttft_s": 0.0847, "avg_decode_tps": 39.37, "avg_total_s": 1.671, "avg_completion_tokens": 58},
+        "instruction_format_det": {"avg_ttft_s": 0.1667, "cold_ttft_s": 0.3340, "warm_ttft_s": 0.0831, "avg_decode_tps": 39.36, "avg_total_s": 1.717, "avg_completion_tokens": 61},
+        "image_toucan": {"avg_ttft_s": 0.2424, "cold_ttft_s": 0.5647, "warm_ttft_s": 0.0812, "avg_decode_tps": 39.10, "avg_total_s": 2.468, "avg_completion_tokens": 87},
+        "image_pair": {"avg_ttft_s": 0.6604, "cold_ttft_s": 1.7694, "warm_ttft_s": 0.1059, "avg_decode_tps": 38.76, "avg_total_s": 3.963, "avg_completion_tokens": 128}
+      }
+    },
+    {
+      "label": "D_max_seq_2",
+      "cell_type": "max_seq_nums_sensitivity",
+      "description": "Explicit max_seq_nums=2. Otherwise deterministic baseline.",
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "prefill_step_size": null,
+      "max_seq_nums": 2,
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040852.322437Z-shared-bench.json",
+      "inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040852.322437Z-qwen36-4bit-cell-D-quality-inspect.json",
+      "score": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040852.322437Z-qwen36-4bit-cell-D-quality-score.json",
+      "row_errors": 0,
+      "row_total": 18,
+      "inspect_status": "pass",
+      "deterministic_mean_score": 1.0,
+      "per_prompt_pass_rate": {"short_nyc_det": 1.0, "code_python_det": 1.0, "reasoning_math_det": 1.0, "instruction_format_det": 1.0, "image_toucan": 1.0, "image_pair": 1.0},
+      "per_prompt_metrics": {
+        "short_nyc_det": {"avg_ttft_s": 0.1678, "cold_ttft_s": 0.3311, "warm_ttft_s": 0.0862, "avg_decode_tps": 39.33, "avg_total_s": 2.558, "avg_completion_tokens": 94},
+        "code_python_det": {"avg_ttft_s": 0.1938, "cold_ttft_s": 0.4135, "warm_ttft_s": 0.0840, "avg_decode_tps": 39.48, "avg_total_s": 1.916, "avg_completion_tokens": 68},
+        "reasoning_math_det": {"avg_ttft_s": 0.1959, "cold_ttft_s": 0.4128, "warm_ttft_s": 0.0874, "avg_decode_tps": 39.61, "avg_total_s": 1.660, "avg_completion_tokens": 58},
+        "instruction_format_det": {"avg_ttft_s": 0.1626, "cold_ttft_s": 0.3240, "warm_ttft_s": 0.0818, "avg_decode_tps": 39.56, "avg_total_s": 1.705, "avg_completion_tokens": 61},
+        "image_toucan": {"avg_ttft_s": 0.2405, "cold_ttft_s": 0.5517, "warm_ttft_s": 0.0849, "avg_decode_tps": 39.26, "avg_total_s": 2.457, "avg_completion_tokens": 87},
+        "image_pair": {"avg_ttft_s": 0.6553, "cold_ttft_s": 1.7638, "warm_ttft_s": 0.1010, "avg_decode_tps": 38.78, "avg_total_s": 3.956, "avg_completion_tokens": 128}
+      }
+    }
+  ],
+  "skipped_cells": [
+    {
+      "label": "E_combined_07_09_prefill_4096_maxseq_2",
+      "reason": "Skipped to avoid combinatorial blowup. Combinatorial 2x2x2 sweep is out of scope; the curated 3 new cells already cover temperature, prefill_step_size, and max_seq_nums separately. This is a balanced-but-limited matrix."
+    },
+    {
+      "label": "Qwen3.6_27B_8bit_cells",
+      "reason": "Out of scope. The m29-balanced-qwen36-4bit-8bit-quality-comparison feature already produced an 8-bit baseline at temp=0.0, top-p=1.0. Repeating the full 3-cell matrix on 8-bit would roughly double evidence-collection time and the 4-bit 27B already covers the temperature/config sensitivity signal at lower resource cost."
+    },
+    {
+      "label": "Other_models",
+      "reason": "Out of scope. The feature is explicitly Qwen3.6 quality sensitivity."
+    }
+  ],
+  "summary_table": [
+    {"cell": "A_baseline", "temp": 0.0, "top_p": 1.0, "prefill": "default", "max_seq": 1, "avg_ttft_s": 0.3999, "cold_ttft_s": 1.0150, "warm_ttft_s": 0.0923, "avg_decode_tps": 38.85, "avg_total_s": 2.531, "completion_tokens_avg": 82.7, "mean_score": 1.0, "status": "pass", "row_errors": 0},
+    {"cell": "B_sampling_07_09", "temp": 0.7, "top_p": 0.9, "prefill": "default", "max_seq": 1, "avg_ttft_s": 0.2842, "cold_ttft_s": 0.6757, "warm_ttft_s": 0.0884, "avg_decode_tps": 38.78, "avg_total_s": 2.551, "completion_tokens_avg": 87.8, "mean_score": 1.0, "status": "pass", "row_errors": 0},
+    {"cell": "C_prefill_4096", "temp": 0.0, "top_p": 1.0, "prefill": 4096, "max_seq": 1, "avg_ttft_s": 0.2793, "cold_ttft_s": 0.6641, "warm_ttft_s": 0.0870, "avg_decode_tps": 39.23, "avg_total_s": 2.390, "completion_tokens_avg": 82.7, "mean_score": 1.0, "status": "pass", "row_errors": 0},
+    {"cell": "D_max_seq_2", "temp": 0.0, "top_p": 1.0, "prefill": "default", "max_seq": 2, "avg_ttft_s": 0.2693, "cold_ttft_s": 0.6328, "warm_ttft_s": 0.0876, "avg_decode_tps": 39.34, "avg_total_s": 2.375, "completion_tokens_avg": 82.7, "mean_score": 1.0, "status": "pass", "row_errors": 0}
+  ],
+  "quality_observations": [
+    "All 4 cells produce deterministic-grade quality: every prompt achieves mean_score=1.000 with pass_rate=1.000 across 3 runs.",
+    "Sampling at temp=0.7, top-p=0.9 still hits all reference/rubric keywords (New York/finance, stable_unique/return, 38.9%, risk/mitigation/owner JSON keys, toucan, chameleon+toucan). Sampling does not regress rubric quality on this curated suite.",
+    "Image-keyword fidelity preserved across all cells: image_toucan retains 'toucan'; image_pair retains both 'chameleon' and 'toucan' on every run."
+  ],
+  "latency_observations": [
+    "Warm TTFT is consistent across cells (0.0870-0.0923s) and represents prompt-cache reuse within the same runner process.",
+    "Cold TTFT varies because the very first request in a freshly-loaded process carries model-load cost. Cell A baseline cold_ttft=1.0150s (model-load amortization edge case for short_nyc_det run 1), Cells B/C/D show 0.63-0.68s cold TTFT, indicating later sessions see faster cold-start because the OS file cache and Metal warm-up state help. Single-sample cold TTFT is not a stable signal for comparison.",
+    "Decode TPS is stable across all cells: 38.78-39.34. Cell B (sampling 0.7/0.9) shows the same decode TPS as Cell A baseline (within 0.2%), confirming sampling does not change decode throughput.",
+    "Cells C (prefill=4096) and D (max_seq_nums=2) show ~1-2% decode TPS improvement and ~5% avg_total improvement vs Cell A baseline. This is consistent with prior M21 sweep evidence but is single-sample evidence from this balanced matrix and is NOT promotion evidence."
+  ],
+  "variance_observations": [
+    "Per-prompt variance across the 3 runs within each cell is small for warm TTFT (typically 0.082-0.092s range).",
+    "Decode TPS is stable across prompts (38-39.6 range across the entire matrix).",
+    "Total latency varies by prompt type: text prompts (~1.7-3.3s) and VLM prompts (~2.5-4.0s), as expected because VLM has higher prompt processing load."
+  ],
+  "decisions": [
+    {
+      "cell": "B_sampling_07_09",
+      "decision": "data_capture_only",
+      "rationale": "Single-sample evidence. Sampling at temp=0.7/top-p=0.9 produces rubric-passing output, but no default or promotion change is proposed from single-sample or judge-only evidence. Existing default (temp=0.0, top-p=1.0) remains in force."
+    },
+    {
+      "cell": "C_prefill_4096",
+      "decision": "data_capture_only",
+      "rationale": "Single-sample evidence. prefill_step_size=4096 is quality-passing and shows marginal TPS/total improvement vs default, but no promotion claim is made. Existing explicit --prefill-step-size override remains available for callers that need it."
+    },
+    {
+      "cell": "D_max_seq_2",
+      "decision": "data_capture_only",
+      "rationale": "Single-sample evidence. max_seq_nums=2 is quality-passing and shows marginal TPS/total improvement vs default max_seq_nums=1, but no promotion claim is made. Existing explicit --max-seq-nums override remains available for callers that need it."
+    }
+  ],
+  "no_default_change_statement": "This feature records per-cell inspect/score/latency evidence and explicitly does NOT propose default changes, promotion, or any engine behavior change. Single-sample wins across a balanced-but-limited matrix are not promotion evidence.",
+  "fulfills_assertion": "VAL-M29-004"
+}

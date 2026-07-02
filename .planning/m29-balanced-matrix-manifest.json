@@ -1,0 +1,82 @@
+{
+  "feature_id": "m29-balanced-temperature-config-sensitivity",
+  "milestone": "m29-qwen36-deeper-quality-sweeps",
+  "designed_at": "2026-07-02",
+  "scope": "Curated balanced matrix for Qwen3.6 27B 4-bit quality sensitivity across temperature/top-p and config cells (prefill_step_size, max_seq_nums). Inference-under-test is direct shared_bench.py through /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python with --runs 3. No exhaustive combinatorics.",
+  "model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit",
+  "python": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python",
+  "prompt_suite": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/m29_balanced_text_vlm.json",
+  "shared_flags": [
+    "--runs 3",
+    "--max-tokens 128",
+    "--max-seq-nums 1",
+    "--mlx-engine-batched-timing",
+    "--include-output-text",
+    "--timeout 2400"
+  ],
+  "cells": [
+    {
+      "label": "A_baseline",
+      "description": "Baseline (already produced by m29-balanced-qwen36-4bit-8bit-quality-comparison). temp=0.0, top-p=1.0, default config. Citation only.",
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "prefill_step_size": null,
+      "max_seq_nums": 1,
+      "status": "reference_baseline",
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035155.543416Z-shared-bench.json",
+      "inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035155.543416Z-qwen36-4bit-quality-inspect.json",
+      "score": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035155.543416Z-qwen36-4bit-quality-score.json"
+    },
+    {
+      "label": "B_sampling_07_09",
+      "description": "Temperature/top-p sampling sensitivity: temp=0.7, top-p=0.9. Otherwise default. Single-cell probe of how deterministic-quality reference/rubric scoring behaves under typical sampling.",
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "prefill_step_size": null,
+      "max_seq_nums": 1,
+      "status": "to_run"
+    },
+    {
+      "label": "C_prefill_4096",
+      "description": "prefill_step_size sensitivity: explicit 4096. Otherwise deterministic baseline.",
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "prefill_step_size": 4096,
+      "max_seq_nums": 1,
+      "status": "to_run"
+    },
+    {
+      "label": "D_max_seq_2",
+      "description": "max_seq_nums sensitivity: explicit 2. Otherwise deterministic baseline.",
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "prefill_step_size": null,
+      "max_seq_nums": 2,
+      "status": "to_run"
+    }
+  ],
+  "excluded_or_deferred_cells": [
+    {
+      "label": "E_combined_07_09_prefill_4096_maxseq_2",
+      "reason": "Skipped to avoid combinatorial blowup and keep balanced-but-limited scope. Combinatorial 2x2x2 sweep is out of scope; the curated 3 new cells already cover temperature, prefill_step_size, and max_seq_nums separately."
+    },
+    {
+      "label": "Qwen3.6_27B_8bit_cells",
+      "reason": "Out of scope. The m29-balanced-qwen36-4bit-8bit-quality-comparison feature already produced a 8-bit baseline at temp=0.0, top-p=1.0. Repeating the full 3-cell matrix on 8-bit would roughly double evidence-collection time and the 4-bit 27B already covers the temperature/config sensitivity signal."
+    },
+    {
+      "label": "Other_models",
+      "reason": "Out of scope. The feature is explicitly Qwen3.6 quality sensitivity."
+    }
+  ],
+  "evidence_requirements_per_cell": [
+    "Direct shared_bench.py with --runs 3",
+    "Row-error check: every row error: null",
+    "quality_compare.py --candidate inspect: status=pass",
+    "quality_score.py deterministic score (mean_score and per-prompt pass_rate)",
+    "Per-prompt avg TTFT, decode TPS, total latency",
+    "Image-keyword fidelity (toucan, chameleon)"
+  ],
+  "no_default_change_statement": "This feature is a quality-sensitivity sweep. It records inspect/score/latency evidence per cell. It does not propose default changes, promotion, or any engine behavior change. Single-sample wins are not promotion evidence.",
+  "fulfills_assertion": "VAL-M29-004"
+}
