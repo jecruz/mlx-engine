@@ -5380,8 +5380,8 @@ python3 quality_score.py --candidate <report> --out <score> --rubric prompt_suit
 
 #### No-default-change and no-single-sample statements
 
-- **No default change** is proposed by this feature. The default `temperature=0.0`, `top_p=1.0`, `max_seq_nums=4`, and omitted/`default` prefill-step-size all remain in force.
-- **No single-sample evidence** is treated as promotion evidence. Each retained cell is the mean of `--runs 3` repeated samples per prompt; this lane runs `18` rows per cell and `72` rows total across the three new cells (B, C, D). The M29-001 baseline cell (A) contributed an additional 18 rows.
+- **No default change** is proposed by this feature. The engine default `temperature=0.0`, `top_p=1.0`, `max_seq_nums=4`, and omitted/`default` prefill-step-size all remain in force. Note: the matrix baseline (Cell A) deliberately used `--max-seq-nums 1` as a controlled per-cell setting, not as a proposed engine default. Cell D (`max_seq_nums=2`) is therefore compared against the matrix's controlled baseline at `max_seq_nums=1`, not against the engine default `max_seq_nums=4`.
+- **No single-sample evidence** is treated as promotion evidence. Each retained cell is the mean of `--runs 3` repeated samples per prompt; this lane runs `18` rows per cell and `54` rows total across the three new cells (B, C, D). The M29-001 baseline cell (A) contributed an additional 18 rows, for `72` rows when counted across all four cells.
 - **No forbidden route** was used for inference-under-test: no LM Studio runtime, no `:3180/3181/3182` adapter inference, no DFlash flag, no MoE evidence, no `--mlx-engine-force-sequential`. Direct `shared_bench.py --engine mlx-engine` only, through `.venv-py312`.
 
 #### Resource and process preflight
@@ -5459,7 +5459,7 @@ The synthesis cites every retained M29 report, inspect, and score path. Each ent
 - **Cell D inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040852.322437Z-qwen36-4bit-cell-D-quality-inspect.json`
 - **Cell D deterministic score (judge block empty):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T040852.322437Z-qwen36-4bit-cell-D-quality-score.json`
 
-Total retained artifacts cited: 4 unique `shared-bench.json` reports (4-bit, 8-bit, Cell B, Cell C, Cell D → 5 report JSONs), 5 `quality-inspect.json` artifacts, 5 `quality-score.json` artifacts, 1 matrix manifest, 1 matrix summary, and 4 judge-smoke files. Every path was verified readable during this synthesis via `ls -la` and direct JSON load.
+Total retained artifacts cited: 5 unique `shared-bench.json` reports (4-bit, 8-bit, Cell B, Cell C, Cell D), 5 `quality-inspect.json` artifacts, 5 `quality-score.json` artifacts, 1 matrix manifest, 1 matrix summary, and 4 judge-smoke files. Every path was verified readable during this synthesis via `ls -la` and direct JSON load.
 
 ### Deterministic score summary table (authoritative)
 
