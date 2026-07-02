@@ -5142,3 +5142,127 @@ This lane integrates the optional secondary LLM judge scoring into the M29 `qual
 - `mlx-bench-harness/README.md` — documented the opt-in judge flag, strict JSON requirement, provider/model/command metadata block, and fallback-route non-contract.
 - `mlx-engine/.planning/performance-future-work.md` — this M29-002 evidence section.
 - `mlx-engine/.planning/m29-pi-glm-judge/` — Pi version file, judge smoke output, synthetic shared-bench report, and synthetic score JSON used as end-to-end evidence.
+
+### M29 balanced 4-bit vs 8-bit Qwen3.6 quality comparison (2026-07-02, `m29-balanced-qwen36-4bit-8bit-quality-comparison`)
+
+Feature `m29-balanced-qwen36-4bit-8bit-quality-comparison` runs the curated balanced text+VLM Qwen3.6 27B comparison: 4-bit versus 8-bit, same prompt/rubric suite, deterministic sampling, `--runs 3`, direct `shared_bench.py` route through `.venv-py312`, `--include-output-text`, `quality_compare.py --candidate` inspect, `quality_score.py` deterministic scoring plus opt-in Pi/Ollama `glm-5.2:cloud` judge scoring. This is a data-capture and rubric-calibration lane only; no engine behavior is changed, no default is promoted, and inference-under-test remains direct `shared_bench.py` with no LM Studio runtime, adapter route, DFlash, MoE, or forced sequential text.
+
+#### Model paths
+
+- **4-bit target:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit` (`quantization={group_size: 64, bits: 4, mode: affine}`, `model_type=qwen3_5`, 3 safetensors files).
+- **8-bit target:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit` (`quantization={group_size: 64, bits: 8, mode: affine}`, `model_type=qwen3_5`, 6 safetensors files).
+
+#### Curated balanced prompt suite (text + VLM)
+
+The comparison uses a new curated suite `prompt_suites/m29_balanced_text_vlm.json` that combines:
+
+- Text deterministic prompts from `task_diverse_deterministic_quality.json`: `short_nyc_det`, `code_python_det`, `reasoning_math_det`, `instruction_format_det`.
+- VLM prompts from `vlm_image_quality.json`: `image_toucan`, `image_pair`.
+
+All six prompts are covered by rubric entries in `prompt_suites/m29_reference_rubric.json` (`required_phrases`, `reference_phrases`, `reference_keywords`, weights). Each prompt runs three times for `18` total rows per model. Deterministic sampling is enforced via `--temperature 0.0 --top-p 1.0`.
+
+#### Exact direct-harness commands
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+
+python3 shared_bench.py --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --prompt-suite-json prompt_suites/m29_balanced_text_vlm.json \
+  --runs 3 --max-tokens 128 --temperature 0.0 --top-p 1.0 \
+  --max-seq-nums 1 --mlx-engine-batched-timing --include-output-text \
+  --timeout 2400 --out-dir reports
+
+python3 shared_bench.py --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --prompt-suite-json prompt_suites/m29_balanced_text_vlm.json \
+  --runs 3 --max-tokens 128 --temperature 0.0 --top-p 1.0 \
+  --max-seq-nums 1 --mlx-engine-batched-timing --include-output-text \
+  --timeout 3000 --out-dir reports
+```
+
+#### Report paths
+
+- **4-bit shared-bench report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035155.543416Z-shared-bench.json`
+- **4-bit quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035155.543416Z-qwen36-4bit-quality-inspect.json`
+- **4-bit quality score (deterministic + judge):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035155.543416Z-qwen36-4bit-quality-score.json`
+- **8-bit shared-bench report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035313.633242Z-shared-bench.json`
+- **8-bit quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035313.633242Z-qwen36-8bit-quality-inspect.json`
+- **8-bit quality score (deterministic + judge):** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260702T035313.633242Z-qwen36-8bit-quality-score.json`
+
+#### Row-error inspection
+
+- **4-bit:** `0/18` rows have `error: null`. Runner process exit code `0`. All 3 runs per prompt produced byte-identical outputs (deterministic).
+- **8-bit:** `0/18` rows have `error: null`. Runner process exit code `0`. All 3 runs per prompt produced byte-identical outputs (deterministic).
+
+#### quality_compare.py --candidate inspect status
+
+- **4-bit inspect:** `status=pass`, `failed_prompts=[]`. All six prompts pass: `short_nyc_det`, `code_python_det`, `reasoning_math_det`, `instruction_format_det`, `image_toucan`, `image_pair`.
+- **8-bit inspect:** `status=pass`, `failed_prompts=[]`. All six prompts pass: `short_nyc_det`, `code_python_det`, `reasoning_math_det`, `instruction_format_det`, `image_toucan`, `image_pair`.
+
+#### quality_score.py deterministic scoring (authoritative)
+
+- **4-bit:** `status=pass`, `aggregate={total_runs: 18, successful_runs: 18, failed_runs: 0, mean_score: 1.000}`. All six prompts pass with `mean_score=1.000`, `pass_rate=1.000`.
+- **8-bit:** `status=pass`, `aggregate={total_runs: 18, successful_runs: 18, failed_runs: 0, mean_score: 1.000}`. All six prompts pass with `mean_score=1.000`, `pass_rate=1.000`.
+
+#### Secondary Pi/Ollama judge scoring (secondary only)
+
+- **4-bit judge:** `parse_status=ok`, `provider=ollama`, `model=glm-5.2:cloud`, `command="pi --provider ollama --model 'glm-5.2:cloud' --print --no-tools --no-session --thinking off"`, `score=0.95`, `rationale="All six prompts passed with perfect mean_score and pass_rate of 1.000 across diverse categories including code, math reasoning, and image tasks; clean sweep with no failures."`, `flags=["all-perfect-scores"]`, `score_kind="secondary"`, `authoritative="deterministic"`.
+- **8-bit judge:** `parse_status=ok` (after one transient empty-stdout retry), `provider=ollama`, `model=glm-5.2:cloud`, `command="pi --provider ollama --model 'glm-5.2:cloud' --print --no-tools --no-session --thinking off"`, `score=1.00`, `rationale="All six prompt categories passed with perfect mean_score=1.000 and pass_rate=1.000; no anomalies detected in the summary."`, `flags=["all-perfect-scores"]`, `score_kind="secondary"`, `authoritative="deterministic"`.
+- Judge scoring is recorded as secondary evidence. It cannot override deterministic failures and cannot promote a deterministic pass above its authoritative ranking. The judge was reachable throughout the run; OpenRouter and LLMDYNAMIX judge fallbacks are not contractual.
+
+#### Latency metrics (deterministic, --runs 3 averaged)
+
+| Lane | Prompt | 4-bit avg TTFT (cold / warm) | 8-bit avg TTFT (cold / warm) | 4-bit TPS | 8-bit TPS | 4-bit total | 8-bit total |
+|---|---|---|---|---|---|---|---|
+| text | short_nyc_det | 2.405s / 0.093s | 3.857s / 0.123s | 38.88 | 23.08 | 3.282s | 5.527s |
+| text | code_python_det | 0.437s / 0.087s | 0.470s / 0.122s | 38.99 | 23.04 | 1.948s | 5.360s |
+| text | reasoning_math_det | 0.435s / 0.086s | 0.469s / 0.121s | 38.90 | 23.22 | 1.694s | 2.563s |
+| text | instruction_format_det | 0.344s / 0.086s | 0.377s / 0.120s | 39.16 | 23.03 | 1.730s | 3.810s |
+| vlm | image_toucan | 0.628s / 0.090s | 0.612s / 0.125s | 38.72 | 22.99 | 2.516s | 4.551s |
+| vlm | image_pair | 1.840s / 0.112s | 1.839s / 0.142s | 38.45 | 22.81 | 4.017s | 6.319s |
+| **mean** | **all 18 rows** | **0.864s / 0.093s** | **1.368s / 0.123s** | **38.85** | **23.03** | **2.531s** | **4.688s** |
+
+- **Decode TPS:** 4-bit averages `38.85 tok/s` versus 8-bit `23.03 tok/s`. 4-bit is `1.69x` faster on decode throughput.
+- **Total latency:** 4-bit averages `2.531s` versus 8-bit `4.688s`. 4-bit is `1.85x` faster end-to-end.
+- **TTFT:** cold 4-bit `0.864s` versus cold 8-bit `1.368s`; warm 4-bit `0.093s` versus warm 8-bit `0.123s`. 4-bit is faster on TTFT for the text lane and within noise for the VLM lane.
+- **Completion tokens:** 4-bit and 8-bit sometimes differ slightly because of `max_tokens=128` truncation; both complete naturally without forced truncation on most prompts. The variance is bounded and does not affect rubric scoring.
+
+#### Latency vs quality tradeoff summary
+
+- **4-bit is significantly faster** (`1.69x` decode TPS, `1.85x` total latency) than the 8-bit checkpoint on the curated balanced suite.
+- **Deterministic quality is identical** for both checkpoints: `mean_score=1.000`, `pass_rate=1.000` across all six prompts and all three runs.
+- **Secondary judge scoring** rates 8-bit slightly higher (`1.00` vs `0.95`) on aggregate, but the judge is secondary-only and cannot override the deterministic tie.
+- **Conclusion:** on this curated balanced text+VLM suite with deterministic sampling, the 4-bit Qwen3.6 27B is the dominant choice. It preserves the same authoritative quality score as the 8-bit while being materially faster. The 8-bit is retained as a quality ceiling reference but is not recommended as a default workload target because the deterministic quality is identical and the latency cost is large.
+- This is a **data-capture** conclusion, not a promotion claim. It does not change any engine default, does not promote any cache or speculative-decoding lane, and does not alter the M29 M28 pyright scope or the M25/M26/M27 Qwen3.6 sweeps. Future lanes should reuse the curated suite, the rubric, and the inspect/score artifacts recorded here.
+
+#### No-forbidden-route and no-single-sample statements
+
+- **No LM Studio runtime, adapter route (`127.0.0.1:3180/3181/3182`), DFlash flags, MoE, or `--mlx-engine-force-sequential` was used for inference-under-test.** Direct `shared_bench.py --engine mlx-engine` only, through `.venv-py312`.
+- **No single-sample evidence:** each retained cell is the mean of `--runs 3` repeated samples per prompt; this lane runs `18` rows per model and `36` rows total across both models.
+- **No resource/process contention:** LLMDYNAMIX on `127.0.0.1:12444` is the only listener on the reserved mission ports; live preflight confirmed no local MLX/Metal model load, no concurrent `shared_bench.py` or `mlx_engine.openai_adapter` process, and ample disk headroom on `/Volumes/StudioStackSSD4TB`.
+
+#### Rubric calibration fix (harness-scoped)
+
+The first run of `quality_score.py` flagged `reasoning_math_det` with `rubric required phrase missing: '38.9'` on every row of both checkpoints. The model output `38.89%` (the mathematically more precise answer: `7/18 × 100 ≈ 38.888...%`), which is a valid alias for the rubric phrase `38.9` via `KEYWORD_ALIASES["38.9"] = ["38.9", "38.89"]`, but the rubric's `required_phrases` check was using literal substring matching, not the alias expansion used by `expected_keywords`. The fix:
+
+- `mlx-bench-harness/quality_score.py` — `_required_phrase_findings` now applies the same `KEYWORD_ALIASES` expansion as `keyword_hits`, so a rubric phrase like `"38.9"` matches a candidate text that produces the more precise `"38.89"` form.
+- `mlx-bench-harness/prompt_suites/m29_reference_rubric.json` — `reasoning_math_det` now declares both `"38.9"` and `"38.89"` in `required_phrases` and `reference_keywords` for explicit defense in depth.
+- All 46 existing `tests/test_quality_score.py` fixtures still pass; the new alias behavior is consistent with the existing `keyword_hits` behavior and does not weaken the strict-JSON judge path.
+
+This is a rubric-calibration fix, not an engine behavior change. The fix improves alignment between the per-prompt `expected_keywords` (which already uses aliases) and the rubric `required_phrases` (which now also uses aliases).
+
+#### Files changed
+
+- `mlx-bench-harness/prompt_suites/m29_balanced_text_vlm.json` — new curated balanced text+VLM suite (6 prompts combining text and VLM cases).
+- `mlx-bench-harness/prompt_suites/m29_reference_rubric.json` — added `"38.89"` to `reasoning_math_det` `required_phrases` and `reference_keywords`.
+- `mlx-bench-harness/quality_score.py` — `_required_phrase_findings` now applies `KEYWORD_ALIASES` expansion for parity with `keyword_hits`.
+- `mlx-bench-harness/reports/20260702T035155.543416Z-*` — new 4-bit shared-bench report, inspect artifact, and deterministic+judge score artifact.
+- `mlx-bench-harness/reports/20260702T035313.633242Z-*` — new 8-bit shared-bench report, inspect artifact, and deterministic+judge score artifact.
+- `mlx-engine/.planning/performance-future-work.md` — this M29 evidence section.
+
+#### Validation contract assertion
+
+- `VAL-M29-003` (Balanced 4-bit versus 8-bit Qwen3.6 quality comparison is captured): **MET**. Both model variants produced zero row errors, `quality_compare.py --candidate` inspect returned `status=pass` on both reports, `quality_score.py` deterministic scoring emitted identical authoritative `mean_score=1.000` summaries for both models, the secondary Pi/Ollama `glm-5.2:cloud` judge returned valid strict-JSON scores (`4-bit=0.95`, `8-bit=1.00`) without a judge blocker, and the latency-versus-quality tradeoff is summarized above.
