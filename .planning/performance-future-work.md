@@ -5376,7 +5376,7 @@ python3 quality_score.py --candidate <report> --out <score> --rubric prompt_suit
 
 - **B_sampling_07_09:** `data_capture_only`. Single-sample evidence. Sampling at temp=0.7/top-p=0.9 produces rubric-passing output, but no default or promotion change is proposed from single-sample or judge-only evidence. Existing default (temp=0.0, top-p=1.0) remains in force.
 - **C_prefill_4096:** `data_capture_only`. Single-sample evidence. `prefill_step_size=4096` is quality-passing and shows marginal TPS/total improvement vs default, but no promotion claim is made. Existing explicit `--prefill-step-size` override remains available for callers that need it.
-- **D_max_seq_2:** `data_capture_only`. Single-sample evidence. `max_seq_nums=2` is quality-passing and shows marginal TPS/total improvement vs default `max_seq_nums=1`, but no promotion claim is made. Existing explicit `--max-seq-nums` override remains available for callers that need it.
+- **D_max_seq_2:** `data_capture_only`. Single-sample evidence. `max_seq_nums=2` is quality-passing and shows marginal TPS/total improvement versus the controlled matrix baseline (Cell A, which used `--max-seq-nums 1`), but no promotion claim is made. Existing explicit `--max-seq-nums` override remains available for callers that need it. The comparison is against the matrix's controlled baseline, not against the engine default `max_seq_nums=4`.
 
 #### No-default-change and no-single-sample statements
 
