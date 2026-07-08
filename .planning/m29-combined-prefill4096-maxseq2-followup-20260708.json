@@ -79,7 +79,8 @@
   "route_policy_notes": [
     "quality_compare.py --candidate reports direct-only mlx-engine artifacts with status=fail because the report route_policy is non-promotion-reference, even when every prompt check passes.",
     "Pairwise quality_compare.py also reports route_policy and shared_settings mismatches because the candidate intentionally changes max_seq_nums and prefill_step_size.",
-    "This route-policy behavior is useful as a promotion guard but means deterministic quality_score.py is the clean quality-only signal for direct-only M29 data capture."
+    "This route-policy behavior is useful as a promotion guard but means deterministic quality_score.py is the clean quality-only signal for direct-only M29 data capture.",
+    "Follow-up harness change records prompt_quality_status and promotion_gate_status separately. The regenerated single-report inspect artifacts now show prompt_quality_status=pass and promotion_gate_status=fail, while the pairwise compare correctly shows prompt_quality_status=fail because instruction_format_det missed the warm-TTFT gate."
   ],
   "commands": {
     "baseline": "cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness && python3 shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit --mlx-engine-root /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --prompt-suite-json prompt_suites/m29_balanced_text_vlm.json --runs 3 --max-tokens 128 --max-seq-nums 1 --mlx-engine-batched-timing --temperature 0.0 --top-p 1.0 --include-output-text --timeout 2400 --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports",
