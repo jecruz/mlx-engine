@@ -1,0 +1,89 @@
+{
+  "feature_id": "m29-combined-prefill4096-maxseq2-followup",
+  "milestone": "m29-qwen36-deeper-quality-sweeps",
+  "recorded_at": "2026-07-08T22:50:00Z",
+  "decision": "NO_PROMOTION",
+  "decision_reason": "The combined prefill_step_size=4096 + max_seq_nums=2 cell preserves deterministic quality and improves aggregate TTFT/total latency, but pairwise quality_compare.py fails on instruction_format_det because warm TTFT p50 regressed 9.051% against the 5% gate. The route policy also classifies direct-only mlx-engine reports as non-promotion evidence, so this remains data capture only.",
+  "model": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit",
+  "python": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python",
+  "prompt_suite": "prompt_suites/m29_balanced_text_vlm.json",
+  "inference_under_test": "direct shared_bench.py",
+  "baseline": {
+    "label": "refresh_baseline",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "prefill_step_size": null,
+    "max_seq_nums": 1,
+    "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260708T224655.693589Z-shared-bench.json",
+    "quality_inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260708T224655.693589Z-m29-refresh-baseline-quality-inspect.json",
+    "quality_score": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260708T224655.693589Z-m29-refresh-baseline-quality-score.json",
+    "runner_returncode": 0,
+    "row_total": 18,
+    "row_errors": 0,
+    "quality_score_status": "pass",
+    "quality_score_mean": 1.0
+  },
+  "candidate": {
+    "label": "combined_prefill4096_maxseq2",
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "prefill_step_size": 4096,
+    "max_seq_nums": 2,
+    "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260708T224815.111864Z-shared-bench.json",
+    "quality_inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260708T224815.111864Z-m29-combined-quality-inspect.json",
+    "quality_score": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260708T224815.111864Z-m29-combined-quality-score.json",
+    "quality_compare": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260708T224815.111864Z-m29-combined-quality-compare.json",
+    "runner_returncode": 0,
+    "row_total": 18,
+    "row_errors": 0,
+    "quality_score_status": "pass",
+    "quality_score_mean": 1.0,
+    "quality_compare_status": "fail",
+    "quality_compare_failed_prompts": [
+      "instruction_format_det"
+    ]
+  },
+  "aggregate_metrics": {
+    "baseline": {
+      "avg_ttft_s": 0.425896,
+      "cold_ttft_s": 1.086362,
+      "warm_ttft_s": 0.095663,
+      "avg_decode_tps": 38.621661,
+      "avg_total_s": 2.572446,
+      "avg_completion_tokens": 82.666667
+    },
+    "candidate": {
+      "avg_ttft_s": 0.368712,
+      "cold_ttft_s": 0.920356,
+      "warm_ttft_s": 0.092891,
+      "avg_decode_tps": 38.583012,
+      "avg_total_s": 2.51384,
+      "avg_completion_tokens": 82.666667
+    },
+    "candidate_change_pct": {
+      "avg_ttft_s": -13.427,
+      "cold_ttft_s": -15.281,
+      "warm_ttft_s": -2.898,
+      "avg_decode_tps": -0.1,
+      "avg_total_s": -2.278
+    }
+  },
+  "failed_gate": {
+    "prompt_id": "instruction_format_det",
+    "finding": "warm TTFT median regression 9.051% exceeds 5.000%",
+    "ttft_change_pct": 0.387,
+    "decode_tps_change_pct": -0.892,
+    "total_change_pct": 0.848,
+    "warm_ttft_p50_change_pct": 9.051
+  },
+  "route_policy_notes": [
+    "quality_compare.py --candidate reports direct-only mlx-engine artifacts with status=fail because the report route_policy is non-promotion-reference, even when every prompt check passes.",
+    "Pairwise quality_compare.py also reports route_policy and shared_settings mismatches because the candidate intentionally changes max_seq_nums and prefill_step_size.",
+    "This route-policy behavior is useful as a promotion guard but means deterministic quality_score.py is the clean quality-only signal for direct-only M29 data capture."
+  ],
+  "commands": {
+    "baseline": "cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness && python3 shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit --mlx-engine-root /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --prompt-suite-json prompt_suites/m29_balanced_text_vlm.json --runs 3 --max-tokens 128 --max-seq-nums 1 --mlx-engine-batched-timing --temperature 0.0 --top-p 1.0 --include-output-text --timeout 2400 --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports",
+    "candidate": "cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness && python3 shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit --mlx-engine-root /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --prompt-suite-json prompt_suites/m29_balanced_text_vlm.json --runs 3 --max-tokens 128 --max-seq-nums 2 --prefill-step-size 4096 --mlx-engine-batched-timing --temperature 0.0 --top-p 1.0 --include-output-text --timeout 2400 --out-dir /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports"
+  },
+  "next_action": "Do not promote the combined prefill/max-seq setting. If this lane is revisited, run another same-state A/B repeat and require the instruction_format_det warm TTFT regression to clear the gate before considering live LM Studio validation."
+}

@@ -5571,6 +5571,27 @@ This limitation is the structural reason no cell is promoted. The matrix is the 
 - **No single-sample evidence is treated as promotion evidence.** Each retained cell is the mean of `--runs 3` repeated samples per prompt; this lane runs `18` rows per cell and `90` rows total across all six retained scoring targets (M29-003 4-bit + M29-003 8-bit + M29-004 Cells A/B/C/D). The matrix is balanced-but-limited and is not a promotion matrix.
 - **No judgment-only evidence is treated as promotion evidence.** The judge is secondary-only and cannot promote a deterministic tie or a deterministic failure.
 
+### M29 combined prefill/max-seq follow-up (2026-07-08)
+
+The previously deferred combined cell `prefill_step_size=4096` plus
+`max_seq_nums=2` was measured as a direct `mlx-engine` evidence gap, not as a
+default-change proposal. The run used the same Qwen3.6 27B 4-bit model,
+`prompt_suites/m29_balanced_text_vlm.json`, `--runs 3`, `--max-tokens 128`,
+deterministic sampling, and `--include-output-text`.
+
+- **Evidence artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m29-combined-prefill4096-maxseq2-followup-20260708.json`
+- **Fresh baseline:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260708T224655.693589Z-shared-bench.json`
+- **Combined candidate:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260708T224815.111864Z-shared-bench.json`
+- **Candidate deterministic score:** `status=pass`, `mean_score=1.000`, `18/18` successful rows, `0` row errors.
+- **Pairwise compare:** `status=fail`; `instruction_format_det` warm TTFT p50 regressed `9.051%` against the `5.000%` gate.
+- **Aggregate movement:** avg TTFT `-13.427%`, warm TTFT `-2.898%`, avg decode TPS `-0.100%`, avg total latency `-2.278%`.
+
+Decision: **NO PROMOTION / NO DEFAULT CHANGE**. The combined cell preserves
+deterministic quality and improves aggregate latency, but it fails the
+per-prompt warm-TTFT gate and therefore does not advance to live LM Studio
+validation. If this lane is revisited, require a fresh same-state A/B repeat
+and a clean pairwise quality/performance gate before any promotion discussion.
+
 ### Resource and process preflight (every cell)
 
 - Disk headroom on `/Volumes/StudioStackSSD4TB`: ~540 GiB available before and after this synthesis; ample.
