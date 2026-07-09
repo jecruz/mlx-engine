@@ -6359,3 +6359,43 @@ representation or scheduling design that preserves cross-thread stream safety,
 has a rollback switch when warranted, and can pass repeated retained-workload
 benchmarks plus quality and live LM Studio validation once the LM Studio model
 registration blocker is cleared.
+
+### M51 LFM2.5 text-only generated-token cache gate (2026-07-09)
+
+Feature `m51-lfm25-text-cache-gate` adapts the useful part of
+`upstream/will/lfm-2.5-unified` commit `461015c Add test for LFM 2.5 caching`
+into the current local test surface without using `model_getter`, prompting for
+downloads, or requiring LM Studio model-index registration.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m51-lfm25-text-cache-gate-20260709.json`
+- **Test file:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_vision_models.py`
+- **Model path used by heavy validation:** `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`
+
+The new helper resolves LFM2.5-VL without prompting:
+
+- first, `MLX_ENGINE_LFM25_VL_MODEL_PATH`;
+- then the retained benchmark model path under `/Volumes/StudioStackSSD4TB`;
+- then existing `~/.lmstudio/models` 8-bit and 4-bit slots.
+
+Validation:
+
+- `python3 -m py_compile tests/test_vision_models.py` -> passed.
+- `.venv-py312/bin/python -m pytest tests/test_vision_models.py::TestVisionModels::test_lfm2_5_vl_text_only_generation_caching --collect-only -q`
+  -> one test collected.
+- `.venv-py312/bin/python -m pytest tests/test_vision_models.py::TestVisionModels::test_lfm2_5_vl_text_only_generation_caching -q -rs`
+  -> skipped with `need --heavy option to run`, preserving the repo's heavy-test gate.
+- `.venv-py312/bin/python -m pytest tests/test_vision_models.py::TestVisionModels::test_lfm2_5_vl_text_only_generation_caching -q -s --heavy`
+  -> `1 passed, 2 warnings in 5.76s`.
+
+Heavy-test cache evidence:
+
+- First request: `cached_tokens=0`, `total_prompt_tokens=29`,
+  `prefill_tokens_processed=29`.
+- Second request: `cached_tokens=542`, `total_prompt_tokens=565`,
+  `prefill_tokens_processed=23`, reported lifetime efficiency `91.25%`.
+- Second response contained `Silas`.
+
+Decision: **TEST GATE ONLY / NO PROMOTION / RUNTIME UNCHANGED**. This closes the
+M50 upstream-test deferral with a local, non-prompting, real-model gate for
+future prompt-cache or text-only VLM caching changes. It does not itself promote
+a latency candidate.
