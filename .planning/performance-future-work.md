@@ -6617,3 +6617,30 @@ Decision: **LIVE VALIDATION BLOCKED BEFORE INFERENCE / NO PROMOTION / RUNTIME
 UNCHANGED**. Do not run live LM Studio `/v1/chat/completions` validation or
 promote a runtime candidate until a later preflight reports
 `ready_for_live_validation=true`.
+
+### M56 current handoff refresh (2026-07-09)
+
+Feature `m56-current-handoff-refresh` updates the continuation handoff files so
+future sessions do not resume from the stale June branch and pause point.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m56-current-handoff-refresh-20260709.json`
+- **Markdown handoff:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/.continue-here.md`
+- **JSON handoff:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/HANDOFF.json`
+
+Result:
+
+- Handoff branch now records `mlx-vlm-restore-eval-followup`.
+- Latest milestones now record M51 through M55.
+- Active blocker now records the LM Studio VLM visibility gate from M55.
+- Next safe actions now require rerunning
+  `scripts/lmstudio_vlm_live_validation_preflight.py` before any live LM
+  Studio validation or promotion step.
+
+Validation:
+
+- `python3 -m json.tool .planning/HANDOFF.json` -> passed.
+- `python3 -m json.tool .planning/m56-current-handoff-refresh-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
+
+Decision: **HANDOFF REFRESH ONLY / NO PROMOTION / RUNTIME UNCHANGED**.
