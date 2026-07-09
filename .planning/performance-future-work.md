@@ -5892,3 +5892,41 @@ Decision: **DOC CORRECTION ONLY / NO NEW PROMOTION / RUNTIME UNCHANGED**. The
 goal state is stricter after this slice because public docs no longer imply a
 live LM Studio validation gate that has not passed on the current retained VLM
 follow-up work.
+
+### M39 LM Studio supported download retry (2026-07-09)
+
+Feature `m39-lmstudio-supported-download-retry` retried the official LM Studio
+registration path for the retained LFM2.5-VL MLX model after M38 clarified that
+live LM Studio validation remains required before broader promotion.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m39-lmstudio-supported-download-retry-20260709.json`
+- **Before preflight:** `/tmp/lmstudio-vlm-live-validation-preflight-m39-before.json`
+- **After preflight:** `/tmp/lmstudio-vlm-live-validation-preflight-m39-after-300.json`
+- **Retry log:** `/tmp/m39-lms-get.out`
+- **Confirmation log:** `/tmp/m39-lms-get-confirm.out`
+
+Result:
+
+- Before retry, `lms ls --json` exposed only
+  `text-embedding-nomic-embed-text-v1.5`.
+- The local retained model directory at
+  `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`
+  remained complete.
+- The supported `lms get
+  https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y`
+  path again resolved `LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB`.
+- The 300-second retry log showed only `0.00%` download progress frames. No
+  `lms get` process remained after the bounded run. The wrapper failed to print
+  the timeout code because it assigned zsh's read-only `status` variable after
+  the command returned.
+- A correctly captured 60-second confirmation retry exited `124` and also
+  remained at `0.00%`.
+- After retry, the preflight still reported `ready_for_live_validation=false`
+  and `model_visible_to_lms.visible=false`; the reason remains `model key is
+  absent from lms ls --json`.
+
+Decision: **SUPPORTED DOWNLOAD STILL STALLED / LIVE VALIDATION BLOCKED BEFORE
+INFERENCE / NO PROMOTION / RUNTIME UNCHANGED**. Continue to use only the
+official `lms get` registration path or LM Studio UI path. Do not hand-edit LM
+Studio index/cache files, do not treat a copied directory as loadable, and do
+not force the unsafe `lms import` prompt for `model.safetensors`.
