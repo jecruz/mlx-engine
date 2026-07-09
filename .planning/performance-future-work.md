@@ -5826,3 +5826,40 @@ Decision: **NETWORK/HF/PROXY NOT THE BLOCKER / LM STUDIO REGISTRATION
 ORCHESTRATION STILL BLOCKED**. Continue only through an official LM Studio UI or
 CLI path that creates a completed download job and model-index entry. Do not
 hand-edit index caches or force the unsafe import prompt.
+
+### M37 upstream scan refresh (2026-07-09)
+
+Feature `m37-upstream-scan` refreshed upstream branch triage after M36 so the
+next milestone would not proceed from stale assumptions.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m37-upstream-scan-20260709.json`
+- **Baseline:** previous upstream scan
+  `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/upstream-scan-20260708-mlx-engine.json`
+
+Result:
+
+- `upstream/main` is still at `8ae2610 Handle Gemma4 bidirectional visual prefill (#340)`.
+- No new commits landed on `upstream/main` since the M30 scan.
+- `upstream/will/qwen3.5-unified` contains relevant-looking Qwen3.5 commits
+  (`82e300e`, `6d07def`, `d48e5fb`, `55ef309`, `3d49a30`), but the branch is a
+  broad unified/`vision_add_ons` architecture rewrite. Its full diff would
+  remove the current local `batched_vision` prompt-cache stack and tests.
+- Local `mlx_engine/model_kit/patches/qwen3_5.py` already covers the important
+  Qwen3.5 behaviors from those commits for this branch: chunk-boundary stored
+  position stitching, scalar/vector cache-offset handling, `rope_deltas`, and
+  text-only original `mlx-lm` routing.
+- Stale narrow-looking branches (`neil/phi3_v`,
+  `revert-196-will/mistral3-empty-input-embeds`, `will/lfm-2.5-unified`) are
+  tens of commits behind main and have destructive full diffs despite one
+  ahead commit each.
+- The RGB image-loading fix from `upstream/ryan/fix-image-loading` is already
+  an ancestor of local HEAD, and local `mlx_engine/utils/image_utils.py` already
+  calls `.convert("RGB")`.
+- Distributed branches (`yagil/dist`, `yagil/mlx-dist-non-batched`) remain
+  outside the retained Mac-local direct benchmark lane.
+
+Decision: **NO_CHERRY_PICK / NO_PROMOTION / RUNTIME UNCHANGED**. There is no
+bounded upstream code candidate worth importing before LM Studio live validation.
+Continue with a new isolated local hypothesis, or rerun LM Studio live
+validation only after the official LM Studio UI/CLI path registers LFM2.5-VL and
+`lms ls --json` exposes the model.

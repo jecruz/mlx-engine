@@ -1,0 +1,195 @@
+{
+  "milestone": "M37-upstream-scan",
+  "timestamp_utc": "2026-07-09T00:52:15Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "remote_checked": "upstream",
+  "baseline_previous_scan": {
+    "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/upstream-scan-20260708-mlx-engine.json",
+    "upstream_main_commit": "8ae2610",
+    "upstream_main_subject": "Handle Gemma4 bidirectional visual prefill (#340)",
+    "previous_decision": "NO_CHERRY_PICK"
+  },
+  "command_summary": [
+    "git status --short --branch",
+    "git fetch upstream --prune",
+    "git log 8ae2610..upstream/main",
+    "git log --oneline upstream/main -8",
+    "git rev-list --count upstream/main..<branch>",
+    "git rev-list --count <branch>..upstream/main",
+    "git diff --shortstat upstream/main..<branch>",
+    "git show --stat --oneline 461015c 161ff8f c8970c9",
+    "git show --stat --oneline 82e300e 6d07def 3d49a30 d48e5fb 55ef309",
+    "rg -n \"convert\\(\\\"RGB\\\"\\)|_convert_to_pil|PIL.Image.open|Image.open\" mlx_engine tests",
+    "rg -n \"_num_tokens_in_cache|trim_prompt_cache|Could not determine\" mlx_engine/cache_wrapper.py tests",
+    "sed -n '1020,1160p' mlx_engine/model_kit/patches/qwen3_5.py",
+    "sed -n '1,80p' mlx_engine/utils/image_utils.py"
+  ],
+  "upstream_main": {
+    "status": "unchanged-since-previous-scan",
+    "current_head": {
+      "commit": "8ae2610",
+      "subject": "Handle Gemma4 bidirectional visual prefill (#340)"
+    },
+    "new_commits_since_previous_scan": []
+  },
+  "local_relevant_surfaces": {
+    "qwen3_5_mrope": {
+      "file": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/patches/qwen3_5.py",
+      "observed_local_coverage": [
+        "PatchedQwen3_5TextModel._compute_position_ids stitches stored multimodal prompt positions with a sequential tail when chunked prefill crosses the stored prompt boundary.",
+        "PatchedQwen3_5TextModel._compute_sequential_position_ids accepts scalar and vector cache offsets plus rope_deltas.",
+        "tests/test_patched_qwen3_5.py contains chunked-MRoPE, rope_deltas decode, fully-padded vision-row, and left-padded batch-cache coverage."
+      ]
+    },
+    "lfm2_cache_length": {
+      "file": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/cache_wrapper.py",
+      "observed_local_coverage": [
+        "CacheWrapper._num_tokens_in_cache reads cache[0].offset when present and scans later cache entries when the first entry has no offset.",
+        "CacheWrapper._flush_live_cache and _prefill_cache use _num_tokens_in_cache before trimming or checkpointing."
+      ]
+    },
+    "image_rgb_conversion": {
+      "file": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/utils/image_utils.py",
+      "observed_local_coverage": [
+        "convert_to_pil decodes base64 images and calls .convert(\"RGB\")."
+      ]
+    }
+  },
+  "branch_triage": [
+    {
+      "branch": "upstream/neil/gemma4-tool-context",
+      "head": "9aa3db2",
+      "ahead_of_main": 17,
+      "behind_main": 0,
+      "decision": "no-cherry-pick",
+      "reason": "Same decision as M30. The branch is a Gemma4 tool-runtime and grammar-guard feature lane. The interesting optimization commits depend on that feature surface and do not form a retained Mac-local VLM prompt-cache latency candidate."
+    },
+    {
+      "branch": "upstream/neil/img-caching",
+      "head": "7dfe3cd",
+      "ahead_of_main": 13,
+      "behind_main": 0,
+      "decision": "no-cherry-pick",
+      "reason": "Same decision as M30. The branch remains a broad parallel VLM/image-cache architecture lane, not an isolated patch against the current local batched VLM prompt-cache implementation."
+    },
+    {
+      "branch": "upstream/neil/phi3_v",
+      "head": "161ff8f",
+      "ahead_of_main": 1,
+      "behind_main": 89,
+      "shortstat_vs_main": "106 files changed, 1854 insertions(+), 18725 deletions(-)",
+      "interesting_commits": [
+        "161ff8f add test"
+      ],
+      "decision": "no-cherry-pick",
+      "reason": "Stale test-only branch. The single ahead commit edits tests/test_vision_models.py, while the full branch diff would revert large current upstream VLM/cache surfaces. It has no runtime latency hypothesis for the retained lane."
+    },
+    {
+      "branch": "upstream/neil/vlm-parity-ci",
+      "head": "ea1a6bb",
+      "ahead_of_main": 82,
+      "decision": "no-cherry-pick",
+      "reason": "Same decision as M30. It is a large VLM parity/CI branch with overlapping cache and batching changes, not a bounded local performance candidate."
+    },
+    {
+      "branch": "upstream/revert-196-will/mistral3-empty-input-embeds",
+      "head": "c8970c9",
+      "ahead_of_main": 1,
+      "behind_main": 59,
+      "shortstat_vs_main": "96 files changed, 2295 insertions(+), 16903 deletions(-)",
+      "interesting_commits": [
+        "c8970c9 Revert \"[Mistral3] Send empty (instead of fake) input IDs (#196)\""
+      ],
+      "decision": "no-cherry-pick",
+      "reason": "Stale Mistral3 branch on an upstream-only vision_add_ons surface. It is not LFM2.5-VL prompt-cache work and the full branch diff would revert current cache and VLM surfaces."
+    },
+    {
+      "branch": "upstream/ryan/fix-image-loading",
+      "head": "1a141d6",
+      "ahead_of_main": 0,
+      "behind_main": 99,
+      "interesting_commits": [
+        "1a141d6 Fix image loading"
+      ],
+      "decision": "already-subsumed",
+      "reason": "The commit is already an ancestor of upstream/main and local HEAD. The local image utility already converts decoded images to RGB."
+    },
+    {
+      "branch": "upstream/will/lfm-2.5-unified",
+      "head": "461015c",
+      "ahead_of_main": 1,
+      "behind_main": 25,
+      "shortstat_vs_main": "83 files changed, 2609 insertions(+), 14336 deletions(-)",
+      "interesting_commits": [
+        "461015c Add test for LFM 2.5 caching"
+      ],
+      "decision": "no-cherry-pick",
+      "reason": "Test-only commit on a stale and divergent branch. Local LFM2.5-VL work already has retained repeated-sample benchmark and restart-cache evidence; this adds no runtime patch or promotion candidate."
+    },
+    {
+      "branch": "upstream/will/qwen3.5-debug",
+      "head": "2c265bc",
+      "ahead_of_main": 35,
+      "decision": "no-cherry-pick",
+      "reason": "Debug branch containing dumps, disabled patches, and Qwen3.5 experimental work. It is not a clean candidate branch."
+    },
+    {
+      "branch": "upstream/will/qwen3.5-dump",
+      "head": "fc4d488",
+      "ahead_of_main": 36,
+      "decision": "no-cherry-pick",
+      "reason": "Dump/debug branch. It intentionally adds diagnostic output rather than a bounded runtime improvement."
+    },
+    {
+      "branch": "upstream/will/qwen3.5-unified",
+      "head": "3d49a30",
+      "ahead_of_main": 25,
+      "behind_main": 14,
+      "shortstat_vs_main": "75 files changed, 3147 insertions(+), 11760 deletions(-)",
+      "interesting_commits": [
+        "82e300e Fix chunk boundary prefill",
+        "6d07def always compute rope",
+        "d48e5fb image prompts match mlx-vlm",
+        "55ef309 Use mlx-lm attn for text-only",
+        "3d49a30 multi-image fix"
+      ],
+      "decision": "no-cherry-pick",
+      "reason": "The relevant Qwen3.5 fixes target a divergent unified/vision_add_ons architecture and the full branch deletes the current local batched_vision prompt-cache stack and tests. Local qwen3_5.py already includes stored-position tail stitching, scalar/vector cache-offset handling, rope_deltas support, text-only original mlx-lm routing, and retained tests for chunked MRoPE and left-padded batch-cache behavior. A direct cherry-pick would be higher risk than benefit without new failing local evidence."
+    },
+    {
+      "branch": "upstream/yagil/dist",
+      "head": "366ebd4",
+      "ahead_of_main": 29,
+      "interesting_commits": [
+        "366ebd4 Preserve backpressure in distributed stream bridge",
+        "4b6b826 Stop distributed stream when caller exits",
+        "5cbeb1b Add distributed model thread diagnostics",
+        "d6656f1 Run sequential distributed MLX on model thread"
+      ],
+      "decision": "no-cherry-pick",
+      "reason": "Distributed serving/runtime lane. It may be valuable for distributed correctness, but it is outside the current Mac-local retained direct benchmark promotion criteria."
+    },
+    {
+      "branch": "upstream/yagil/mlx-dist-non-batched",
+      "head": "c86c23a",
+      "ahead_of_main": 35,
+      "interesting_commits": [
+        "c86c23a Run Qwen VLM prompts on model thread",
+        "3e41fdf Run MLX VLM generation on model thread",
+        "c8275b6 Align distributed MLX prompt caching"
+      ],
+      "decision": "no-cherry-pick",
+      "reason": "Distributed non-batched runtime branch with broad scheduler/threading changes. It is not a bounded Mac-local latency change and would require a separate distributed validation lane."
+    }
+  ],
+  "decision": {
+    "status": "NO_CHERRY_PICK",
+    "promotion_status": "NO_PROMOTION",
+    "default_change": false,
+    "live_lm_studio_validation": "not-run",
+    "live_lm_studio_reason": "No candidate code change was selected; LM Studio VLM registration remains blocked by the M36 download/import/index orchestration issue.",
+    "next_action": "Keep the current runtime unchanged. Continue only with a new isolated local hypothesis or rerun LM Studio validation after the official LM Studio UI/CLI path registers LFM2.5-VL and lms ls --json exposes the model."
+  }
+}
