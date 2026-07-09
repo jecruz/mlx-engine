@@ -6558,3 +6558,62 @@ ratio-reporting format to prove backward compatibility and stable retained
 cache behavior. Future runtime candidates still need candidate-vs-baseline
 deltas from repeated retained workloads, quality gates, and live LM Studio
 validation before promotion.
+
+### M55 LM Studio VLM live-validation gate refresh (2026-07-09)
+
+Feature `m55-lmstudio-vlm-gate-refresh` rechecks the external LM Studio gate
+that blocks live validation for retained LFM2.5-VL runtime candidates. This is
+a blocker-refresh milestone only; it does not change runtime behavior.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m55-lmstudio-vlm-gate-refresh-20260709.json`
+- **Preflight before probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m55.json`
+- **Supported download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m55.json`
+- **Preflight after probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m55-after-probe.json`
+
+Commands:
+
+```bash
+.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py \
+  --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m55.json \
+  --timeout 30
+
+.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py \
+  --output .planning/lmstudio-vlm-download-probe-20260709-m55.json \
+  --timeout 300
+
+.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py \
+  --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m55-after-probe.json \
+  --timeout 30
+```
+
+Result:
+
+- Preflight before probe: `ready_for_live_validation=false`,
+  `model_visible_to_lms=false`, `model_dir_complete=true`.
+- LM Studio server status: not running.
+- `lms ls --json` visible model keys: `text-embedding-nomic-embed-text-v1.5`
+  only.
+- `~/.lmstudio/.internal/model-data.json` contains the retained VLM model key,
+  but that metadata is not enough because `lms ls --json` does not expose it.
+- Supported `lms get` probe resolved `LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB`
+  but timed out after `300.008908s` at `0.0%` progress with
+  `stalled_at_zero=true`.
+- Preflight after probe remained blocked: `ready_for_live_validation=false`,
+  `model_visible_to_lms=false`, `model_dir_complete=true`.
+
+Validation:
+
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m55.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m55.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m55-after-probe.json`
+  -> passed.
+- `python3 -m json.tool .planning/m55-lmstudio-vlm-gate-refresh-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
+
+Decision: **LIVE VALIDATION BLOCKED BEFORE INFERENCE / NO PROMOTION / RUNTIME
+UNCHANGED**. Do not run live LM Studio `/v1/chat/completions` validation or
+promote a runtime candidate until a later preflight reports
+`ready_for_live_validation=true`.
