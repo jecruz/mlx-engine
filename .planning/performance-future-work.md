@@ -5955,3 +5955,43 @@ Decision: **GATE TOOLING ONLY / RUNTIME UNCHANGED / NO PROMOTION**. Use this
 probe for the next official LM Studio registration retry, then rerun
 `scripts/lmstudio_vlm_live_validation_preflight.py`. Live validation remains
 blocked until the preflight reports `ready_for_live_validation=true`.
+
+### M41 LM Studio download probe run and extraction fix (2026-07-09)
+
+Feature `m41-lmstudio-download-probe-run` used the M40 probe for the official
+LM Studio registration retry and hardened one evidence-extraction edge case
+found by the full run.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m41-lmstudio-download-probe-run-20260709.json`
+- **Download probe report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m41.json`
+- **Post-probe preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m41.json`
+
+Result:
+
+- The 300-second official `lms get ... --mlx -y` probe timed out after
+  `300.008889s`.
+- `max_progress_percent=0.0`, `stalled_at_zero=true`, `success=false`, and
+  `returncode=null`.
+- Post-probe preflight still reports `ready_for_live_validation=false`;
+  `model_visible_to_lms.visible=false` because the model key is absent from
+  `lms ls --json`.
+- The local retained model directory remains complete; LM Studio server is not
+  running; no models are loaded.
+- The full run exposed a probe-reporting edge case: the original M40 script
+  scanned only the retained output tail for `resolved_artifact`, so the
+  resolved download-plan line could fall out of the tail after 300 seconds of
+  spinner frames. M41 fixes extraction to scan all sanitized non-empty output
+  lines in reverse while still storing only a bounded output tail in JSON.
+
+Validation:
+
+- `.venv-py312/bin/python -m pytest tests/test_lmstudio_vlm_download_probe.py -q`
+  -> `3 passed`.
+- `python3 -m py_compile scripts/lmstudio_vlm_download_probe.py` -> passed.
+- A 5-second live smoke of the fixed probe captured
+  `resolved_artifact=LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB`,
+  `timed_out=true`, `max_progress_percent=0.0`, and `stalled_at_zero=true`.
+
+Decision: **SUPPORTED DOWNLOAD STILL STALLED / LIVE VALIDATION BLOCKED BEFORE
+INFERENCE / PROBE HARDENED / NO PROMOTION / RUNTIME UNCHANGED**. Continue only
+through the official LM Studio registration path or UI, then rerun preflight.

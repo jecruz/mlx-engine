@@ -1,0 +1,65 @@
+{
+  "milestone": "M41-lmstudio-download-probe-run",
+  "timestamp_utc": "2026-07-09T01:20:18Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Run the M40 official LM Studio download probe, rerun live-validation preflight, and fix evidence extraction found during the full probe.",
+  "official_download_probe": {
+    "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m41.json",
+    "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --timeout 300 --output .planning/lmstudio-vlm-download-probe-20260709-m41.json --tail-lines 80",
+    "success": false,
+    "timed_out": true,
+    "returncode": null,
+    "duration_s": 300.00888949999353,
+    "max_progress_percent": 0.0,
+    "stalled_at_zero": true,
+    "stdout_bytes": 343231,
+    "notes": [
+      "The report's resolved_artifact field is null because the original M40 extraction scanned only the retained output tail.",
+      "The raw full output did contain the download plan before the long spinner tail; M41 fixes extraction to scan all sanitized lines."
+    ]
+  },
+  "preflight_after_probe": {
+    "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m41.json",
+    "ready_for_live_validation": false,
+    "model_visible_to_lms": {
+      "visible": false,
+      "reason": "model key is absent from lms ls --json"
+    },
+    "model_dir": {
+      "path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+      "complete": true
+    },
+    "server_status": "not running",
+    "loaded_models": "none"
+  },
+  "probe_fix": {
+    "file": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lmstudio_vlm_download_probe.py",
+    "change": "Resolved artifact extraction now scans all sanitized non-empty lines in reverse instead of only the retained JSON output tail.",
+    "reason": "A 300-second stalled download can emit enough progress frames to push the download-plan line outside the retained tail."
+  },
+  "validation": [
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_lmstudio_vlm_download_probe.py -q",
+      "status": "passed",
+      "result": "3 passed in 0.02s"
+    },
+    {
+      "command": "python3 -m py_compile scripts/lmstudio_vlm_download_probe.py",
+      "status": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --timeout 5 --output /tmp/m41-lmstudio-download-probe-smoke.json --tail-lines 20",
+      "status": "passed",
+      "result": "probe returned non-zero as expected for timeout; JSON report included resolved_artifact='LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB', timed_out=true, max_progress_percent=0.0, stalled_at_zero=true"
+    }
+  ],
+  "decision": {
+    "status": "SUPPORTED_DOWNLOAD_STILL_STALLED",
+    "runtime_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "live_lm_studio_validation": "blocked-before-inference",
+    "next_action": "Use the fixed probe for future official download retries, then rerun live preflight. Do not run live /v1/chat/completions validation until ready_for_live_validation=true."
+  }
+}

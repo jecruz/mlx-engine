@@ -96,3 +96,30 @@ def test_run_probe_records_success(monkeypatch):
     assert payload["returncode"] == 0
     assert payload["progress"]["max_percent"] == 100.0
     assert payload["stalled_at_zero"] is False
+
+
+def test_resolved_artifact_survives_long_spinner_tail(monkeypatch):
+    """Artifact extraction must not depend on the retained output tail length."""
+
+    def fake_run(*_args, **_kwargs):
+        output = (
+            "↓ To download: LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB\n"
+            + "\n".join("⠙ [▏                     ] 0.00%" for _ in range(250))
+        )
+        raise subprocess.TimeoutExpired(
+            cmd=["lms", "get"],
+            timeout=60,
+            output=output,
+            stderr="",
+        )
+
+    monkeypatch.setattr(PROBE.subprocess, "run", fake_run)
+    payload = PROBE.run_probe(
+        lms_bin="lms",
+        hf_url="https://example.invalid/model",
+        timeout=60,
+        tail_lines=20,
+    )
+
+    assert payload["resolved_artifact"] == "LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB"
+    assert len(payload["output_tail"]) == 20

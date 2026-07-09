@@ -82,7 +82,8 @@ def _extract_progress(clean_output: str) -> dict[str, Any]:
 
 
 def _extract_resolved_artifact(clean_output: str) -> str | None:
-    for line in _tail_nonempty_lines(clean_output, limit=200):
+    lines = [line.strip() for line in clean_output.splitlines() if line.strip()]
+    for line in reversed(lines):
         if "To download:" in line:
             return line.split("To download:", 1)[1].strip()
     return None
