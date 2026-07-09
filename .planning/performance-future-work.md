@@ -6251,3 +6251,31 @@ Decision: **REPORTING TOOL ONLY / NO PROMOTION / RUNTIME UNCHANGED**. Use this
 tool for future restore eval candidates before making promotion claims; the
 current M45/M46 summary confirms barrier domination and no target-collection
 optimization target.
+
+### M48 restore async touch overlap no-go (2026-07-09)
+
+Feature `m48-restore-async-touch-overlap-no-go` evaluated whether restore should
+start materialization with an env-gated `mx.async_eval(...)`, overlap CPU-only
+LRU touch work, then keep the blocking `mx.eval(...)` barrier before handing the
+restored cache to generation.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m48-restore-async-touch-overlap-no-go-20260709.json`
+- **Evidence command:** `python3 scripts/vlm_restore_eval_split_report.py /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m45-restore-eval-split/20260709T013633.520360Z-shared-bench.json /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014025.811348Z-shared-bench.json /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014047.330686Z-shared-bench.json`
+- **Reports:** M45 direct evidence plus M46 repeat 1 and repeat 2, all with
+  zero row errors, warm `cached_tokens=7373`, and output preview `A toucan.`
+
+Timing evidence:
+
+| sample | eval_barrier_ms | eval_ms | touch_ms | touch share of barrier |
+| --- | ---: | ---: | ---: | ---: |
+| M45 | `4.904` | `4.961` | `0.093` | `1.90%` |
+| M46 R1 | `4.586` | `4.644` | `0.096` | `2.09%` |
+| M46 R2 | `5.996` | `6.052` | `0.108` | `1.80%` |
+
+Decision: **NO-GO / NO PROMOTION / RUNTIME UNCHANGED**. The maximum theoretical
+win from perfect overlap is capped by `touch_ms`, which measured only
+`0.093-0.108 ms`. That is too small to justify adding a new async scheduling
+branch in the cross-thread restore handoff path. Future candidates should target
+the barrier itself: reduce materialization cost, reduce materialized bytes, or
+move the unavoidable barrier outside the user-visible warm restore path while
+preserving quality and stream safety.
