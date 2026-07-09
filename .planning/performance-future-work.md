@@ -6955,3 +6955,60 @@ Validation:
 - `git diff --check` -> passed.
 - `python3 -m json.tool .planning/m63-lfm25-text-cache-readable-report-20260709.json`
   -> passed.
+
+### M64 LFM2.5 text-cache promotion gate (2026-07-09)
+
+Feature `m64-lfm25-text-cache-promotion-gate` adds a fail-closed promotion
+gate for retained LFM2.5-VL text-cache candidates.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m64-lfm25-text-cache-promotion-gate-milestone-20260709.json`
+- **Gate output:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m64-lfm25-text-cache-promotion-gate-20260709.json`
+- **New gate:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lfm25_text_cache_promotion_gate.py`
+
+The gate requires all of these before promotion:
+
+- repeated benchmark evidence with at least two samples;
+- row errors `0`;
+- all followups cached;
+- all followups small prefill;
+- all outputs preserve name;
+- comparison status `pass`;
+- non-empty readable Markdown evidence report;
+- LM Studio preflight `ready_for_live_validation=true`;
+- passing live LM Studio validation artifact.
+
+Command and result:
+
+- `.venv-py312/bin/python scripts/lfm25_text_cache_promotion_gate.py --benchmark .planning/m53-lfm25-text-cache-ratio-bench-20260709.json --comparison .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json --readable-report .planning/m63-lfm25-text-cache-evidence-report-20260709.md --preflight .planning/lmstudio-vlm-live-validation-preflight-20260709-m59-server-started.json --output .planning/m64-lfm25-text-cache-promotion-gate-20260709.json`
+  -> expected exit `1`, `promotion_status=NO_PROMOTION`.
+
+Passing checks:
+
+- `benchmark_min_samples`
+- `benchmark_row_errors`
+- `benchmark_followups_cached`
+- `benchmark_followups_small_prefill`
+- `benchmark_outputs_preserve_name`
+- `comparison_status`
+- `readable_report_exists`
+
+Failing checks:
+
+- `lmstudio_preflight_ready` (`value=false`, required `true`)
+- `live_lmstudio_validation_passed` (`missing`)
+
+Decision: **PROMOTION GATE TOOLING ONLY / NO PROMOTION / RUNTIME UNCHANGED**.
+The retained benchmark/report evidence is usable, but live LM Studio validation
+is still blocked before inference, so the gate correctly fails closed.
+
+Validation:
+
+- `python3 -m py_compile scripts/lfm25_text_cache_promotion_gate.py tests/test_lfm25_text_cache_promotion_gate.py scripts/lfm25_text_cache_report.py tests/test_lfm25_text_cache_report.py`
+  -> passed.
+- `.venv-py312/bin/python -m pytest tests/test_lfm25_text_cache_promotion_gate.py tests/test_lfm25_text_cache_report.py tests/test_lfm25_text_cache_bench.py tests/test_lfm25_text_cache_compare.py -q`
+  -> `11 passed`.
+- `python3 -m json.tool .planning/m64-lfm25-text-cache-promotion-gate-20260709.json`
+  -> passed.
+- `python3 -m json.tool .planning/m64-lfm25-text-cache-promotion-gate-milestone-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.

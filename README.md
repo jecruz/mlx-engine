@@ -492,6 +492,24 @@ candidate-vs-baseline, and name-fidelity evidence for review. It is reporting
 only; runtime promotion still requires retained wins, quality gates, and live
 LM Studio validation.
 
+To fail closed unless every LFM2.5 text-cache promotion prerequisite is present,
+run:
+
+```bash
+python scripts/lfm25_text_cache_promotion_gate.py \
+  --benchmark .planning/lfm25-text-cache-candidate.json \
+  --comparison .planning/lfm25-text-cache-compare.json \
+  --readable-report .planning/lfm25-text-cache-evidence.md \
+  --preflight .planning/lmstudio-vlm-live-validation-preflight.json \
+  --live-validation .planning/lmstudio-vlm-live-validation.json \
+  --output .planning/lfm25-text-cache-promotion-gate.json
+```
+
+The gate returns non-zero and writes `promotion_status="NO_PROMOTION"` when any
+required evidence is missing or failing. Omit `--live-validation` only when
+recording a blocked/no-promotion decision; a promotion-ready result requires a
+passing live LM Studio validation artifact.
+
 To produce a factual JSON snapshot of upstream branches before considering any
 new cherry-pick, run:
 

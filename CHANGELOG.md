@@ -21,6 +21,9 @@
 - Add `scripts/lfm25_text_cache_report.py` to render retained LFM2.5-VL
   text-cache benchmark and comparison JSON as a readable Markdown evidence
   report.
+- Add `scripts/lfm25_text_cache_promotion_gate.py` to fail closed unless
+  retained LFM2.5-VL benchmark, comparison, readable report, preflight, and
+  live LM Studio validation evidence all pass.
 - Add `scripts/upstream_candidate_scan.py` to produce factual JSON evidence for
   repeat upstream branch triage before any cherry-pick or runtime candidate.
 - Add `scripts/upstream_candidate_report.py` to render upstream scan JSON as a
