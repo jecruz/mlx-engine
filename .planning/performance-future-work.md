@@ -6826,3 +6826,37 @@ Validation:
 - `python3 -m json.tool .planning/m60-lmstudio-load-import-diagnostics-20260709.json`
   -> passed.
 - `git diff --check` -> passed.
+
+### M61 current handoff refresh (2026-07-09)
+
+Feature `m61-current-handoff-refresh` refreshes the durable handoff artifacts
+after the LM Studio server, load, and import diagnostics so the next session
+starts from the current blocker instead of stale benchmark milestones.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m61-current-handoff-refresh-20260709.json`
+- **Continue-here:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/.continue-here.md`
+- **Machine handoff:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/HANDOFF.json`
+
+Updates:
+
+- Status is now `active-blocked-on-lmstudio-model-index-visibility`.
+- Latest committed milestones include M57-M60 and commits through `753e9a8`.
+- The blocker is narrowed to LM Studio model-index visibility: retained
+  LFM2.5-VL is complete on disk and present in LM Studio model-data, but is not
+  exposed by `lms ls --json`.
+- No-promotion constraints remain explicit: no live LM Studio inference
+  validation until the preflight reports `ready_for_live_validation=true`, no
+  hand-editing LM Studio indexes/cache files, and no runtime promotion without
+  retained benchmarks and quality gates.
+
+Decision: **HANDOFF REFRESH ONLY / NO PROMOTION / RUNTIME UNCHANGED**. This
+milestone changes planning artifacts only and preserves the current LM Studio
+blocker as an external runtime-registration gate.
+
+Validation:
+
+- `python3 -m json.tool .planning/HANDOFF.json` -> passed.
+- `python3 -m json.tool .planning/m61-current-handoff-refresh-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
+- `lms server status` -> `The server is not running.`

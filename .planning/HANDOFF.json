@@ -1,8 +1,8 @@
 {
-  "version": "2.0",
-  "timestamp_utc": "2026-07-09T03:35:00Z",
+  "version": "3.0",
+  "timestamp_utc": "2026-07-09T05:05:00Z",
   "context": "research",
-  "status": "active-blocked-on-lmstudio-vlm-visibility",
+  "status": "active-blocked-on-lmstudio-model-index-visibility",
   "project": "MLX-engine prompt/inference performance",
   "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
   "branch": "mlx-vlm-restore-eval-followup",
@@ -10,76 +10,67 @@
   "active_goal": "Advance the Mac-local MLX inference stack only with changes that measurably improve retained prompt-processing or generation latency, preserve response quality, and do not increase runtime instability.",
   "latest_commits": [
     {
-      "sha": "0ae48ca",
-      "message": "[#1190] refresh LM Studio VLM validation gate"
+      "sha": "753e9a8",
+      "message": "[#1190] record LM Studio model resolution diagnostics"
     },
     {
-      "sha": "8b15db5",
-      "message": "[#1190] add LFM2.5 text cache compare gate"
+      "sha": "7f798b1",
+      "message": "[#1190] probe LM Studio server validation state"
     },
     {
-      "sha": "20a72e2",
-      "message": "[#1190] add LFM2.5 text cache ratio report"
+      "sha": "45025c8",
+      "message": "[#1190] add upstream candidate scan reporter"
     },
     {
-      "sha": "d68820b",
-      "message": "[#1190] add LFM2.5 text cache benchmark"
+      "sha": "e5e4b5b",
+      "message": "[#1190] refresh upstream MLX candidate scan"
     },
     {
-      "sha": "1dfc300",
-      "message": "[#1190] add LFM2.5 text cache gate"
+      "sha": "edf0c23",
+      "message": "[#1190] refresh current MLX performance handoff"
     }
   ],
   "recent_milestones": [
     {
-      "id": "M51",
-      "name": "LFM2.5 text-cache gate",
-      "status": "done",
-      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m51-lfm25-text-cache-gate-20260709.json",
-      "summary": "Added a non-prompting real-model pytest gate for LFM2.5-VL text-only generated-token cache reuse. Heavy validation reused 542/565 prompt tokens, processed 23 follow-up prefill tokens, and preserved Silas."
+      "id": "M57",
+      "name": "Upstream candidate refresh",
+      "status": "done-no-cherry-pick",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m57-upstream-candidate-refresh-20260709.json",
+      "summary": "Refreshed upstream candidate triage. No safe cherry-pick selected; runtime unchanged."
     },
     {
-      "id": "M52",
-      "name": "LFM2.5 text-cache benchmark",
+      "id": "M58",
+      "name": "Upstream scan tooling",
       "status": "done",
-      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m52-lfm25-text-cache-benchmark-20260709.json",
-      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m52-lfm25-text-cache-bench-20260709.json",
-      "summary": "Added scripts/lfm25_text_cache_bench.py and captured a two-sample retained baseline with row errors 0, follow-up cache reuse, small prefill, and name fidelity."
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m58-upstream-scan-tooling-20260709.json",
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m58-upstream-candidate-scan-report-20260709.json",
+      "summary": "Added scripts/upstream_candidate_scan.py and tests. Generated a factual JSON upstream scan report for six candidate branches."
     },
     {
-      "id": "M53",
-      "name": "LFM2.5 text-cache ratio reporting",
-      "status": "done",
-      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m53-lfm25-text-cache-ratio-reporting-20260709.json",
-      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m53-lfm25-text-cache-ratio-bench-20260709.json",
-      "summary": "Added normalized follow-up cache-reuse and prefill ratios. Three-sample retained baseline cache-reuse ratio avg 0.95929203539823; prefill ratio avg 0.04070796460176991; row errors 0."
-    },
-    {
-      "id": "M54",
-      "name": "LFM2.5 text-cache comparison gate",
-      "status": "done",
-      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m54-lfm25-text-cache-compare-gate-20260709.json",
-      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json",
-      "summary": "Added scripts/lfm25_text_cache_compare.py to compare retained baseline/candidate text-cache reports without loading MLX. M53 vs M52 passed with zero cache-reuse and prefill-ratio regression."
-    },
-    {
-      "id": "M55",
-      "name": "LM Studio VLM live-validation gate refresh",
+      "id": "M59",
+      "name": "LM Studio server state probe",
       "status": "blocked-before-inference",
-      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m55-lmstudio-vlm-gate-refresh-20260709.json",
-      "summary": "Read-only preflight remains blocked because retained LFM2.5-VL is not visible in lms ls --json. Supported lms get probe resolved the correct 2.09 GB artifact but timed out after about 300s at 0.0% progress."
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m59-lmstudio-server-state-probe-20260709.json",
+      "summary": "Starting the supported LM Studio server on port 4521 did not make retained LFM2.5-VL visible to lms ls --json. Server was stopped after the diagnostic."
+    },
+    {
+      "id": "M60",
+      "name": "LM Studio load/import diagnostics",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m60-lmstudio-load-import-diagnostics-20260709.json",
+      "summary": "lms load --estimate-only on the retained absolute model directory returned Model not found. lms import --dry-run on model.safetensors is not a viable MLX directory registration path."
     }
   ],
   "blockers": [
     {
-      "id": "lmstudio-vlm-visibility",
+      "id": "lmstudio-model-index-visibility",
       "type": "external-runtime",
       "status": "active",
-      "description": "Retained LFM2.5-VL model directory is complete and LM Studio model-data contains the model key, but lms ls --json does not expose the VLM. Live LM Studio validation must not run until preflight reports ready_for_live_validation=true.",
+      "description": "Retained LFM2.5-VL model directory is complete and LM Studio model-data contains the key, but lms ls --json does not expose the VLM. Server state, absolute-directory load estimate, and safetensors import dry-run did not unblock visibility.",
       "evidence": [
-        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m55.json",
-        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m55.json",
-        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m55-after-probe.json"
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m55-lmstudio-vlm-gate-refresh-20260709.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m59-lmstudio-server-state-probe-20260709.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m60-lmstudio-load-import-diagnostics-20260709.json"
       ]
     }
   ],
@@ -87,29 +78,31 @@
     "Do not remove restore-time mx.eval(...) as a shortcut.",
     "Do not retry full-prefix KV span packing without a different write-amplification plan.",
     "Do not promote a runtime candidate without repeated retained-workload benchmarks, passing quality gates, candidate-vs-baseline deltas, and live LM Studio validation.",
+    "Do not hand-edit LM Studio model indexes or cache files.",
     "Do not treat a copied LM Studio model directory or model-data entry as sufficient; lms ls --json must expose the retained VLM model key."
   ],
   "next_actions": [
     "If LM Studio model registration changes, rerun scripts/lmstudio_vlm_live_validation_preflight.py with a fresh output path.",
     "If preflight reports ready_for_live_validation=true, proceed to backend registration and live /v1/chat/completions validation for the installed LM Studio runtime.",
+    "For future upstream refreshes, run scripts/upstream_candidate_scan.py --fetch with a fresh output path.",
     "For any new text-cache runtime candidate, capture a retained candidate report with scripts/lfm25_text_cache_bench.py and compare it with scripts/lfm25_text_cache_compare.py before promotion discussion.",
     "If no LM Studio progress is possible, continue only with isolated local hypotheses that preserve the no-promotion rule until live validation is available."
   ],
   "validation": [
     {
-      "command": "python3 -m py_compile scripts/lfm25_text_cache_compare.py tests/test_lfm25_text_cache_compare.py",
+      "command": "python3 -m json.tool .planning/m60-lmstudio-load-import-diagnostics-20260709.json",
       "result": "passed"
     },
     {
-      "command": ".venv-py312/bin/python -m pytest tests/test_lfm25_text_cache_compare.py -q",
+      "command": "python3 -m json.tool .planning/m59-lmstudio-server-state-probe-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_upstream_candidate_scan.py -q",
       "result": "3 passed"
     },
     {
-      "command": "python3 -m json.tool for M54 and M55 JSON artifacts",
-      "result": "passed"
-    },
-    {
-      "command": "git diff --check before M54 and M55 commits",
+      "command": "git diff --check before M58, M59, and M60 commits",
       "result": "passed"
     }
   ]

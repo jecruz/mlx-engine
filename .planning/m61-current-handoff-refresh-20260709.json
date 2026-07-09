@@ -1,0 +1,57 @@
+{
+  "milestone": "M61-current-handoff-refresh",
+  "timestamp_utc": "2026-07-09T05:15:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Refresh the durable handoff artifacts after LM Studio server, load, and import diagnostics so the next session starts from the current blocker rather than stale benchmark milestones.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/.continue-here.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/HANDOFF.json"
+    ],
+    "details": [
+      "Updated the active status to `active-blocked-on-lmstudio-model-index-visibility`.",
+      "Recorded latest committed milestones through M60.",
+      "Preserved no-promotion constraints and the requirement that `scripts/lmstudio_vlm_live_validation_preflight.py` must report `ready_for_live_validation=true` before live LM Studio inference validation.",
+      "Kept LM Studio internal model indexes and cache files untouched."
+    ]
+  },
+  "blocker": {
+    "id": "lmstudio-model-index-visibility",
+    "status": "active",
+    "summary": "Retained LFM2.5-VL is present on disk and in LM Studio model-data, but is not exposed by `lms ls --json`; server start, `lms load --estimate-only`, and `lms import --dry-run` did not unblock visibility.",
+    "evidence": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m55-lmstudio-vlm-gate-refresh-20260709.json",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m59-lmstudio-server-state-probe-20260709.json",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m60-lmstudio-load-import-diagnostics-20260709.json"
+    ]
+  },
+  "validation": [
+    {
+      "command": "python3 -m json.tool .planning/HANDOFF.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m61-current-handoff-refresh-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    },
+    {
+      "command": "lms server status",
+      "status": "passed",
+      "result": "The server is not running."
+    }
+  ],
+  "decision": {
+    "status": "HANDOFF_REFRESH_ONLY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "blocked-before-inference",
+    "next_action": "Rerun the live-validation preflight only after LM Studio model registration changes; otherwise continue with isolated local no-promotion hypotheses."
+  }
+}
