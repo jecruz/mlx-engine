@@ -491,6 +491,18 @@ branch commits, changed files, diffstat, and patch-id unmatched commits. It is
 an evidence collector only; promotion still requires human triage, retained
 benchmarks, response-quality gates, and live LM Studio validation.
 
+To render that scan JSON as a readable Markdown report for review, run:
+
+```bash
+python scripts/upstream_candidate_report.py \
+  .planning/upstream-candidate-scan.json \
+  --output .planning/upstream-candidate-scan.md
+```
+
+The Markdown report keeps the scan factual, summarizes branch heads and change
+surface labels, and lists changed files plus unmatched patch-id commits per
+branch. It does not make a cherry-pick or promotion decision.
+
 Example:
 
 ```bash

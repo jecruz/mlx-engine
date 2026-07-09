@@ -1,0 +1,83 @@
+{
+  "milestone": "M62-upstream-readable-scan",
+  "timestamp_utc": "2026-07-09T02:58:31Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Refresh upstream performance/cache/stream/stability candidate evidence and make the scan readable for repeat milestone review before any cherry-pick.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/upstream_candidate_report.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_upstream_candidate_report.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md"
+    ],
+    "details": [
+      "Added a Markdown renderer for upstream candidate scan JSON.",
+      "Generated a fresh fetch-backed upstream scan report at current head.",
+      "Generated a readable Markdown review report from the scan JSON.",
+      "Did not change inference runtime code, LM Studio state, or benchmark promotion status."
+    ]
+  },
+  "artifacts": {
+    "scan_json": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-candidate-scan-report-20260709.json",
+    "scan_markdown": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-candidate-scan-report-20260709.md"
+  },
+  "scan_summary": {
+    "head": "a5f2f74",
+    "upstream_main_head": "8ae2610",
+    "origin_branch_head": "8f0fa26",
+    "head_vs_upstream_main": {
+      "left": 236,
+      "right": 1
+    },
+    "head_vs_origin_branch": {
+      "left": 41,
+      "right": 0
+    },
+    "candidate_branch_count": 6
+  },
+  "candidate_decision": {
+    "status": "NO_CHERRY_PICK",
+    "runtime_changed": false,
+    "reason": "Fresh scan found no bounded candidate that can be promoted under the retained-workload benchmark, quality-gate, candidate-vs-baseline, and live LM Studio validation requirements.",
+    "notes": [
+      "upstream/main has one right-side commit, 8ae2610, focused on Gemma4 bidirectional visual prefill; it is stability/model-coverage work rather than retained LFM2.5 latency evidence.",
+      "upstream/neil/gemma4-tool-context has 18 unmatched commits and introduces tool runtime and Gemma4 reasoning/tool guard surfaces; individual optimization commits depend on that broader surface.",
+      "upstream/yagil/mlx-dist-non-batched includes model-thread/distributed changes over an 84-file branch surface; the Qwen VLM prompt-thread commit is not a standalone retained LFM2.5 latency candidate.",
+      "upstream/will/lfm-2.5-unified only adds a prompting LFM2.5 caching test; the retained branch already has a non-prompting heavy gate plus benchmark and comparison tooling.",
+      "The live LM Studio retained LFM2.5-VL validation gate remains blocked before inference by model-index visibility."
+    ]
+  },
+  "validation": [
+    {
+      "command": "python3 -m py_compile scripts/upstream_candidate_report.py tests/test_upstream_candidate_report.py scripts/upstream_candidate_scan.py tests/test_upstream_candidate_scan.py",
+      "status": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_upstream_candidate_report.py tests/test_upstream_candidate_scan.py -q",
+      "status": "passed",
+      "result": "6 passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m62-upstream-candidate-scan-report-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m62-upstream-readable-scan-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "READABLE_SCAN_TOOLING_AND_TRIAGE_ONLY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "still-blocked-before-inference",
+    "next_action": "Keep scanning upstream with the JSON scanner plus Markdown reporter; only inspect or integrate candidates that are bounded enough to benchmark and still defer promotion until live LM Studio validation is unblocked."
+  }
+}

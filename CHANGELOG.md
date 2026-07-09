@@ -20,6 +20,8 @@
   name-fidelity regressions.
 - Add `scripts/upstream_candidate_scan.py` to produce factual JSON evidence for
   repeat upstream branch triage before any cherry-pick or runtime candidate.
+- Add `scripts/upstream_candidate_report.py` to render upstream scan JSON as a
+  readable Markdown review report without making a promotion decision.
 - Add `eval_collect_ms` and `eval_barrier_ms` to VLM
   `vlm_cache_restore_detail` / `vlm_cache_restore_cost_model` timing events so
   restore-eval investigations can separate target discovery from the mandatory

@@ -6860,3 +6860,55 @@ Validation:
   -> passed.
 - `git diff --check` -> passed.
 - `lms server status` -> `The server is not running.`
+
+### M62 upstream readable scan (2026-07-09)
+
+Feature `m62-upstream-readable-scan` refreshes upstream
+performance/cache/stream/stability candidate evidence and adds a readable
+Markdown report generator for repeat scan review.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-readable-scan-20260709.json`
+- **Scan JSON:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-candidate-scan-report-20260709.json`
+- **Readable scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-candidate-scan-report-20260709.md`
+- **New reporter:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/upstream_candidate_report.py`
+
+Commands and result:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m62-upstream-candidate-scan-report-20260709.json`
+  -> head `a5f2f74`, upstream main `8ae2610`, candidate branches `6`.
+- `.venv-py312/bin/python scripts/upstream_candidate_report.py .planning/m62-upstream-candidate-scan-report-20260709.json --output .planning/m62-upstream-candidate-scan-report-20260709.md --title "M62 Upstream Candidate Scan"`
+  -> wrote a Markdown report with branch heads, change-surface labels, changed
+  files, and unmatched patch-id commits.
+
+Scan triage:
+
+- `HEAD...upstream/main` is `236` left and `1` right; the right-side upstream
+  main commit is `8ae2610` (`Handle Gemma4 bidirectional visual prefill
+  (#340)`), which is Gemma4 model-coverage/stability work rather than retained
+  LFM2.5 latency evidence.
+- `upstream/neil/gemma4-tool-context` has `18` unmatched commits and introduces
+  tool-runtime and Gemma4 reasoning/tool guard surfaces; individual optimization
+  commits depend on that broader surface.
+- `upstream/yagil/mlx-dist-non-batched` still spans an `84`-file distributed
+  model-thread surface; the Qwen VLM prompt-thread commit is not a standalone
+  retained LFM2.5 latency candidate.
+- `upstream/will/lfm-2.5-unified` only adds a prompting LFM2.5 caching test;
+  this branch already has a retained non-prompting heavy gate plus benchmark
+  and comparison tooling.
+
+Decision: **READABLE SCAN TOOLING AND TRIAGE ONLY / NO CHERRY-PICK /
+NO PROMOTION / RUNTIME UNCHANGED**. No upstream candidate is bounded enough to
+integrate under the retained-workload benchmark, quality-gate,
+candidate-vs-baseline, and live LM Studio validation requirements.
+
+Validation:
+
+- `python3 -m py_compile scripts/upstream_candidate_report.py tests/test_upstream_candidate_report.py scripts/upstream_candidate_scan.py tests/test_upstream_candidate_scan.py`
+  -> passed.
+- `.venv-py312/bin/python -m pytest tests/test_upstream_candidate_report.py tests/test_upstream_candidate_scan.py -q`
+  -> `6 passed`.
+- `python3 -m json.tool .planning/m62-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `python3 -m json.tool .planning/m62-upstream-readable-scan-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
