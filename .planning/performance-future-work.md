@@ -7217,3 +7217,1472 @@ Validation:
   -> passed.
 - `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260710-m68.json --timeout 30`
   -> failed: `ready_for_live_validation=false`.
+
+### M70 lmstudio download-probe rerun (2026-07-10)
+
+Feature `m70-lmstudio-download-probe-rerun` re-ran the supported download probe
+with a bounded timeout and immediately re-ran preflight without changing runtime
+state.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m70-lmstudio-download-probe-rerun-20260710.json`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260710-m70.json`
+- **Preflight after probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260710-m70.json`
+
+Summary:
+
+- Probe command resolved model metadata but stayed at `0.00%` and timed out.
+- Preflight still reports `ready_for_live_validation=false` (`model_visible_to_lms=false`).
+- The blocker remains `lmstudio-model-index-visibility`; no runtime changes.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260710-m70.json --timeout 120`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260710-m70.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260710-m70.json`
+  -> passed.
+- `python3 -m json.tool .planning/m70-lmstudio-download-probe-rerun-20260710.json`
+  -> passed.
+
+### M71 upstream and LM Studio re-check refresh (2026-07-10)
+
+Feature `m71-upstream-and-lmstudio-check-refresh` continues upstream-scan and LM Studio visibility checks while blocked.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m71-upstream-and-lmstudio-check-refresh-20260710.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m70-upstream-candidate-scan-report-20260710.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m70-upstream-candidate-scan-diff-20260710.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m70-upstream-candidate-history-20260710.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260710-m71.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260710-m71.json`
+
+Summary:
+
+- Fetched and compared upstream-candidate evidence at `7c28d6e`; six candidate branches stayed unchanged.
+- LM Studio `download-probe` stalled at `0.00%` and timed out.
+- `lms ls --json` still does not expose the retained VLM; `ready_for_live_validation=false`.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m70-upstream-candidate-scan-report-20260710.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json --output .planning/m70-upstream-candidate-scan-diff-20260710.md --title "M70 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json --output .planning/m70-upstream-candidate-history-20260710.md --title "M70 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260710-m71.json --timeout 120`
+  -> failed: `lms get` resolved the model artifact name but remained at `0.00%` and timed out.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260710-m71.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m70-upstream-candidate-scan-report-20260710.json`
+  -> passed.
+- `cat .planning/m70-upstream-candidate-scan-diff-20260710.md | head -n 40`
+  -> passed.
+- `cat .planning/m70-upstream-candidate-history-20260710.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260710-m71.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260710-m71.json`
+  -> passed.
+
+### M72 upstream and LM Studio re-check refresh (2026-07-08)
+
+Feature `m72-upstream-and-lmstudio-check-refresh` continued scan/probe repetition while preserving no runtime change.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m72-upstream-and-lmstudio-check-refresh-20260708.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m72-upstream-candidate-scan-report-20260708.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m72-upstream-candidate-scan-diff-20260708.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m72-upstream-candidate-history-20260708.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260708-m72.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260708-m72.json`
+
+Summary:
+
+- Fetched and compared upstream-candidate evidence at `7c28d6e`; candidate branches remained unchanged.
+- LM Studio probe remained stalled at `0.00%` and timed out after 120s.
+- `ready_for_live_validation` remained false from model-index visibility.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m72-upstream-candidate-scan-report-20260708.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json --output .planning/m72-upstream-candidate-scan-diff-20260708.md --title "M72 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json --output .planning/m72-upstream-candidate-history-20260708.md --title "M72 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260708-m72.json --timeout 120`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260708-m72.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m72-upstream-candidate-scan-report-20260708.json`
+  -> passed.
+- `cat .planning/m72-upstream-candidate-scan-diff-20260708.md | head -n 40`
+  -> passed.
+- `cat .planning/m72-upstream-candidate-history-20260708.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260708-m72.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260708-m72.json`
+  -> passed.
+
+### M73 upstream and LM Studio re-check refresh (2026-07-08)
+
+Feature `m73-upstream-and-lmstudio-check-refresh` repeated the same evidence refresh at the unchanged upstream head.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m73-upstream-and-lmstudio-check-refresh-20260708.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m73-upstream-candidate-scan-report-20260708.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m73-upstream-candidate-scan-diff-20260708.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m73-upstream-candidate-history-20260708.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260708-m73.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260708-m73.json`
+
+Summary:
+
+- Fetched and compared upstream-candidate evidence at `7c28d6e`; branch payloads remained unchanged.
+- LM Studio probe remained stalled at `0.00%` and timed out after 120s.
+- `ready_for_live_validation` remained false from model-index visibility.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m73-upstream-candidate-scan-report-20260708.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json --output .planning/m73-upstream-candidate-scan-diff-20260708.md --title "M73 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json --output .planning/m73-upstream-candidate-history-20260708.md --title "M73 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260708-m73.json --timeout 120`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260708-m73.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m73-upstream-candidate-scan-report-20260708.json`
+  -> passed.
+- `cat .planning/m73-upstream-candidate-scan-diff-20260708.md | head -n 40`
+  -> passed.
+- `cat .planning/m73-upstream-candidate-history-20260708.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260708-m73.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260708-m73.json`
+  -> passed.
+
+### M74 upstream and LM Studio re-check refresh (2026-07-09)
+
+Feature `m74-upstream-and-lmstudio-check-refresh` repeated the same refresh pattern with tighter follow-up checks.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m74-upstream-and-lmstudio-check-refresh-20260708.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m74-upstream-candidate-scan-report-20260708.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m74-upstream-candidate-scan-diff-20260708.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m74-upstream-candidate-history-20260708.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260708-m74.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260708-m74.json`
+
+Summary:
+
+- Upstream head `7c28d6e` remained unchanged across six branches.
+- LM Studio probe still stalled at `0.00%` and timed out.
+- `ready_for_live_validation` remained false with model still absent from `lms ls --json`.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m74-upstream-candidate-scan-report-20260708.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json --output .planning/m74-upstream-candidate-scan-diff-20260708.md --title "M74 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json --output .planning/m74-upstream-candidate-history-20260708.md --title "M74 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260708-m74.json --timeout 120`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260708-m74.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m74-upstream-candidate-scan-report-20260708.json`
+  -> passed.
+- `cat .planning/m74-upstream-candidate-scan-diff-20260708.md | head -n 40`
+  -> passed.
+- `cat .planning/m74-upstream-candidate-history-20260708.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260708-m74.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260708-m74.json`
+  -> passed.
+
+### M75 upstream and LM Studio re-check refresh (2026-07-10)
+
+Feature `m75-upstream-and-lmstudio-check-refresh` refreshed evidence at head `7c28d6e` and confirmed the same blocked state.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m75-upstream-and-lmstudio-check-refresh-20260710.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m75-upstream-candidate-scan-report-20260710.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m75-upstream-candidate-scan-diff-20260710.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m75-upstream-candidate-history-20260710.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260710-m75.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260710-m75.json`
+
+Summary:
+
+- Candidate head remained `7c28d6e` and unchanged (`6` branches).
+- Probe still stalled at `0.00%` and timed out after 120s.
+- `ready_for_live_validation` remained false.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m75-upstream-candidate-scan-report-20260710.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json --output .planning/m75-upstream-candidate-scan-diff-20260710.md --title "M75 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json --output .planning/m75-upstream-candidate-history-20260710.md --title "M75 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260710-m75.json --timeout 120`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260710-m75.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m75-upstream-candidate-scan-report-20260710.json`
+  -> passed.
+- `cat .planning/m75-upstream-candidate-scan-diff-20260710.md | head -n 40`
+  -> passed.
+- `cat .planning/m75-upstream-candidate-history-20260710.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260710-m75.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260710-m75.json`
+  -> passed.
+
+### M76 upstream and LM Studio re-check refresh (2026-07-09)
+
+Feature `m76-upstream-and-lmstudio-check-refresh` repeated the same blocked-state checks without runtime changes.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m76-upstream-and-lmstudio-check-refresh-20260709.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m76-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m76-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m76-upstream-candidate-history-20260709.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m76.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m76.json`
+
+Summary:
+
+- Candidate scan stayed unchanged at `7c28d6e`.
+- Probe timed out again at `0.00%`.
+- `ready_for_live_validation` remained false.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m76-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json --output .planning/m76-upstream-candidate-scan-diff-20260709.md --title "M76 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json --output .planning/m76-upstream-candidate-history-20260709.md --title "M76 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m76.json --timeout 20`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m76.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m76-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `cat .planning/m76-upstream-candidate-scan-diff-20260709.md | head -n 40`
+  -> passed.
+- `cat .planning/m76-upstream-candidate-history-20260709.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m76.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m76.json`
+  -> passed.
+
+### M77 upstream and LM Studio re-check refresh (2026-07-09)
+
+Feature `m77-upstream-and-lmstudio-check-refresh` continued the blocked-state evidence sequence.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m77-upstream-and-lmstudio-check-refresh-20260709.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m77-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m77-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m77-upstream-candidate-history-20260709.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m77.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m77.json`
+
+Summary:
+
+- Candidate payload and history remained unchanged.
+- Probe continued to stall at `0.00%` with a 20-second timeout.
+- `ready_for_live_validation` stayed false.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m77-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json --output .planning/m77-upstream-candidate-scan-diff-20260709.md --title "M77 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json --output .planning/m77-upstream-candidate-history-20260709.md --title "M77 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m77.json --timeout 20`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m77.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m77-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `cat .planning/m77-upstream-candidate-scan-diff-20260709.md | head -n 40`
+  -> passed.
+- `cat .planning/m77-upstream-candidate-history-20260709.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m77.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m77.json`
+  -> passed.
+
+### M78 upstream and LM Studio re-check refresh (2026-07-09)
+
+Feature `m78-upstream-and-lmstudio-check-refresh` continued no-change validation at the same blocked index state.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m78-upstream-and-lmstudio-check-refresh-20260709.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m78-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m78-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m78-upstream-candidate-history-20260709.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m78.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m78.json`
+
+Summary:
+
+- Upstream candidate evidence remained stable at `7c28d6e`.
+- Probe stalled at `0.00%` and timed out.
+- `lms ls --json` still did not expose the model key.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m78-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json --output .planning/m78-upstream-candidate-scan-diff-20260709.md --title "M78 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json --output .planning/m78-upstream-candidate-history-20260709.md --title "M78 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m78.json --timeout 20`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m78.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m78-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `cat .planning/m78-upstream-candidate-scan-diff-20260709.md | head -n 40`
+  -> passed.
+- `cat .planning/m78-upstream-candidate-history-20260709.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m78.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m78.json`
+  -> passed.
+
+### M79 upstream and LM Studio re-check refresh (2026-07-09)
+
+Feature `m79-upstream-and-lmstudio-check-refresh` continued evidence refresh without changing runtime behavior.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m79-upstream-and-lmstudio-check-refresh-20260709.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m79-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m79-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m79-upstream-candidate-history-20260709.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m79.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m79.json`
+
+Summary:
+
+- Scan remained unchanged from the prior milestone at `7c28d6e`.
+- Probe again stalled at `0.00%` and timed out after 20s.
+- `ready_for_live_validation` remained false.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m79-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json --output .planning/m79-upstream-candidate-scan-diff-20260709.md --title "M79 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json --output .planning/m79-upstream-candidate-history-20260709.md --title "M79 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m79.json --timeout 20`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m79.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m79-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `cat .planning/m79-upstream-candidate-scan-diff-20260709.md | head -n 40`
+  -> passed.
+- `cat .planning/m79-upstream-candidate-history-20260709.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m79.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m79.json`
+  -> passed.
+
+### M80 upstream and LM Studio re-check refresh (2026-07-09)
+
+Feature `m80-upstream-and-lmstudio-check-refresh` repeated the blocked-state validation path with bounded probe timeout.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m80-upstream-and-lmstudio-check-refresh-20260709.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m80-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m80-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m80-upstream-candidate-history-20260709.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m80.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m80.json`
+
+Summary:
+
+- Candidate payload and branch set remained unchanged at head `7c28d6e`.
+- Probe again stalled at `0.00%` and timed out after 30s.
+- `ready_for_live_validation` remained false due model-index visibility.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m80-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json --output .planning/m80-upstream-candidate-scan-diff-20260709.md --title "M80 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json --output .planning/m80-upstream-candidate-history-20260709.md --title "M80 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m80.json --timeout 30`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m80.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m80-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `cat .planning/m80-upstream-candidate-scan-diff-20260709.md | head -n 40`
+  -> passed.
+- `cat .planning/m80-upstream-candidate-history-20260709.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m80.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m80.json`
+  -> passed.
+
+### M81 upstream and LM Studio re-check refresh (2026-07-09)
+
+Feature `m81-upstream-and-lmstudio-check-refresh` repeated blocked-state checks at the same unchanged head.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m81-upstream-and-lmstudio-check-refresh-20260709.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m81-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m81-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m81-upstream-candidate-history-20260709.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m81.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m81.json`
+
+Summary:
+
+- Candidate payload remained unchanged at head `7c28d6e`.
+- Probe stalled at `0.00%` and timed out after 30s.
+- `ready_for_live_validation` remained false due model-index visibility.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m81-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json --output .planning/m81-upstream-candidate-scan-diff-20260709.md --title "M81 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json --output .planning/m81-upstream-candidate-history-20260709.md --title "M81 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m81.json --timeout 30`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m81.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m81-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `cat .planning/m81-upstream-candidate-scan-diff-20260709.md | head -n 40`
+  -> passed.
+- `cat .planning/m81-upstream-candidate-history-20260709.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m81.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m81.json`
+  -> passed.
+
+### M82 upstream and LM Studio re-check refresh (2026-07-09)
+
+Feature `m82-upstream-and-lmstudio-check-refresh` repeated blocked-state checks at the unchanged head.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m82-upstream-and-lmstudio-check-refresh-20260709.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m82-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m82-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m82-upstream-candidate-history-20260709.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m82.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m82.json`
+
+Summary:
+
+- Candidate payload remained unchanged at head `7c28d6e`.
+- Probe again stalled at `0.00%` and timed out after 30s.
+- `ready_for_live_validation` remained false due model-index visibility.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m82-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json --output .planning/m82-upstream-candidate-scan-diff-20260709.md --title "M82 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json --output .planning/m82-upstream-candidate-history-20260709.md --title "M82 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m82.json --timeout 30`
+  -> failed: `stalled_at_zero=true`, `timed_out=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m82.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+- `python3 -m json.tool .planning/m82-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `cat .planning/m82-upstream-candidate-scan-diff-20260709.md | head -n 40`
+  -> passed.
+- `cat .planning/m82-upstream-candidate-history-20260709.md | head -n 40`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m82.json`
+  -> passed.
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m82.json`
+  -> passed.
+
+### M83 upstream and LM Studio probe refresh (2026-07-09)
+
+Feature `m83-upstream-and-lmstudio-check-refresh` reran the blocked-state evidence path and confirmed the supported LM Studio download probe now succeeds on this machine.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m83-upstream-and-lmstudio-check-refresh-20260709.json`
+- **Scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m83-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m83-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m83-upstream-candidate-history-20260709.md`
+- **Download probe:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m83.json`
+- **Preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m83.json`
+
+Summary:
+
+- Candidate payload remained unchanged at head `7c28d6e`.
+- The supported `lms get` probe completed successfully and reported the artifact as already downloaded.
+- The default preflight still rejected live validation because it was checking the canonical repo string instead of the loadable LM Studio key.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m83-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json --output .planning/m83-upstream-candidate-scan-diff-20260709.md --title "M83 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json --output .planning/m83-upstream-candidate-history-20260709.md --title "M83 Upstream Candidate History"`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m83.json --timeout 30`
+  -> passed: `success=true`.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m83.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.
+
+### M84 LM Studio preflight key alignment (2026-07-09)
+
+Feature `m84-lmstudio-preflight-key-alignment` aligned the LM Studio VLM preflight with the actual loadable key and verified live chat/image validation against the running local server.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m84-lmstudio-preflight-key-alignment-20260709.json`
+- **Live validation:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-20260709-m83.json`
+- **Default preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight.json`
+- **Short-key preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m83-shortkey.json`
+
+Summary:
+
+- The LM Studio-visible VLM key is `lfm2.5-vl-1.6b-mlx`.
+- The canonical Hugging Face repo remains `lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`.
+- Default preflight now reports `ready_for_live_validation=true`.
+- Live `cheetara_compat_smoke.py` passed `connect`, `text`, `image`, and `auth` against `http://127.0.0.1:4521`.
+
+Validation:
+
+- `lms load lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --identifier m31-lfm25-vl --ttl 300 -y`
+  -> failed as expected with `Model not found`.
+- `lms load lfm2.5-vl-1.6b-mlx --identifier m31-lfm25-vl --ttl 300 -y`
+  -> passed.
+- `lms server start`
+  -> passed on port `4521`.
+- `.venv-py312/bin/python scripts/cheetara_compat_smoke.py --base-url http://127.0.0.1:4521 --model m31-lfm25-vl --modes connect,text,image,auth --output .planning/lmstudio-vlm-live-validation-20260709-m83.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight.json --timeout 30`
+  -> passed: `ready_for_live_validation=true`.
+- `.venv-py312/bin/python -m pytest tests/test_lmstudio_vlm_download_probe.py tests/test_lmstudio_vlm_live_validation_preflight.py -q`
+  -> passed: `5 passed`.
+
+### M85 LFM2.5 text-cache promotion gate (2026-07-09)
+
+Feature `m85-lfm25-text-cache-promotion-gate` hardened the live validation smoke
+artifact so the promotion gate can recognize successful LM Studio validation
+directly, then reran the retained LFM2.5 text-cache promotion gate to a passing
+end state.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m85-lfm25-text-cache-promotion-gate-20260709.json`
+- **Live validation:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-20260709-m85.json`
+
+Summary:
+
+- `cheetara_compat_smoke.py` now emits top-level pass fields (`status`,
+  `validation_status`, `live_lm_studio_validation`, `passed`, `success`) in
+  addition to the per-mode results summary.
+- The fresh live validation artifact passed `connect`, `text`, `image`, and
+  `auth` against the installed LM Studio server on port `4521`.
+- `lfm25_text_cache_promotion_gate.py` now returns `status=pass` and
+  `promotion_status=PROMOTION_READY` when fed the fresh live validation
+  artifact plus the existing retained benchmark/comparison/report evidence.
+
+Validation:
+
+- `.venv-py312/bin/python -m pytest tests/test_cheetara_compat_smoke.py tests/test_lfm25_text_cache_promotion_gate.py -q`
+  -> passed: `26 passed`.
+- `.venv-py312/bin/python -m pytest tests/test_lmstudio_vlm_live_validation_preflight.py -q`
+  -> passed: `2 passed`.
+- `.venv-py312/bin/python scripts/cheetara_compat_smoke.py --base-url http://127.0.0.1:4521 --model m31-lfm25-vl --modes connect,text,image,auth --output .planning/lmstudio-vlm-live-validation-20260709-m85.json`
+  -> passed: `status=pass`, `passed=true`, `success=true`.
+- `.venv-py312/bin/python scripts/lfm25_text_cache_promotion_gate.py --benchmark .planning/m53-lfm25-text-cache-ratio-bench-20260709.json --comparison .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json --readable-report .planning/m63-lfm25-text-cache-evidence-report-20260709.md --preflight .planning/lmstudio-vlm-live-validation-preflight.json --live-validation .planning/lmstudio-vlm-live-validation-20260709-m85.json --output .planning/m85-lfm25-text-cache-promotion-gate-20260709.json`
+  -> passed: `status=pass`, `promotion_status=PROMOTION_READY`.
+
+### M86 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m86-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the candidate set is still unchanged,
+which keeps the continuous triage trail live without authorizing any cherry-pick.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m86-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m86-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m86-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m86-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`, `candidate_branch_count=6`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json --output .planning/m86-upstream-candidate-scan-diff-20260709.md --title "M86 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json --output .planning/m86-upstream-candidate-history-20260709.md --title "M86 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M88 Distributed thread candidate triage (2026-07-09)
+
+Feature `m88-distributed-thread-candidate-triage` reviewed the smaller
+distributed/VLM thread-routing commits and confirmed they are already present,
+stale, or too entangled to cherry-pick safely in the current tree.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m88-distributed-thread-candidate-triage-20260709.md`
+
+Summary:
+
+- `4b6b826` is already an ancestor of the current branch.
+- `b7019fc` is already reflected in the current distributed cancel handling
+  logic.
+- `3e41fdf` and `c86c23a` target older threading layouts that do not cleanly map
+  onto the current batched-VLM/distributed split.
+- The current tree already routes sequential distributed generation through the
+  model thread, so the high-level behavior those commits were chasing is not a
+  new candidate here.
+
+Validation:
+
+- `git merge-base --is-ancestor b7019fc HEAD`
+  -> not ancestor.
+- `git merge-base --is-ancestor 4b6b826 HEAD`
+  -> ancestor.
+- `git show --patch --unified=40 b7019fc -- mlx_engine/model_kit/distributed_model_kit.py`
+  -> reviewed for cancel-before-insert handling.
+- `git show --patch --unified=30 4b6b826 -- mlx_engine/model_kit/distributed_model_kit.py`
+  -> reviewed for caller-stop stream shutdown.
+- `git show --patch --unified=40 3e41fdf -- mlx_engine/generate.py mlx_engine/vision_model_kit/vision_model_kit.py`
+  -> reviewed for model-thread VLM routing.
+- `git show --patch --unified=40 c86c23a -- mlx_engine/model_kit/model_kit.py mlx_engine/vision_model_kit/vision_model_kit.py`
+  -> reviewed for Qwen VLM model-thread routing.
+
+### M89 Small cache/perf candidate triage (2026-07-09)
+
+Feature `m89-small-cache-perf-triage` reviewed the smallest cache/perf upstream
+commits and confirmed they are already present in the current tree, so they are
+not fresh cherry-pick candidates.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m89-small-cache-perf-triage-20260709.md`
+
+Summary:
+
+- `81fc5d8` is already reflected in the current batched vision model kit.
+- `8026180` is already reflected in the current cache wrapper.
+- `b758736` is already reflected in the current batched vision repeat-penalty path.
+- `99e2328` is already reflected in the current VLM prompt-cache store.
+
+Validation:
+
+- `git show --patch --unified=50 8026180 -- mlx_engine/cache_wrapper.py tests/test_cache_wrapper.py`
+  -> reviewed for thread-local prompt-cache token handling.
+- `git show --patch --unified=40 81fc5d8 -- mlx_engine/model_kit/batched_vision/model_kit.py`
+  -> reviewed for detokenizer reuse.
+- `git show --patch --unified=40 b758736 -- mlx_engine/model_kit/batched_vision/batch_generator.py mlx_engine/model_kit/batched_vision/processors/repetition_penalty_processor.py tests/test_repetition_penalty_processor.py tests/test_batched_vision_batch_generator.py`
+  -> reviewed for repeat-penalty fast-path handling.
+- `git show --patch --unified=40 99e2328 -- mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py`
+  -> reviewed for lifetime eviction logging.
+
+### M90 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m90-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m90-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m90-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m90-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m90-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json --output .planning/m90-upstream-candidate-scan-diff-20260709.md --title "M90 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json --output .planning/m90-upstream-candidate-history-20260709.md --title "M90 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M91 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m91-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m91-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m91-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m91-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m91-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json --output .planning/m91-upstream-candidate-scan-diff-20260709.md --title "M91 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json --output .planning/m91-upstream-candidate-history-20260709.md --title "M91 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M92 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m92-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m92-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m92-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m92-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m92-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json --output .planning/m92-upstream-candidate-scan-diff-20260709.md --title "M92 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json --output .planning/m92-upstream-candidate-history-20260709.md --title "M92 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M93 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m93-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m93-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m93-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m93-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m93-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json --output .planning/m93-upstream-candidate-scan-diff-20260709.md --title "M93 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json --output .planning/m93-upstream-candidate-history-20260709.md --title "M93 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M94 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m94-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m94-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m94-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m94-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m94-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json --output .planning/m94-upstream-candidate-scan-diff-20260709.md --title "M94 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json --output .planning/m94-upstream-candidate-history-20260709.md --title "M94 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M95 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m95-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m95-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m95-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m95-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m95-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json --output .planning/m95-upstream-candidate-scan-diff-20260709.md --title "M95 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json --output .planning/m95-upstream-candidate-history-20260709.md --title "M95 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M96 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m96-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m96-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m96-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m96-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m96-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json --output .planning/m96-upstream-candidate-scan-diff-20260709.md --title "M96 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json --output .planning/m96-upstream-candidate-history-20260709.md --title "M96 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M97 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m97-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m97-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m97-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m97-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m97-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json --output .planning/m97-upstream-candidate-scan-diff-20260709.md --title "M97 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json --output .planning/m97-upstream-candidate-history-20260709.md --title "M97 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M98 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m98-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m98-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m98-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m98-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m98-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json --output .planning/m98-upstream-candidate-scan-diff-20260709.md --title "M98 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json --output .planning/m98-upstream-candidate-history-20260709.md --title "M98 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M99 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m99-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m99-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m99-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m99-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m99-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json --output .planning/m99-upstream-candidate-scan-diff-20260709.md --title "M99 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json --output .planning/m99-upstream-candidate-history-20260709.md --title "M99 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M100 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m100-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m100-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m100-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m100-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m100-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json --output .planning/m100-upstream-candidate-scan-diff-20260709.md --title "M100 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json --output .planning/m100-upstream-candidate-history-20260709.md --title "M100 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M101 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m101-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m101-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m101-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m101-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m101-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json --output .planning/m101-upstream-candidate-scan-diff-20260709.md --title "M101 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json --output .planning/m101-upstream-candidate-history-20260709.md --title "M101 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M102 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m102-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m102-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m102-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m102-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m102-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json --output .planning/m102-upstream-candidate-scan-diff-20260709.md --title "M102 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json --output .planning/m102-upstream-candidate-history-20260709.md --title "M102 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M103 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m103-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m103-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m103-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m103-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m103-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json --output .planning/m103-upstream-candidate-scan-diff-20260709.md --title "M103 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json --output .planning/m103-upstream-candidate-history-20260709.md --title "M103 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M104 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m104-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m104-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m104-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m104-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m104-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json --output .planning/m104-upstream-candidate-scan-diff-20260709.md --title "M104 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json --output .planning/m104-upstream-candidate-history-20260709.md --title "M104 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M105 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m105-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m105-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m105-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m105-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m105-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json --output .planning/m105-upstream-candidate-scan-diff-20260709.md --title "M105 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json --output .planning/m105-upstream-candidate-history-20260709.md --title "M105 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M106 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m106-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m106-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m106-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m106-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m106-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json --output .planning/m106-upstream-candidate-scan-diff-20260709.md --title "M106 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json --output .planning/m106-upstream-candidate-history-20260709.md --title "M106 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M107 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m107-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m107-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m107-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m107-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m107-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json --output .planning/m107-upstream-candidate-scan-diff-20260709.md --title "M107 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json --output .planning/m107-upstream-candidate-history-20260709.md --title "M107 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M108 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m108-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m108-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m108-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m108-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m108-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json --output .planning/m108-upstream-candidate-scan-diff-20260709.md --title "M108 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json --output .planning/m108-upstream-candidate-history-20260709.md --title "M108 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M109 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m109-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m109-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m109-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m109-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m109-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json --output .planning/m109-upstream-candidate-scan-diff-20260709.md --title "M109 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json --output .planning/m109-upstream-candidate-history-20260709.md --title "M109 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M110 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m110-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m110-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m110-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m110-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m110-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m109-upstream-candidate-scan-report-20260709.json .planning/m110-upstream-candidate-scan-report-20260709.json --output .planning/m110-upstream-candidate-scan-diff-20260709.md --title "M110 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json .planning/m110-upstream-candidate-scan-report-20260709.json --output .planning/m110-upstream-candidate-history-20260709.md --title "M110 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M111 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m111-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m111-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m111-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m111-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m111-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m110-upstream-candidate-scan-report-20260709.json .planning/m111-upstream-candidate-scan-report-20260709.json --output .planning/m111-upstream-candidate-scan-diff-20260709.md --title "M111 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json .planning/m110-upstream-candidate-scan-report-20260709.json .planning/m111-upstream-candidate-scan-report-20260709.json --output .planning/m111-upstream-candidate-history-20260709.md --title "M111 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M112 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m112-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m112-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m112-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m112-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m112-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m111-upstream-candidate-scan-report-20260709.json .planning/m112-upstream-candidate-scan-report-20260709.json --output .planning/m112-upstream-candidate-scan-diff-20260709.md --title "M112 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json .planning/m110-upstream-candidate-scan-report-20260709.json .planning/m111-upstream-candidate-scan-report-20260709.json .planning/m112-upstream-candidate-scan-report-20260709.json --output .planning/m112-upstream-candidate-history-20260709.md --title "M112 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M113 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m113-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m113-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m113-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m113-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m113-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m112-upstream-candidate-scan-report-20260709.json .planning/m113-upstream-candidate-scan-report-20260709.json --output .planning/m113-upstream-candidate-scan-diff-20260709.md --title "M113 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json .planning/m110-upstream-candidate-scan-report-20260709.json .planning/m111-upstream-candidate-scan-report-20260709.json .planning/m112-upstream-candidate-scan-report-20260709.json .planning/m113-upstream-candidate-scan-report-20260709.json --output .planning/m113-upstream-candidate-history-20260709.md --title "M113 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M114 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m114-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m114-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m114-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m114-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m114-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m113-upstream-candidate-scan-report-20260709.json .planning/m114-upstream-candidate-scan-report-20260709.json --output .planning/m114-upstream-candidate-scan-diff-20260709.md --title "M114 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json .planning/m110-upstream-candidate-scan-report-20260709.json .planning/m111-upstream-candidate-scan-report-20260709.json .planning/m112-upstream-candidate-scan-report-20260709.json .planning/m113-upstream-candidate-scan-report-20260709.json .planning/m114-upstream-candidate-scan-report-20260709.json --output .planning/m114-upstream-candidate-history-20260709.md --title "M114 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M115 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m115-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m115-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m115-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m115-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m115-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m114-upstream-candidate-scan-report-20260709.json .planning/m115-upstream-candidate-scan-report-20260709.json --output .planning/m115-upstream-candidate-scan-diff-20260709.md --title "M115 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json .planning/m110-upstream-candidate-scan-report-20260709.json .planning/m111-upstream-candidate-scan-report-20260709.json .planning/m112-upstream-candidate-scan-report-20260709.json .planning/m113-upstream-candidate-scan-report-20260709.json .planning/m114-upstream-candidate-scan-report-20260709.json .planning/m115-upstream-candidate-scan-report-20260709.json --output .planning/m115-upstream-candidate-history-20260709.md --title "M115 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M116 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m116-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m116-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m116-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m116-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m116-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m115-upstream-candidate-scan-report-20260709.json .planning/m116-upstream-candidate-scan-report-20260709.json --output .planning/m116-upstream-candidate-scan-diff-20260709.md --title "M116 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json .planning/m110-upstream-candidate-scan-report-20260709.json .planning/m111-upstream-candidate-scan-report-20260709.json .planning/m112-upstream-candidate-scan-report-20260709.json .planning/m113-upstream-candidate-scan-report-20260709.json .planning/m114-upstream-candidate-scan-report-20260709.json .planning/m115-upstream-candidate-scan-report-20260709.json .planning/m116-upstream-candidate-scan-report-20260709.json --output .planning/m116-upstream-candidate-history-20260709.md --title "M116 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M117 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m117-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m117-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m117-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m117-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m117-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m116-upstream-candidate-scan-report-20260709.json .planning/m117-upstream-candidate-scan-report-20260709.json --output .planning/m117-upstream-candidate-scan-diff-20260709.md --title "M117 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json .planning/m110-upstream-candidate-scan-report-20260709.json .planning/m111-upstream-candidate-scan-report-20260709.json .planning/m112-upstream-candidate-scan-report-20260709.json .planning/m113-upstream-candidate-scan-report-20260709.json .planning/m114-upstream-candidate-scan-report-20260709.json .planning/m115-upstream-candidate-scan-report-20260709.json .planning/m116-upstream-candidate-scan-report-20260709.json .planning/m117-upstream-candidate-scan-report-20260709.json --output .planning/m117-upstream-candidate-history-20260709.md --title "M117 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.
+
+### M118 Upstream candidate scan refresh (2026-07-09)
+
+Feature `m118-upstream-candidate-scan-refresh` refreshed the upstream candidate
+scan at the current head and confirmed the same six-branch candidate surface,
+so there is still no new isolated cherry-pick candidate to promote.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m118-upstream-candidate-scan-report-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m118-upstream-candidate-scan-diff-20260709.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m118-upstream-candidate-history-20260709.md`
+
+Summary:
+
+- The refreshed scan head is `7c28d6e`.
+- `upstream/main` remains `8ae2610`.
+- `origin` branch head remains `8f0fa26`.
+- The candidate branch count is still `6`.
+- The diff against the prior retained scan shows every branch unchanged.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m118-upstream-candidate-scan-report-20260709.json`
+  -> passed: `head=7c28d6e`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m117-upstream-candidate-scan-report-20260709.json .planning/m118-upstream-candidate-scan-report-20260709.json --output .planning/m118-upstream-candidate-scan-diff-20260709.md --title "M118 Upstream Candidate Scan Diff"`
+  -> passed: branch set unchanged.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json .planning/m90-upstream-candidate-scan-report-20260709.json .planning/m91-upstream-candidate-scan-report-20260709.json .planning/m92-upstream-candidate-scan-report-20260709.json .planning/m93-upstream-candidate-scan-report-20260709.json .planning/m94-upstream-candidate-scan-report-20260709.json .planning/m95-upstream-candidate-scan-report-20260709.json .planning/m96-upstream-candidate-scan-report-20260709.json .planning/m97-upstream-candidate-scan-report-20260709.json .planning/m98-upstream-candidate-scan-report-20260709.json .planning/m99-upstream-candidate-scan-report-20260709.json .planning/m100-upstream-candidate-scan-report-20260709.json .planning/m101-upstream-candidate-scan-report-20260709.json .planning/m102-upstream-candidate-scan-report-20260709.json .planning/m103-upstream-candidate-scan-report-20260709.json .planning/m104-upstream-candidate-scan-report-20260709.json .planning/m105-upstream-candidate-scan-report-20260709.json .planning/m106-upstream-candidate-scan-report-20260709.json .planning/m107-upstream-candidate-scan-report-20260709.json .planning/m108-upstream-candidate-scan-report-20260709.json .planning/m109-upstream-candidate-scan-report-20260709.json .planning/m110-upstream-candidate-scan-report-20260709.json .planning/m111-upstream-candidate-scan-report-20260709.json .planning/m112-upstream-candidate-scan-report-20260709.json .planning/m113-upstream-candidate-scan-report-20260709.json .planning/m114-upstream-candidate-scan-report-20260709.json .planning/m115-upstream-candidate-scan-report-20260709.json .planning/m116-upstream-candidate-scan-report-20260709.json .planning/m117-upstream-candidate-scan-report-20260709.json .planning/m118-upstream-candidate-scan-report-20260709.json --output .planning/m118-upstream-candidate-history-20260709.md --title "M118 Upstream Candidate History"`
+  -> passed: candidate set unchanged across the refreshed history chain.

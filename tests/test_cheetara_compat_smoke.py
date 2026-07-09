@@ -412,6 +412,11 @@ def test_main_aggregates_pass_fail_exit_code() -> None:
     assert captured["exit_code"] == 0
     report = json.loads(captured["stdout"])
     assert report["base_url"] == server.base_url
+    assert report["status"] == "pass"
+    assert report["validation_status"] == "pass"
+    assert report["live_lm_studio_validation"] == "pass"
+    assert report["passed"] is True
+    assert report["success"] is True
     assert report["summary"]["failed"] == 0
     assert report["auth_mode"] == "no-auth"
     assert set(report["results"].keys()) == {"connect", "text", "health", "auth"}
@@ -430,6 +435,11 @@ def test_main_returns_nonzero_on_failure() -> None:
         )
     assert captured["exit_code"] == 1
     report = json.loads(captured["stdout"])
+    assert report["status"] == "fail"
+    assert report["validation_status"] == "fail"
+    assert report["live_lm_studio_validation"] == "fail"
+    assert report["passed"] is False
+    assert report["success"] is False
     assert report["summary"]["failed"] == 1
     assert report["results"]["text"]["status"] == "fail"
 

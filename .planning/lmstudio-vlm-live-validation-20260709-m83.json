@@ -1,0 +1,401 @@
+{
+  "auth_mode": "no-auth",
+  "base_url": "http://127.0.0.1:4521",
+  "model": "m31-lfm25-vl",
+  "modes_requested": [
+    "connect",
+    "text",
+    "image",
+    "auth"
+  ],
+  "results": {
+    "auth": {
+      "details": {
+        "auth_mode": "no-auth",
+        "credential_gating": "disabled",
+        "elapsed_s": 0.0386,
+        "evidence_note": "auth was intentionally disabled for this run; no-auth request succeeded with HTTP 200",
+        "probes": [
+          {
+            "http_status": 200,
+            "name": "no_header"
+          }
+        ],
+        "sample_body": {
+          "choices": [
+            {
+              "finish_reason": "length",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "",
+                "reasoning_content": "",
+                "role": "assistant",
+                "tool_calls": []
+              }
+            }
+          ],
+          "created": 1783572211,
+          "id": "chatcmpl-zye5s7yuf5aypk4c6p7lc",
+          "model": "m31-lfm25-vl",
+          "object": "chat.completion",
+          "stats": {},
+          "system_fingerprint": "m31-lfm25-vl",
+          "usage": {
+            "completion_tokens": 0,
+            "completion_tokens_details": {
+              "reasoning_tokens": 0
+            },
+            "prompt_tokens": 10,
+            "total_tokens": 10
+          }
+        }
+      },
+      "status": "pass"
+    },
+    "connect": {
+      "details": {
+        "body": {
+          "data": [
+            {
+              "id": "m31-lfm25-vl",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "mixtral-8x7b-v0.1",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "ornith-1.0-35b@q4_k_m",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "ornith-1.0-35b@q8_0",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "ornith-1.0-9b@q4_k_m",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "ornith-1.0-9b@q8_0",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "mlx-community/ornith-1.0-35b",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-27b@4bit",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "unsloth/qwen3-coder-next",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-27b-optiq",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3-coder-next-mlx",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "mlx-community/qwen3-coder-next",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "mlx-community/qwen3.6-35b-a3b",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-27b@8bit",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "gemma-4-31b-it-qat-optiq",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "mistralai_devstral-small-2-24b-instruct-2512-mlx",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "lmstudio-community/qwen3.6-27b",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-27b@q4_k_s",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-27b@q5_k_xl",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-27b@q6_k_xl",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-27b@q8_k_xl",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "llama-3.2-1b-instruct",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen2.5-0.5b-instruct-mlx",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwythos-9b-claude-mythos-5-1m",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "zai-org/glm-4.7-flash",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-35b-a3b-mlx",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.5-9b-mlx",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-27b-mlx",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-35b-a3b@q6_k_xl",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-35b-a3b@q8_k_xl",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "google/gemma-4-12b-qat",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "google/gemma-4-12b",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "mlx-community/gemma-4-12b-it",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "lfm2.5-vl-1.6b-mlx",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen2.5-coder-14b-instruct-mlx",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "qwen3.6-27b-mtp",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "nvidia/nemotron-3-nano",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "google/gemma-4-e4b",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "gemma-4-31b-it",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "tiny-llamas",
+              "object": "model",
+              "owned_by": "organization_owner"
+            },
+            {
+              "id": "text-embedding-nomic-embed-text-v1.5",
+              "object": "model",
+              "owned_by": "organization_owner"
+            }
+          ],
+          "object": "list"
+        },
+        "elapsed_s": 0.0123,
+        "headers": {
+          "Connection": "close",
+          "Content-Length": "4875",
+          "Content-Type": "application/json; charset=utf-8",
+          "Date": "Thu, 09 Jul 2026 04:43:31 GMT",
+          "ETag": "W/\"130b-FP7DD/ySHHH7QmxCQ+r+ncw1gjs\"",
+          "X-Powered-By": "Express"
+        },
+        "http_status": 200,
+        "model_count": 42,
+        "model_ids": [
+          "m31-lfm25-vl",
+          "mixtral-8x7b-v0.1",
+          "ornith-1.0-35b@q4_k_m",
+          "ornith-1.0-35b@q8_0",
+          "ornith-1.0-9b@q4_k_m",
+          "ornith-1.0-9b@q8_0",
+          "mlx-community/ornith-1.0-35b",
+          "qwen3.6-27b@4bit",
+          "unsloth/qwen3-coder-next",
+          "qwen3.6-27b-optiq",
+          "qwen3-coder-next-mlx",
+          "mlx-community/qwen3-coder-next",
+          "mlx-community/qwen3.6-35b-a3b",
+          "qwen3.6-27b@8bit",
+          "gemma-4-31b-it-qat-optiq",
+          "mistralai_devstral-small-2-24b-instruct-2512-mlx",
+          "lmstudio-community/qwen3.6-27b",
+          "qwen3.6-27b@q4_k_s",
+          "qwen3.6-27b@q5_k_xl",
+          "qwen3.6-27b@q6_k_xl",
+          "qwen3.6-27b@q8_k_xl",
+          "llama-3.2-1b-instruct",
+          "qwen2.5-0.5b-instruct-mlx",
+          "qwythos-9b-claude-mythos-5-1m",
+          "zai-org/glm-4.7-flash",
+          "qwen3.6-35b-a3b-mlx",
+          "qwen3.5-9b-mlx",
+          "qwen3.6-27b-mlx",
+          "qwen3.6-35b-a3b@q6_k_xl",
+          "qwen3.6-35b-a3b@q8_k_xl",
+          "google/gemma-4-12b-qat",
+          "google/gemma-4-12b",
+          "mlx-community/gemma-4-12b-it",
+          "lfm2.5-vl-1.6b-mlx",
+          "qwen2.5-coder-14b-instruct-mlx",
+          "qwen3.6-27b-mtp",
+          "nvidia-nemotron-3-nano-omni-30b-a3b-reasoning",
+          "nvidia/nemotron-3-nano",
+          "google/gemma-4-e4b",
+          "gemma-4-31b-it",
+          "tiny-llamas",
+          "text-embedding-nomic-embed-text-v1.5"
+        ],
+        "object": "list",
+        "selectable": true,
+        "served_model": "m31-lfm25-vl"
+      },
+      "status": "pass"
+    },
+    "image": {
+      "details": {
+        "chunk_count": 7,
+        "content_text": "A toucan.",
+        "elapsed_s": 0.0518,
+        "finish_reasons": [
+          "stop"
+        ],
+        "http_status": 200,
+        "image_mime": "image/jpeg",
+        "image_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/demo-data/toucan.jpeg",
+        "image_size_bytes": 7237,
+        "raw_excerpt": "data: {\"id\":\"chatcmpl-jkrqzu3drh94402ftkbw5n\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"A\"},\"logprobs\":null,\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-jkrqzu3drh94402ftkbw5n\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" tou\"},\"logprobs\":null,\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-jkrqzu3drh94402ftkbw5n\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"can\"},\"logprobs\":null,\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-jkrqzu3drh94402ftkbw5n\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"logprobs\":null,\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-jkrqzu3drh94402ftkbw5n\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-jkrqzu3drh94402ftkbw5n\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"chatcmpl-jkrqzu3drh94402ftkbw5n\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[],\"usage\":{\"prompt_tokens\":26,\"completion_tokens\":5,\"total_tokens\":31,\"completion_tokens_details\":{\"reasoning_tokens\":0}}}\n\ndata: [DONE]\n\n",
+        "request_extras": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          },
+          "enable_thinking": false,
+          "min_p": 0.05,
+          "reasoning_effort": "low",
+          "repetition_context_size": 20,
+          "repetition_penalty": 1.05,
+          "stream_options": {
+            "include_usage": true
+          },
+          "top_k": 40,
+          "user": "cheetara-compat-smoke"
+        },
+        "stream_done_seen": true
+      },
+      "status": "pass"
+    },
+    "text": {
+      "details": {
+        "chunk_count": 4,
+        "content_text": "ok",
+        "elapsed_s": 0.0811,
+        "finish_reasons": [
+          "stop"
+        ],
+        "http_status": 200,
+        "raw_excerpt": "data: {\"id\":\"chatcmpl-kp34gaxc6ke396m5p4msf\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"},\"logprobs\":null,\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-kp34gaxc6ke396m5p4msf\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-kp34gaxc6ke396m5p4msf\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[{\"index\":0,\"delta\":{},\"logprobs\":null,\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"chatcmpl-kp34gaxc6ke396m5p4msf\",\"object\":\"chat.completion.chunk\",\"created\":1783572211,\"model\":\"m31-lfm25-vl\",\"system_fingerprint\":\"m31-lfm25-vl\",\"choices\":[],\"usage\":{\"prompt_tokens\":16,\"completion_tokens\":2,\"total_tokens\":18,\"completion_tokens_details\":{\"reasoning_tokens\":0}}}\n\ndata: [DONE]\n\n",
+        "request_extras": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          },
+          "enable_thinking": false,
+          "min_p": 0.05,
+          "reasoning_effort": "low",
+          "repetition_context_size": 20,
+          "repetition_penalty": 1.05,
+          "stream_options": {
+            "include_usage": true
+          },
+          "top_k": 40,
+          "user": "cheetara-compat-smoke"
+        },
+        "stream_done_seen": true
+      },
+      "status": "pass"
+    }
+  },
+  "summary": {
+    "failed": 0,
+    "passed": 4,
+    "total": 4
+  }
+}

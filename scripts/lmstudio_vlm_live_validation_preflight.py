@@ -17,13 +17,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-DEFAULT_MODEL_KEY = "lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit"
+DEFAULT_MODEL_KEY = "lfm2.5-vl-1.6b-mlx"
+DEFAULT_MODEL_REPO = "lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit"
 DEFAULT_MODEL_DIR = Path(
     "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/"
     "lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit"
 )
 DEFAULT_LMSTUDIO_MODEL_STORE = Path.home() / ".lmstudio/models"
-DEFAULT_HF_URL = "https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit"
+DEFAULT_HF_URL = f"https://huggingface.co/{DEFAULT_MODEL_REPO}"
 DEFAULT_OUTPUT = Path(".planning/lmstudio-vlm-live-validation-preflight.json")
 
 
@@ -33,6 +34,14 @@ def _parse_args() -> argparse.Namespace:
         "--model-key",
         default=DEFAULT_MODEL_KEY,
         help=f"LM Studio model key expected to appear in `lms ls` ({DEFAULT_MODEL_KEY})",
+    )
+    parser.add_argument(
+        "--model-repo",
+        default=DEFAULT_MODEL_REPO,
+        help=(
+            "Canonical LM Studio Hugging Face repo used for store/model-data "
+            f"diagnostics ({DEFAULT_MODEL_REPO})"
+        ),
     )
     parser.add_argument(
         "--model-dir",
@@ -102,7 +111,7 @@ def _json_or_none(text: str) -> Any | None:
         return None
 
 
-def _load_model_data(model_key: str) -> dict[str, Any]:
+def _load_model_data(model_repo: str) -> dict[str, Any]:
     model_data_path = Path.home() / ".lmstudio/.internal/model-data.json"
     if not model_data_path.exists():
         return {
@@ -115,7 +124,7 @@ def _load_model_data(model_key: str) -> dict[str, Any]:
     data = json.loads(model_data_path.read_text())
     entry = None
     for key, metadata in data.get("json", []):
-        if key == model_key:
+        if key == model_repo:
             entry = metadata
             break
     return {
@@ -148,8 +157,8 @@ def _model_dir_status(model_dir: Path) -> dict[str, Any]:
     }
 
 
-def _lmstudio_store_status(store_dir: Path, model_key: str) -> dict[str, Any]:
-    model_dir = store_dir / model_key
+def _lmstudio_store_status(store_dir: Path, model_repo: str) -> dict[str, Any]:
+    model_dir = store_dir / model_repo
     status = _model_dir_status(model_dir)
     status["store_dir"] = str(store_dir)
     status["note"] = (
@@ -194,7 +203,7 @@ def main() -> int:
         args.lmstudio_model_store,
         args.model_key,
     )
-    model_data = _load_model_data(args.model_key)
+    model_data = _load_model_data(args.model_repo)
     ready = (
         commands["lms_ls_json"]["returncode"] == 0
         and visibility["visible"]
@@ -203,6 +212,7 @@ def main() -> int:
 
     payload: dict[str, Any] = {
         "model_key": args.model_key,
+        "model_repo": args.model_repo,
         "hf_url": args.hf_url,
         "ready_for_live_validation": ready,
         "model_visible_to_lms": visibility,

@@ -1,8 +1,8 @@
 {
   "version": "3.0",
-  "timestamp_utc": "2026-07-10T00:00:00Z",
+  "timestamp_utc": "2026-07-09T14:55:07Z",
   "context": "research",
-  "status": "active-blocked-on-lmstudio-model-index-visibility",
+  "status": "active-running",
   "project": "MLX-engine prompt/inference performance",
   "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
   "branch": "mlx-vlm-restore-eval-followup",
@@ -121,19 +121,382 @@
       "status": "done-no-promotion",
       "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m69-upstream-candidate-refresh-20260710.json",
       "summary": "Refreshed upstream scan evidence after HEAD advanced to `b8ea9c3`; payloads remained unchanged and live LM Studio preflight is still blocked."
+    },
+    {
+      "id": "M70",
+      "name": "LM Studio download-probe rerun",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m70-lmstudio-download-probe-rerun-20260710.json",
+      "summary": "Re-ran the supported `lms get` probe and preflight. Probe stalled at 0.00% and timed out; `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M71",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m71-upstream-and-lmstudio-check-refresh-20260710.json",
+      "summary": "Refreshed upstream candidate evidence at head `7c28d6e`, then reran the LM Studio download probe and preflight. Probe still stalled at 0.00% and `ready_for_live_validation` remains false."
+    },
+    {
+      "id": "M72",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m72-upstream-and-lmstudio-check-refresh-20260708.json",
+      "summary": "Re-ran upstream scan at head `7c28d6e` and repeated LM Studio probe/preflight. Scan payload stayed unchanged; blocker remains (`ready_for_live_validation=false`)."
+    },
+    {
+      "id": "M73",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m73-upstream-and-lmstudio-check-refresh-20260708.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M75",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m75-upstream-and-lmstudio-check-refresh-20260710.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; no candidate payload changed, probe stalled at 0.00% and timed out, and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M76",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m76-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M77",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m77-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M78",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m78-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M79",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m79-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M80",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m80-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M81",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m81-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M82",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m82-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M83",
+      "name": "Upstream + LM Studio probe refresh",
+      "status": "probe-success",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m83-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Reran the supported LM Studio download probe at head `7c28d6e`; the probe now completes successfully, but the default preflight still needed the actual LM Studio loadable key."
+    },
+    {
+      "id": "M84",
+      "name": "LM Studio preflight key alignment",
+      "status": "live-validation-passed",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m84-lmstudio-preflight-key-alignment-20260709.json",
+      "summary": "Aligned the VLM preflight with the LM Studio-visible key `lfm2.5-vl-1.6b-mlx` and verified live `/v1/chat/completions` on the running server."
+    },
+    {
+      "id": "M85",
+      "name": "LFM2.5 text-cache promotion gate",
+      "status": "promotion-ready",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m85-lfm25-text-cache-promotion-gate-20260709.json",
+      "summary": "Hardened the live validation smoke artifact shape and reran the LFM2.5 text-cache promotion gate to a passing end state."
+    },
+    {
+      "id": "M86",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m86-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M87",
+      "name": "Upstream candidate triage",
+      "status": "no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m87-upstream-candidate-triage-20260709.md",
+      "summary": "Reviewed the most relevant upstream candidate branches and found no safe, narrowly scoped latency win to promote."
+    },
+    {
+      "id": "M88",
+      "name": "Distributed thread candidate triage",
+      "status": "no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m88-distributed-thread-candidate-triage-20260709.md",
+      "summary": "Reviewed the smaller distributed/VLM thread-routing commits and found they are already present, stale, or too entangled to cherry-pick safely."
+    },
+    {
+      "id": "M89",
+      "name": "Small cache/perf candidate triage",
+      "status": "no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m89-small-cache-perf-triage-20260709.md",
+      "summary": "Reviewed the smallest cache/perf commits and found they are already present in the current tree."
+    },
+    {
+      "id": "M90",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m90-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M91",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m91-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M92",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m92-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M93",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m93-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M94",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m94-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M95",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m95-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M96",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m96-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M97",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m97-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M98",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m98-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M99",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m99-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M100",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m100-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M101",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m101-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M102",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m102-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M103",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m103-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M104",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m104-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M105",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m105-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M106",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m106-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M107",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m107-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M108",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m108-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M109",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m109-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M110",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m110-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M111",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m111-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M112",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m112-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M113",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m113-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M114",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m114-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M115",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m115-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M116",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m116-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M117",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m117-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M118",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m118-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
     }
   ],
   "blockers": [
     {
       "id": "lmstudio-model-index-visibility",
       "type": "external-runtime",
-      "status": "active",
-      "description": "Retained LFM2.5-VL model directory is complete and LM Studio model-data contains the key, but lms ls --json does not expose the VLM. Server state, absolute-directory load estimate, and safetensors import dry-run did not unblock visibility.",
+      "status": "resolved",
+      "description": "LM Studio now exposes the retained VLM under the loadable key `lfm2.5-vl-1.6b-mlx`; the supported download probe succeeds, the server loads the model, and live validation passes.",
       "evidence": [
         "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m55-lmstudio-vlm-gate-refresh-20260709.json",
         "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m59-lmstudio-server-state-probe-20260709.json",
         "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m60-lmstudio-load-import-diagnostics-20260709.json",
-        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260710-m68.json"
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260710-m68.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m69-lmstudio-vlm-live-validation-preflight-attempt.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260710-m70.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260710-m70.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260710-m71.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260710-m71.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260708-m72.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260708-m72.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260708-m73.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260708-m73.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260708-m74.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260708-m74.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260710-m75.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260710-m75.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m76.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m76.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m77.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m77.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m78.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m78.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m79.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m79.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m80.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m80.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m81.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m81.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m82.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m82.json"
       ]
     }
   ],
@@ -146,10 +509,15 @@
   ],
   "next_actions": [
     "If LM Studio model registration changes, rerun scripts/lmstudio_vlm_live_validation_preflight.py with a fresh output path.",
-    "If preflight reports ready_for_live_validation=true, proceed to backend registration and live /v1/chat/completions validation for the installed LM Studio runtime.",
+    "If preflight reports ready_for_live_validation=true, proceed to backend registration and live /v1/chat/completions validation for the installed LM Studio runtime using the loadable key `lfm2.5-vl-1.6b-mlx`.",
+    "With the promotion gate now passing, continue retained-workload benchmark and candidate triage work while preserving the no-promotion rule until a repeatable latency win is proven.",
+    "Use scripts/upstream_candidate_scan.py --fetch with a fresh output path for the next upstream triage refresh.",
     "For future upstream refreshes, run scripts/upstream_candidate_scan.py --fetch with a fresh output path.",
+    "If a smaller upstream candidate appears, benchmark it on retained workloads before any promotion discussion.",
+    "Keep pruning the candidate set toward isolated, measurable improvements; do not promote thread-routing commits that are already present or structurally stale.",
+    "Do not revisit the already-present detokenizer, prompt-cache token, repeat-penalty, or lifetime-eviction changes unless the upstream tree changes again.",
     "For any new text-cache runtime candidate, capture a retained candidate report with scripts/lfm25_text_cache_bench.py and compare it with scripts/lfm25_text_cache_compare.py before promotion discussion.",
-    "If no LM Studio progress is possible, continue only with isolated local hypotheses that preserve the no-promotion rule until live validation is available."
+    "With LM Studio visibility aligned, continue benchmark and candidate triage work while preserving the no-promotion rule until a repeatable latency win is proven."
   ],
   "validation": [
     {
@@ -183,6 +551,22 @@
     {
       "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260710-m68.json --timeout 30",
       "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260710-m70.json --timeout 120",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260710-m70.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260710-m70.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m70-lmstudio-download-probe-rerun-20260710.json",
+      "result": "passed"
     },
     {
       "command": "python3 -m json.tool .planning/m69-upstream-candidate-scan-report-20260710.json",
@@ -227,6 +611,825 @@
     {
       "command": "git diff --check before M58, M59, and M60 commits",
       "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m70-upstream-candidate-scan-report-20260710.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json --output .planning/m70-upstream-candidate-scan-diff-20260710.md --title \"M70 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json --output .planning/m70-upstream-candidate-history-20260710.md --title \"M70 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260710-m71.json --timeout 120",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260710-m71.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m70-upstream-candidate-scan-report-20260710.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260710-m71.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260710-m71.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m72-upstream-candidate-scan-report-20260708.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json --output .planning/m72-upstream-candidate-scan-diff-20260708.md --title \"M72 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json --output .planning/m72-upstream-candidate-history-20260708.md --title \"M72 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260708-m72.json --timeout 120",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260708-m72.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m72-upstream-candidate-scan-report-20260708.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m72-upstream-candidate-scan-diff-20260708.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m72-upstream-candidate-history-20260708.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260708-m72.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260708-m72.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m73-upstream-candidate-scan-report-20260708.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json --output .planning/m73-upstream-candidate-scan-diff-20260708.md --title \"M73 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json --output .planning/m73-upstream-candidate-history-20260708.md --title \"M73 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260708-m73.json --timeout 120",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260708-m73.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m73-upstream-candidate-scan-report-20260708.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m73-upstream-candidate-scan-diff-20260708.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m73-upstream-candidate-history-20260708.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260708-m73.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260708-m73.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m74-upstream-candidate-scan-report-20260708.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json --output .planning/m74-upstream-candidate-scan-diff-20260708.md --title \"M74 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json --output .planning/m74-upstream-candidate-history-20260708.md --title \"M74 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260708-m74.json --timeout 120",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260708-m74.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m74-upstream-candidate-scan-report-20260708.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m74-upstream-candidate-scan-diff-20260708.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m74-upstream-candidate-history-20260708.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260708-m74.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260708-m74.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m75-upstream-candidate-scan-report-20260710.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json --output .planning/m75-upstream-candidate-scan-diff-20260710.md --title \"M75 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json --output .planning/m75-upstream-candidate-history-20260710.md --title \"M75 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260710-m75.json --timeout 120",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260710-m75.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m75-upstream-candidate-scan-report-20260710.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m75-upstream-candidate-scan-diff-20260710.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m75-upstream-candidate-history-20260710.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260710-m75.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260710-m75.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m76-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json --output .planning/m76-upstream-candidate-scan-diff-20260709.md --title \"M76 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json --output .planning/m76-upstream-candidate-history-20260709.md --title \"M76 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m76.json --timeout 20",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m76.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m76-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m76-upstream-candidate-scan-diff-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m76-upstream-candidate-history-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m76.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m76.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m77-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json --output .planning/m77-upstream-candidate-scan-diff-20260709.md --title \"M77 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json --output .planning/m77-upstream-candidate-history-20260709.md --title \"M77 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m77.json --timeout 20",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m77.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m77-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m77-upstream-candidate-scan-diff-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m77-upstream-candidate-history-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m77.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m77.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m78-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json --output .planning/m78-upstream-candidate-scan-diff-20260709.md --title \"M78 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json --output .planning/m78-upstream-candidate-history-20260709.md --title \"M78 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m78.json --timeout 20",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m78.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m78-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m78-upstream-candidate-scan-diff-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m78-upstream-candidate-history-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m78.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m78.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m79-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json --output .planning/m79-upstream-candidate-scan-diff-20260709.md --title \"M79 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json --output .planning/m79-upstream-candidate-history-20260709.md --title \"M79 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m79.json --timeout 20",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m79.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m79-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m79-upstream-candidate-scan-diff-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m79-upstream-candidate-history-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m79.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m79.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m80-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json --output .planning/m80-upstream-candidate-scan-diff-20260709.md --title \"M80 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json --output .planning/m80-upstream-candidate-history-20260709.md --title \"M80 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m80.json --timeout 30",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m80.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m80-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m80-upstream-candidate-scan-diff-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m80-upstream-candidate-history-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m80.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m80.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m81-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json --output .planning/m81-upstream-candidate-scan-diff-20260709.md --title \"M81 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json --output .planning/m81-upstream-candidate-history-20260709.md --title \"M81 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m81.json --timeout 30",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m81.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m81-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m81-upstream-candidate-scan-diff-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m81-upstream-candidate-history-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m81.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m81.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m82-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json --output .planning/m82-upstream-candidate-scan-diff-20260709.md --title \"M82 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json --output .planning/m82-upstream-candidate-history-20260709.md --title \"M82 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m82.json --timeout 30",
+      "result": "failed: stalled_at_zero=true, timed_out=true, returncode=None"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m82.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m82-upstream-candidate-scan-report-20260709.json",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m82-upstream-candidate-scan-diff-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "cat .planning/m82-upstream-candidate-history-20260709.md | head -n 40",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m82.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m82.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/cheetara_compat_smoke.py --base-url http://127.0.0.1:4521 --model m31-lfm25-vl --modes connect,text,image,auth --output .planning/lmstudio-vlm-live-validation-20260709-m83.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight.json --timeout 30",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/cheetara_compat_smoke.py --base-url http://127.0.0.1:4521 --model m31-lfm25-vl --modes connect,text,image,auth --output .planning/lmstudio-vlm-live-validation-20260709-m85.json",
+      "result": "passed: status=pass, passed=true, success=true"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lfm25_text_cache_promotion_gate.py --benchmark .planning/m53-lfm25-text-cache-ratio-bench-20260709.json --comparison .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json --readable-report .planning/m63-lfm25-text-cache-evidence-report-20260709.md --preflight .planning/lmstudio-vlm-live-validation-preflight.json --live-validation .planning/lmstudio-vlm-live-validation-20260709-m85.json --output .planning/m85-lfm25-text-cache-promotion-gate-20260709.json",
+      "result": "passed: status=pass, promotion_status=PROMOTION_READY"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m86-upstream-candidate-scan-report-20260709.json",
+      "result": "passed: head=7c28d6e, candidate_branch_count=6"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json --output .planning/m86-upstream-candidate-scan-diff-20260709.md --title \"M86 Upstream Candidate Scan Diff\"",
+      "result": "passed: branch set unchanged"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json .planning/m81-upstream-candidate-scan-report-20260709.json .planning/m82-upstream-candidate-scan-report-20260709.json .planning/m83-upstream-candidate-scan-report-20260709.json .planning/m86-upstream-candidate-scan-report-20260709.json --output .planning/m86-upstream-candidate-history-20260709.md --title \"M86 Upstream Candidate History\"",
+      "result": "passed: candidate set unchanged"
+    },
+    {
+      "command": "triage review of upstream/neil/gemma4-tool-context, upstream/neil/img-caching, upstream/will/lfm-2.5-unified, upstream/yagil/mlx-dist-non-batched, and upstream/neil/vlm-parity-ci",
+      "result": "passed: no promotion selected"
+    },
+    {
+      "command": "distributed-thread candidate review of 3e41fdf, c86c23a, b7019fc, and 4b6b826",
+      "result": "passed: no additional cherry-pick selected"
+    },
+    {
+      "command": "small cache/perf candidate review of 81fc5d8, 8026180, b758736, and 99e2328",
+      "result": "passed: no new cherry-pick selected"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_lmstudio_vlm_download_probe.py tests/test_lmstudio_vlm_live_validation_preflight.py -q",
+      "result": "passed"
+    }
+  ],
+  "milestones": [
+    {
+      "id": "M76",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m76-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M77",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m77-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M78",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m78-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M79",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m79-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M80",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m80-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M81",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m81-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M82",
+      "name": "Upstream + LM Studio re-check refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m82-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false."
+    },
+    {
+      "id": "M83",
+      "name": "Upstream + LM Studio probe refresh",
+      "status": "probe-success",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m83-upstream-and-lmstudio-check-refresh-20260709.json",
+      "summary": "Reran the supported LM Studio download probe at head `7c28d6e`; the probe now completes successfully, but the default preflight still needed the actual LM Studio loadable key."
+    },
+    {
+      "id": "M84",
+      "name": "LM Studio preflight key alignment",
+      "status": "live-validation-passed",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m84-lmstudio-preflight-key-alignment-20260709.json",
+      "summary": "Aligned the VLM preflight with the LM Studio-visible key `lfm2.5-vl-1.6b-mlx` and verified live `/v1/chat/completions` on the running server."
+    },
+    {
+      "id": "M85",
+      "name": "LFM2.5 text-cache promotion gate",
+      "status": "promotion-ready",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m85-lfm25-text-cache-promotion-gate-20260709.json",
+      "summary": "Hardened the live validation smoke artifact shape and reran the LFM2.5 text-cache promotion gate to a passing end state."
+    },
+    {
+      "id": "M86",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m86-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M87",
+      "name": "Upstream candidate triage",
+      "status": "no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m87-upstream-candidate-triage-20260709.md",
+      "summary": "Reviewed the most relevant upstream candidate branches and found no safe, narrowly scoped latency win to promote."
+    },
+    {
+      "id": "M88",
+      "name": "Distributed thread candidate triage",
+      "status": "no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m88-distributed-thread-candidate-triage-20260709.md",
+      "summary": "Reviewed the smaller distributed/VLM thread-routing commits and found they are already present, stale, or too entangled to cherry-pick safely."
+    },
+    {
+      "id": "M89",
+      "name": "Small cache/perf candidate triage",
+      "status": "no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m89-small-cache-perf-triage-20260709.md",
+      "summary": "Reviewed the smallest cache/perf commits and found they are already present in the current tree."
+    },
+    {
+      "id": "M90",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m90-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M91",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m91-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M92",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m92-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M93",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m93-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M94",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m94-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M95",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m95-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M96",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m96-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M97",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m97-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M98",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m98-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M99",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m99-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M100",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m100-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M101",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m101-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M102",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m102-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M103",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m103-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M104",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m104-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M105",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m105-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M106",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m106-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M107",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m107-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M108",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m108-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M109",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m109-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M110",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m110-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M111",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m111-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M112",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m112-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M113",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m113-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M114",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m114-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M115",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m115-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M116",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m116-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M117",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m117-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
+    },
+    {
+      "id": "M118",
+      "name": "Upstream candidate scan refresh",
+      "status": "unchanged",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m118-upstream-candidate-scan-report-20260709.json",
+      "summary": "Refreshed the upstream candidate scan at current head `7c28d6e`; the six-branch candidate set remained unchanged."
     }
   ]
 }

@@ -760,6 +760,11 @@ The preflight is read-only. It checks `lms runtime ls`, `lms server status`,
 copy exists under `~/.lmstudio/models`, but that is diagnostic only. It exits
 non-zero until the retained model appears in `lms ls --json`.
 
+For this retained lane, LM Studio exposes the loadable VLM as
+`lfm2.5-vl-1.6b-mlx`, while the canonical Hugging Face repo remains
+`lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`. The preflight uses the LM Studio
+key for visibility and the canonical repo for store/model-data diagnostics.
+
 If the model directory exists but `lms ls --json` does not expose the model key,
 use the supported LM Studio download/registration path instead of copying files
 into `~/.lmstudio/models` or editing LM Studio cache files by hand:

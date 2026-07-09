@@ -918,11 +918,17 @@ def main(argv: Optional[list[str]] = None) -> int:
         auth_mode = _detect_auth_mode(base_url)
 
     summary = _aggregate(results)
+    report_status = "pass" if summary["failed"] == 0 else "fail"
     report = {
         "base_url": base_url,
         "model": args.model,
         "auth_mode": auth_mode,
         "modes_requested": modes,
+        "status": report_status,
+        "validation_status": report_status,
+        "live_lm_studio_validation": report_status,
+        "passed": summary["failed"] == 0,
+        "success": summary["failed"] == 0,
         "results": results,
         "summary": summary,
     }

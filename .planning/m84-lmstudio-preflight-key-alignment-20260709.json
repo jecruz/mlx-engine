@@ -1,0 +1,90 @@
+{
+  "milestone": "M84-lmstudio-preflight-key-alignment",
+  "timestamp_utc": "2026-07-09T04:46:27Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Align LM Studio VLM preflight with the actual loadable model key, keep the canonical repo diagnostics intact, and verify live LM Studio /v1/chat/completions validation on the installed runtime.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "scripts/lmstudio_vlm_live_validation_preflight.py",
+      "tests/test_lmstudio_vlm_live_validation_preflight.py",
+      "README.md",
+      ".planning/lmstudio-vlm-live-validation-preflight.json",
+      ".planning/lmstudio-vlm-live-validation-preflight-20260709-m83-shortkey.json",
+      ".planning/lmstudio-vlm-live-validation-20260709-m83.json"
+    ],
+    "details": [
+      "Separated the LM Studio-visible key from the canonical Hugging Face repo in the VLM preflight script so visibility checks now use the actual loadable key `lfm2.5-vl-1.6b-mlx`.",
+      "Kept canonical repo diagnostics for the local store and model-data checks, preserving the repo-level evidence trail.",
+      "Added tests that cover the short-key visibility path and the default pass path for the preflight.",
+      "Updated the README preflight instructions to explain the key split and verified the live LM Studio chat path against the running server on port `4521`."
+    ]
+  },
+  "artifacts": {
+    "preflight_script": "scripts/lmstudio_vlm_live_validation_preflight.py",
+    "preflight_tests": "tests/test_lmstudio_vlm_live_validation_preflight.py",
+    "readme": "README.md",
+    "default_preflight": ".planning/lmstudio-vlm-live-validation-preflight.json",
+    "short_key_preflight": ".planning/lmstudio-vlm-live-validation-preflight-20260709-m83-shortkey.json",
+    "live_validation": ".planning/lmstudio-vlm-live-validation-20260709-m83.json"
+  },
+  "commands": [
+    {
+      "command": "lms load lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --identifier m31-lfm25-vl --ttl 300 -y",
+      "status": "failed-expected",
+      "finding": "The canonical repo key is not loadable directly; LM Studio returned `Model not found` and pointed to `lms ls`."
+    },
+    {
+      "command": "lms load lfm2.5-vl-1.6b-mlx --identifier m31-lfm25-vl --ttl 300 -y",
+      "status": "passed",
+      "finding": "LM Studio loaded the retained VLM successfully and exposed it as identifier `m31-lfm25-vl`."
+    },
+    {
+      "command": "lms server start",
+      "status": "passed",
+      "finding": "LM Studio server started on port `4521`."
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/cheetara_compat_smoke.py --base-url http://127.0.0.1:4521 --model m31-lfm25-vl --modes connect,text,image,auth --output .planning/lmstudio-vlm-live-validation-20260709-m83.json",
+      "status": "passed",
+      "finding": "Live `/v1/chat/completions` validation passed for text and VLM image requests; the server reported `m31-lfm25-vl` and returned `A toucan.` for the retained image prompt."
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight.json --timeout 30",
+      "status": "passed",
+      "finding": "Default preflight now reports `ready_for_live_validation=true` with the LM Studio-visible key."
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_lmstudio_vlm_download_probe.py tests/test_lmstudio_vlm_live_validation_preflight.py -q",
+      "status": "passed",
+      "finding": "Probe and preflight regression coverage passed."
+    }
+  ],
+  "validation": [
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-20260709-m83.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m83-shortkey.json",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "ready-for-live-validation",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "passed",
+    "blocker": null,
+    "next_action": "Resume retained-workload benchmark and candidate triage work now that the LM Studio visibility gate is aligned with the actual runtime key."
+  },
+  "summary": "Aligned LM Studio VLM preflight with the actual visible model key, verified the default preflight passes, and captured a passing live chat/image validation on the running LM Studio server.",
+  "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m84-lmstudio-preflight-key-alignment-20260709.json",
+  "project": "MLX-engine prompt/inference performance"
+}
