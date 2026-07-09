@@ -7174,3 +7174,46 @@ Validation:
   -> passed.
 - `python3 -m json.tool .planning/m68-upstream-candidate-refresh-20260710.json`
   -> passed.
+
+### M69 upstream candidate refresh (2026-07-10)
+
+Feature `m69-upstream-candidate-refresh` refreshes upstream scan evidence after the
+branch-head movement to `b8ea9c3`.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m69-upstream-candidate-refresh-20260710.json`
+- **Candidate scan:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m69-upstream-candidate-scan-report-20260710.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m69-upstream-candidate-scan-diff-20260710.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m69-upstream-candidate-history-20260710.md`
+- **New inputs:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m68-upstream-candidate-scan-report-20260710.json`
+
+Compared scans:
+
+- Baseline: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m68-upstream-candidate-scan-report-20260710.json`
+- Candidate: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m69-upstream-candidate-scan-report-20260710.json`
+
+Summary:
+
+- Baseline head `42e272b`
+- Candidate head `b8ea9c3`
+- Candidate branches scanned `6`
+- Branch status counts: `unchanged=6`, `new=0`, `removed=0`, `changed=0`
+- Head-vs-upstream/main `+1`
+- Head-vs-origin `+1`
+- Candidate decision remains **READABLE_SCAN_REFRESH_ONLY / NO_PROMOTION / RUNTIME UNCHANGED**.
+- Live LM Studio preflight (`.planning/lmstudio-vlm-live-validation-preflight-20260710-m68.json`) still reports
+  `ready_for_live_validation=false`.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m69-upstream-candidate-scan-report-20260710.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json --output .planning/m69-upstream-candidate-scan-diff-20260710.md --title "M69 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json --output .planning/m69-upstream-candidate-history-20260710.md --title "M69 Upstream Candidate History"`
+  -> passed.
+- `python3 -m json.tool .planning/m69-upstream-candidate-scan-report-20260710.json`
+  -> passed.
+- `python3 -m json.tool .planning/m69-upstream-candidate-refresh-20260710.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260710-m68.json --timeout 30`
+  -> failed: `ready_for_live_validation=false`.

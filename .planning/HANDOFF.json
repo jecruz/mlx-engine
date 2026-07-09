@@ -10,6 +10,14 @@
   "active_goal": "Advance the Mac-local MLX inference stack only with changes that measurably improve retained prompt-processing or generation latency, preserve response quality, and do not increase runtime instability.",
   "latest_commits": [
     {
+      "sha": "2a1bcdb",
+      "message": "[#1190] add m69 milestone tracker artifacts"
+    },
+    {
+      "sha": "b8ea9c3",
+      "message": "[#1190] add m68 milestone handoff artifacts"
+    },
+    {
       "sha": "42e272b",
       "message": "[#1190] add upstream candidate refresh evidence"
     },
@@ -106,6 +114,13 @@
       "status": "done-no-promotion",
       "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m68-upstream-candidate-refresh-20260710.json",
       "summary": "Refreshed upstream scan evidence after HEAD advanced to `42e272b`; payloads remained unchanged."
+    },
+    {
+      "id": "M69",
+      "name": "Upstream candidate refresh",
+      "status": "done-no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m69-upstream-candidate-refresh-20260710.json",
+      "summary": "Refreshed upstream scan evidence after HEAD advanced to `b8ea9c3`; payloads remained unchanged and live LM Studio preflight is still blocked."
     }
   ],
   "blockers": [
@@ -117,7 +132,8 @@
       "evidence": [
         "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m55-lmstudio-vlm-gate-refresh-20260709.json",
         "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m59-lmstudio-server-state-probe-20260709.json",
-        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m60-lmstudio-load-import-diagnostics-20260709.json"
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m60-lmstudio-load-import-diagnostics-20260709.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260710-m68.json"
       ]
     }
   ],
@@ -149,7 +165,35 @@
       "result": "passed"
     },
     {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m69-upstream-candidate-scan-report-20260710.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json --output .planning/m69-upstream-candidate-scan-diff-20260710.md --title \"M69 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json --output .planning/m69-upstream-candidate-history-20260710.md --title \"M69 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
       "command": "python3 -m json.tool .planning/m68-upstream-candidate-refresh-20260710.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260710-m68.json --timeout 30",
+      "result": "failed: ready_for_live_validation=false"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m69-upstream-candidate-scan-report-20260710.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m69-upstream-candidate-refresh-20260710.json",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260710-m68.json",
       "result": "passed"
     },
     {
