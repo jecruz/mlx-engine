@@ -18,6 +18,8 @@
 - Add `scripts/lfm25_text_cache_compare.py` to compare retained LFM2.5-VL
   text-cache reports and fail candidates with cache, prefill, row-error, or
   name-fidelity regressions.
+- Add `scripts/upstream_candidate_scan.py` to produce factual JSON evidence for
+  repeat upstream branch triage before any cherry-pick or runtime candidate.
 - Add `eval_collect_ms` and `eval_barrier_ms` to VLM
   `vlm_cache_restore_detail` / `vlm_cache_restore_cost_model` timing events so
   restore-eval investigations can separate target discovery from the mandatory

@@ -1,0 +1,1384 @@
+{
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "upstream_main": "upstream/main",
+  "origin_branch": "origin/mlx-vlm-restore-eval-followup",
+  "head": "e5e4b5b",
+  "upstream_main_head": "8ae2610",
+  "origin_branch_head": "8f0fa26",
+  "head_vs_upstream_main": {
+    "left": 232,
+    "right": 1
+  },
+  "head_vs_origin_branch": {
+    "left": 37,
+    "right": 0
+  },
+  "upstream_refs": [
+    {
+      "ref": "upstream/neil/gemma4-tool-context",
+      "head": "9aa3db2",
+      "committer_date": "2026-07-08 18:36:49 -0400",
+      "subject": "Rename Gemma4 grammar edge case test"
+    },
+    {
+      "ref": "upstream",
+      "head": "8ae2610",
+      "committer_date": "2026-06-24 10:45:49 -0400",
+      "subject": "Handle Gemma4 bidirectional visual prefill (#340)"
+    },
+    {
+      "ref": "upstream/main",
+      "head": "8ae2610",
+      "committer_date": "2026-06-24 10:45:49 -0400",
+      "subject": "Handle Gemma4 bidirectional visual prefill (#340)"
+    },
+    {
+      "ref": "upstream/yagil/mlx-dist-non-batched",
+      "head": "c86c23a",
+      "committer_date": "2026-06-08 00:20:54 -0700",
+      "subject": "Run Qwen VLM prompts on model thread"
+    },
+    {
+      "ref": "upstream/yagil/dist",
+      "head": "366ebd4",
+      "committer_date": "2026-05-27 22:21:49 -0400",
+      "subject": "Preserve backpressure in distributed stream bridge"
+    },
+    {
+      "ref": "upstream/neil/vlm-parity-ci",
+      "head": "ea1a6bb",
+      "committer_date": "2026-05-27 18:29:25 -0400",
+      "subject": "Relax VLM concurrency logprob parity"
+    },
+    {
+      "ref": "upstream/will/qwen3.5-dump",
+      "head": "fc4d488",
+      "committer_date": "2026-03-27 16:53:23 -0400",
+      "subject": "sort, pre + post processed"
+    },
+    {
+      "ref": "upstream/will/qwen3.5-debug",
+      "head": "2c265bc",
+      "committer_date": "2026-03-27 12:52:18 -0400",
+      "subject": "debug log"
+    },
+    {
+      "ref": "upstream/will/qwen3.5-unified",
+      "head": "3d49a30",
+      "committer_date": "2026-03-25 21:36:41 -0400",
+      "subject": "multi-image fix"
+    },
+    {
+      "ref": "upstream/will/lfm-2.5-unified",
+      "head": "461015c",
+      "committer_date": "2026-01-16 11:41:16 -0500",
+      "subject": "Add test for LFM 2.5 caching"
+    },
+    {
+      "ref": "upstream/neil/img-caching",
+      "head": "7dfe3cd",
+      "committer_date": "2025-10-29 10:36:19 -0400",
+      "subject": "cleanup"
+    },
+    {
+      "ref": "upstream/revert-196-will/mistral3-empty-input-embeds",
+      "head": "c8970c9",
+      "committer_date": "2025-07-17 16:51:50 -0400",
+      "subject": "Revert \"[Mistral3] Send empty (instead of fake) input IDs (#196)\""
+    },
+    {
+      "ref": "upstream/neil/phi3_v",
+      "head": "161ff8f",
+      "committer_date": "2025-04-11 11:01:28 -0400",
+      "subject": "add test"
+    },
+    {
+      "ref": "upstream/ryan/fix-image-loading",
+      "head": "1a141d6",
+      "committer_date": "2025-03-12 12:23:59 -0400",
+      "subject": "Fix image loading"
+    }
+  ],
+  "candidate_branches": [
+    {
+      "branch": "upstream/neil/gemma4-tool-context",
+      "head": "9aa3db2",
+      "ref_info": {
+        "ref": "upstream/neil/gemma4-tool-context",
+        "head": "9aa3db2",
+        "committer_date": "2026-07-08 18:36:49 -0400",
+        "subject": "Rename Gemma4 grammar edge case test"
+      },
+      "ahead_behind_vs_upstream_main": {
+        "left": 0,
+        "right": 17
+      },
+      "recent_commits": [
+        "9aa3db2 Rename Gemma4 grammar edge case test",
+        "864eeaf Trim Gemma4 tool runtime comments",
+        "05d1d64 Relax Gemma4 tool grammar edge cases",
+        "91fe8bd Simplify Gemma4 tool runtime assumptions",
+        "3035148 Move llguidance imports to module scope",
+        "7f3fae9 Simplify Gemma4 llguidance guard",
+        "0a7d07e Use llguidance for Gemma4 tool grammar",
+        "6dda82d Add Gemma4 tool-call structure guard",
+        "e35f614 Simplify Gemma4 reasoning guard markers",
+        "57a90c7 Avoid Gemma4 guard token sync",
+        "2316deb Optimize Gemma4 guard no-mask path",
+        "e0bdfa5 Simplify Gemma4 token helper assumptions"
+      ],
+      "diffstat": "mlx_engine/generate.py                             |  16 +\n .../model_kit/batched_vision/batch_generator.py    |   9 +\n mlx_engine/tool_protocols.py                       |  19 +\n mlx_engine/tool_runtime.py                         | 340 ++++++++++++++++++\n tests/test_batched_vision_batch_generator.py       |  32 ++\n tests/test_tool_runtime_detection.py               |  58 +++\n tests/test_tool_runtime_reasoning_guard.py         | 394 +++++++++++++++++++++\n 7 files changed, 868 insertions(+)",
+      "changed_files": [
+        "M\tmlx_engine/generate.py",
+        "M\tmlx_engine/model_kit/batched_vision/batch_generator.py",
+        "A\tmlx_engine/tool_protocols.py",
+        "A\tmlx_engine/tool_runtime.py",
+        "M\ttests/test_batched_vision_batch_generator.py",
+        "A\ttests/test_tool_runtime_detection.py",
+        "A\ttests/test_tool_runtime_reasoning_guard.py"
+      ],
+      "unmatched_patch_ids": [
+        "+ 8ae261033bc5bc16fdfc19a842bfc1d96db51348 Handle Gemma4 bidirectional visual prefill (#340)",
+        "+ 1766468e46665ed6a02b77236787c1d5fec1f0d7 Add Gemma4 tool prompt context extraction",
+        "+ 328064d949dbcac11e33feeef3a98d10b5666d47 Add Gemma4 VLM reasoning guard",
+        "+ 8bfa083ee65dceeeafe60fe6ad4e1436460c65a9 Optimize Gemma4 reasoning guard token tracking",
+        "+ 2ceeaec93d503e5bfd237f1cf22038d0c02c0c88 Simplify Gemma4 reasoning guard state",
+        "+ 636d6bb867f81aee8cf4626e1e307d70a836f94e Document Gemma4 reasoning mask tradeoff",
+        "+ e0bdfa5a91293bdb55ee7932f27a3f4aabb43e5d Simplify Gemma4 token helper assumptions",
+        "+ 2316deb4ab2fb097ea8dcec26588aa52ec8fd7fd Optimize Gemma4 guard no-mask path",
+        "+ 57a90c712c30ff64445bc2b805906e36a091bb0f Avoid Gemma4 guard token sync",
+        "+ e35f614111dc6251d31a816c3c219552de186096 Simplify Gemma4 reasoning guard markers",
+        "+ 6dda82dfef45b16d8497cba075375d4b52a39042 Add Gemma4 tool-call structure guard",
+        "+ 0a7d07e9971aa76256a6475a96001a35b784ccf0 Use llguidance for Gemma4 tool grammar",
+        "+ 7f3fae929e4b6221f8c183685097344c45baff51 Simplify Gemma4 llguidance guard",
+        "+ 3035148802e84d42faa7034a33b452196b9fdd37 Move llguidance imports to module scope",
+        "+ 91fe8bd1210f147c5a046c984c537f59ad1b5cbe Simplify Gemma4 tool runtime assumptions",
+        "+ 05d1d64c38b211826115166dc344bbd151681d34 Relax Gemma4 tool grammar edge cases",
+        "+ 864eeaf03fc699c4683d325051c8c671c8159f94 Trim Gemma4 tool runtime comments",
+        "+ 9aa3db24f45630130386cf152b1b22699dca1813 Rename Gemma4 grammar edge case test"
+      ],
+      "commands": {
+        "head": {
+          "command": [
+            "git",
+            "rev-parse",
+            "--short",
+            "upstream/neil/gemma4-tool-context"
+          ],
+          "returncode": 0,
+          "stdout": "9aa3db2\n",
+          "stderr": ""
+        },
+        "for_each_ref": {
+          "command": [
+            "git",
+            "for-each-ref",
+            "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso8601)|%(subject)",
+            "refs/remotes/upstream/neil/gemma4-tool-context"
+          ],
+          "returncode": 0,
+          "stdout": "upstream/neil/gemma4-tool-context|9aa3db2|2026-07-08 18:36:49 -0400|Rename Gemma4 grammar edge case test\n",
+          "stderr": ""
+        },
+        "ahead_behind": {
+          "command": [
+            "git",
+            "rev-list",
+            "--left-right",
+            "--count",
+            "upstream/main...upstream/neil/gemma4-tool-context"
+          ],
+          "returncode": 0,
+          "stdout": "0\t17\n",
+          "stderr": ""
+        },
+        "recent_commits": {
+          "command": [
+            "git",
+            "log",
+            "--oneline",
+            "--max-count=12",
+            "upstream/main..upstream/neil/gemma4-tool-context"
+          ],
+          "returncode": 0,
+          "stdout": "9aa3db2 Rename Gemma4 grammar edge case test\n864eeaf Trim Gemma4 tool runtime comments\n05d1d64 Relax Gemma4 tool grammar edge cases\n91fe8bd Simplify Gemma4 tool runtime assumptions\n3035148 Move llguidance imports to module scope\n7f3fae9 Simplify Gemma4 llguidance guard\n0a7d07e Use llguidance for Gemma4 tool grammar\n6dda82d Add Gemma4 tool-call structure guard\ne35f614 Simplify Gemma4 reasoning guard markers\n57a90c7 Avoid Gemma4 guard token sync\n2316deb Optimize Gemma4 guard no-mask path\ne0bdfa5 Simplify Gemma4 token helper assumptions\n",
+          "stderr": ""
+        },
+        "diffstat": {
+          "command": [
+            "git",
+            "diff",
+            "--stat",
+            "upstream/main..upstream/neil/gemma4-tool-context"
+          ],
+          "returncode": 0,
+          "stdout": " mlx_engine/generate.py                             |  16 +\n .../model_kit/batched_vision/batch_generator.py    |   9 +\n mlx_engine/tool_protocols.py                       |  19 +\n mlx_engine/tool_runtime.py                         | 340 ++++++++++++++++++\n tests/test_batched_vision_batch_generator.py       |  32 ++\n tests/test_tool_runtime_detection.py               |  58 +++\n tests/test_tool_runtime_reasoning_guard.py         | 394 +++++++++++++++++++++\n 7 files changed, 868 insertions(+)\n",
+          "stderr": ""
+        },
+        "changed_files": {
+          "command": [
+            "git",
+            "diff",
+            "--name-status",
+            "upstream/main..upstream/neil/gemma4-tool-context"
+          ],
+          "returncode": 0,
+          "stdout": "M\tmlx_engine/generate.py\nM\tmlx_engine/model_kit/batched_vision/batch_generator.py\nA\tmlx_engine/tool_protocols.py\nA\tmlx_engine/tool_runtime.py\nM\ttests/test_batched_vision_batch_generator.py\nA\ttests/test_tool_runtime_detection.py\nA\ttests/test_tool_runtime_reasoning_guard.py\n",
+          "stderr": ""
+        },
+        "cherry": {
+          "command": [
+            "git",
+            "cherry",
+            "-v",
+            "HEAD",
+            "upstream/neil/gemma4-tool-context"
+          ],
+          "returncode": 0,
+          "stdout": "+ 8ae261033bc5bc16fdfc19a842bfc1d96db51348 Handle Gemma4 bidirectional visual prefill (#340)\n+ 1766468e46665ed6a02b77236787c1d5fec1f0d7 Add Gemma4 tool prompt context extraction\n+ 328064d949dbcac11e33feeef3a98d10b5666d47 Add Gemma4 VLM reasoning guard\n+ 8bfa083ee65dceeeafe60fe6ad4e1436460c65a9 Optimize Gemma4 reasoning guard token tracking\n+ 2ceeaec93d503e5bfd237f1cf22038d0c02c0c88 Simplify Gemma4 reasoning guard state\n+ 636d6bb867f81aee8cf4626e1e307d70a836f94e Document Gemma4 reasoning mask tradeoff\n+ e0bdfa5a91293bdb55ee7932f27a3f4aabb43e5d Simplify Gemma4 token helper assumptions\n+ 2316deb4ab2fb097ea8dcec26588aa52ec8fd7fd Optimize Gemma4 guard no-mask path\n+ 57a90c712c30ff64445bc2b805906e36a091bb0f Avoid Gemma4 guard token sync\n+ e35f614111dc6251d31a816c3c219552de186096 Simplify Gemma4 reasoning guard markers\n+ 6dda82dfef45b16d8497cba075375d4b52a39042 Add Gemma4 tool-call structure guard\n+ 0a7d07e9971aa76256a6475a96001a35b784ccf0 Use llguidance for Gemma4 tool grammar\n+ 7f3fae929e4b6221f8c183685097344c45baff51 Simplify Gemma4 llguidance guard\n+ 3035148802e84d42faa7034a33b452196b9fdd37 Move llguidance imports to module scope\n+ 91fe8bd1210f147c5a046c984c537f59ad1b5cbe Simplify Gemma4 tool runtime assumptions\n+ 05d1d64c38b211826115166dc344bbd151681d34 Relax Gemma4 tool grammar edge cases\n+ 864eeaf03fc699c4683d325051c8c671c8159f94 Trim Gemma4 tool runtime comments\n+ 9aa3db24f45630130386cf152b1b22699dca1813 Rename Gemma4 grammar edge case test\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "branch": "upstream/yagil/dist",
+      "head": "366ebd4",
+      "ref_info": {
+        "ref": "upstream/yagil/dist",
+        "head": "366ebd4",
+        "committer_date": "2026-05-27 22:21:49 -0400",
+        "subject": "Preserve backpressure in distributed stream bridge"
+      },
+      "ahead_behind_vs_upstream_main": {
+        "left": 5,
+        "right": 29
+      },
+      "recent_commits": [
+        "366ebd4 Preserve backpressure in distributed stream bridge",
+        "4b6b826 Stop distributed stream when caller exits",
+        "5cbeb1b Add distributed model thread diagnostics",
+        "d6656f1 Run sequential distributed MLX on model thread",
+        "bbf51db Align distributed load stream and add stream logs",
+        "5548160 Use default MLX stream for distributed generation",
+        "581231b Patch actual MLX-LM generate module stream",
+        "c01e100 Prepare MLX-LM streams per generation thread",
+        "f20de8d Allow distributed text-only loading for vision models",
+        "0b0487c Store prompt cache tokens thread-safely",
+        "95fa089 Make timeouts shorterg",
+        "7551f64 Support distributed continuous batching"
+      ],
+      "diffstat": "mlx_engine/cache_wrapper.py                        |   20 +-\n mlx_engine/distributed_coordinator.py              |  464 +++++++\n mlx_engine/distributed_rank.py                     |  292 +++++\n mlx_engine/distributed_server.py                   |  701 ++++++++++\n mlx_engine/distributed_validation_harness.py       |  406 ++++++\n mlx_engine/distributed_validation_rank_entry.py    |   32 +\n mlx_engine/distributed_validation_runner.py        |  570 ++++++++\n mlx_engine/distributed_worker.py                   |  160 +++\n mlx_engine/generate.py                             |  493 ++++---\n mlx_engine/model_kit/__init__.py                   |    4 +-\n mlx_engine/model_kit/batched_model_kit.py          |   62 +-\n mlx_engine/model_kit/batched_vision/__init__.py    |    3 -\n .../model_kit/batched_vision/batch_generator.py    | 1167 -----------------\n .../model_kit/batched_vision/cache_io_thread.py    |  154 ---\n mlx_engine/model_kit/batched_vision/model_kit.py   |  651 ----------\n .../batched_vision/prompt_cache/__init__.py        |    1 -\n .../batched_vision/prompt_cache/blob_store.py      |  233 ----\n .../batched_vision/prompt_cache/cache_store.py     |  530 --------\n .../batched_vision/prompt_cache/chunks.py          |   99 --\n .../batched_vision/prompt_cache/coordinator.py     |  330 -----\n .../batched_vision/prompt_cache/disk_budget.py     |  133 --\n .../batched_vision/prompt_cache/image_spans.py     |   65 -\n .../batched_vision/prompt_cache/records.py         |  189 ---\n .../batched_vision/prompt_cache/restore_planner.py |   95 --\n .../model_kit/batched_vision/prompt_cache/types.py |  114 --\n .../model_kit/batched_vision/prompt_inputs.py      |  438 -------\n mlx_engine/model_kit/batched_vision/qwen_mrope.py  |  132 --\n .../model_kit/batched_vision/request_lifecycle.py  |  257 ----\n .../batched_vision/vision_feature_memoizer.py      |   17 -\n mlx_engine/model_kit/distributed_model_kit.py      | 1372 ++++++++++++++++++++\n mlx_engine/model_kit/model_kit.py                  |  159 ++-\n mlx_engine/model_kit/patches/gemma4.py             |  214 +--\n mlx_engine/model_kit/patches/lfm2_vl.py            |   19 -\n mlx_engine/model_kit/patches/qwen3_5.py            |  359 +----\n mlx_engine/model_kit/vision_add_ons/base.py        |   45 +\n mlx_engine/model_kit/vision_add_ons/gemma3.py      |   88 ++\n mlx_engine/model_kit/vision_add_ons/gemma3n.py     |  159 +++\n mlx_engine/model_kit/vision_add_ons/gemma4.py      |  129 ++\n mlx_engine/model_kit/vision_add_ons/lfm2_vl.py     |  148 +++\n mlx_engine/model_kit/vision_add_ons/load_utils.py  |  257 ++++\n mlx_engine/model_kit/vision_add_ons/mistral3.py    |  127 ++\n mlx_engine/model_kit/vision_add_ons/pixtral.py     |   95 ++\n .../vision_add_ons/process_prompt_with_images.py   |   81 ++\n mlx_engine/model_kit/vision_add_ons/qwen2_vl.py    |   92 ++\n mlx_engine/model_kit/vision_add_ons/qwen3_5.py     |  186 +++\n mlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py |   35 +\n mlx_engine/model_kit/vision_add_ons/qwen3_vl.py    |   64 +\n .../model_kit/vision_add_ons/qwen3_vl_moe.py       |   64 +\n .../model_kit/vision_add_ons/qwen_vl_utils.py      |  118 ++\n .../vision_add_ons/vision_feature_memoizer.py      |   43 +\n .../processors/repetition_penalty_processor.py     |   12 -\n mlx_engine/utils/eot_tokens.py                     |   15 +-\n mlx_engine/utils/generation_helpers.py             |   65 +-\n mlx_engine/utils/mlx_lm_stream.py                  |  104 ++\n mlx_engine/utils/mlx_threading.py                  |   11 -\n mlx_engine/utils/prompt_progress_reporter.py       |   26 +-\n mlx_engine/utils/sampling.py                       |  113 --\n mlx_engine/utils/speculative_decoding.py           |   20 +-\n .../_transformers_compatibility.py}                |    3 +-\n mlx_engine/vision_model_kit/vision_model_kit.py    |  171 +++\n .../vision_model_kit/vision_model_wrapper.py       |  246 ++++\n requirements.txt                                   |   23 +-\n tests/test_batched_vision_batch_generator.py       |  736 -----------\n tests/test_batched_vision_blob_store.py            |   80 --\n tests/test_batched_vision_cache_io_thread.py       |  162 ---\n tests/test_batched_vision_cache_store.py           |  273 ----\n tests/test_batched_vision_chunks.py                |   71 -\n tests/test_batched_vision_coordinator.py           |  216 ---\n tests/test_batched_vision_disk_budget.py           |  108 --\n tests/test_batched_vision_image_spans.py           |   53 -\n tests/test_batched_vision_model_kit.py             |  173 ---\n tests/test_batched_vision_parity.py                |  497 -------\n tests/test_batched_vision_prompt_inputs.py         |  454 -------\n tests/test_batched_vision_qwen_mrope.py            |   83 --\n tests/test_batched_vision_records.py               |  172 ---\n tests/test_batched_vision_request_lifecycle.py     |  210 ---\n tests/test_batched_vision_restore_planner.py       |  109 --\n tests/test_cache_wrapper.py                        |   20 +\n tests/test_patched_gemma4.py                       |  293 +++--\n tests/test_patched_qwen3_5.py                      |  783 +----------\n tests/test_prefill_step_size.py                    |   46 +-\n tests/test_repetition_penalty_processor.py         |   27 -\n tests/test_vision_feature_cache.py                 |  233 ++--\n tests/test_vision_models.py                        |  720 +++++-----\n 84 files changed, 7664 insertions(+), 10330 deletions(-)",
+      "changed_files": [
+        "M\tmlx_engine/cache_wrapper.py",
+        "A\tmlx_engine/distributed_coordinator.py",
+        "A\tmlx_engine/distributed_rank.py",
+        "A\tmlx_engine/distributed_server.py",
+        "A\tmlx_engine/distributed_validation_harness.py",
+        "A\tmlx_engine/distributed_validation_rank_entry.py",
+        "A\tmlx_engine/distributed_validation_runner.py",
+        "A\tmlx_engine/distributed_worker.py",
+        "M\tmlx_engine/generate.py",
+        "M\tmlx_engine/model_kit/__init__.py",
+        "M\tmlx_engine/model_kit/batched_model_kit.py",
+        "D\tmlx_engine/model_kit/batched_vision/__init__.py",
+        "D\tmlx_engine/model_kit/batched_vision/batch_generator.py",
+        "D\tmlx_engine/model_kit/batched_vision/cache_io_thread.py",
+        "D\tmlx_engine/model_kit/batched_vision/model_kit.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/__init__.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/blob_store.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/chunks.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/disk_budget.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/image_spans.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/records.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/restore_planner.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/types.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_inputs.py",
+        "D\tmlx_engine/model_kit/batched_vision/qwen_mrope.py",
+        "D\tmlx_engine/model_kit/batched_vision/request_lifecycle.py",
+        "D\tmlx_engine/model_kit/batched_vision/vision_feature_memoizer.py",
+        "A\tmlx_engine/model_kit/distributed_model_kit.py",
+        "M\tmlx_engine/model_kit/model_kit.py",
+        "M\tmlx_engine/model_kit/patches/gemma4.py",
+        "D\tmlx_engine/model_kit/patches/lfm2_vl.py",
+        "M\tmlx_engine/model_kit/patches/qwen3_5.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/base.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma3.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma3n.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma4.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/lfm2_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/load_utils.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/mistral3.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/pixtral.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/process_prompt_with_images.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen2_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_5.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_vl_moe.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen_vl_utils.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/vision_feature_memoizer.py",
+        "M\tmlx_engine/processors/repetition_penalty_processor.py",
+        "M\tmlx_engine/utils/eot_tokens.py",
+        "M\tmlx_engine/utils/generation_helpers.py",
+        "A\tmlx_engine/utils/mlx_lm_stream.py",
+        "D\tmlx_engine/utils/mlx_threading.py",
+        "M\tmlx_engine/utils/prompt_progress_reporter.py",
+        "D\tmlx_engine/utils/sampling.py",
+        "M\tmlx_engine/utils/speculative_decoding.py",
+        "R097\tmlx_engine/model_kit/batched_vision/transformers_compatibility.py\tmlx_engine/vision_model_kit/_transformers_compatibility.py",
+        "A\tmlx_engine/vision_model_kit/vision_model_kit.py",
+        "A\tmlx_engine/vision_model_kit/vision_model_wrapper.py",
+        "M\trequirements.txt",
+        "D\ttests/test_batched_vision_batch_generator.py",
+        "D\ttests/test_batched_vision_blob_store.py",
+        "D\ttests/test_batched_vision_cache_io_thread.py",
+        "D\ttests/test_batched_vision_cache_store.py",
+        "D\ttests/test_batched_vision_chunks.py",
+        "D\ttests/test_batched_vision_coordinator.py",
+        "D\ttests/test_batched_vision_disk_budget.py",
+        "D\ttests/test_batched_vision_image_spans.py",
+        "D\ttests/test_batched_vision_model_kit.py",
+        "D\ttests/test_batched_vision_parity.py",
+        "D\ttests/test_batched_vision_prompt_inputs.py",
+        "D\ttests/test_batched_vision_qwen_mrope.py",
+        "D\ttests/test_batched_vision_records.py",
+        "D\ttests/test_batched_vision_request_lifecycle.py",
+        "D\ttests/test_batched_vision_restore_planner.py",
+        "M\ttests/test_cache_wrapper.py",
+        "M\ttests/test_patched_gemma4.py",
+        "M\ttests/test_patched_qwen3_5.py",
+        "M\ttests/test_prefill_step_size.py",
+        "D\ttests/test_repetition_penalty_processor.py",
+        "M\ttests/test_vision_feature_cache.py",
+        "M\ttests/test_vision_models.py"
+      ],
+      "unmatched_patch_ids": [],
+      "commands": {
+        "head": {
+          "command": [
+            "git",
+            "rev-parse",
+            "--short",
+            "upstream/yagil/dist"
+          ],
+          "returncode": 0,
+          "stdout": "366ebd4\n",
+          "stderr": ""
+        },
+        "for_each_ref": {
+          "command": [
+            "git",
+            "for-each-ref",
+            "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso8601)|%(subject)",
+            "refs/remotes/upstream/yagil/dist"
+          ],
+          "returncode": 0,
+          "stdout": "upstream/yagil/dist|366ebd4|2026-05-27 22:21:49 -0400|Preserve backpressure in distributed stream bridge\n",
+          "stderr": ""
+        },
+        "ahead_behind": {
+          "command": [
+            "git",
+            "rev-list",
+            "--left-right",
+            "--count",
+            "upstream/main...upstream/yagil/dist"
+          ],
+          "returncode": 0,
+          "stdout": "5\t29\n",
+          "stderr": ""
+        },
+        "recent_commits": {
+          "command": [
+            "git",
+            "log",
+            "--oneline",
+            "--max-count=12",
+            "upstream/main..upstream/yagil/dist"
+          ],
+          "returncode": 0,
+          "stdout": "366ebd4 Preserve backpressure in distributed stream bridge\n4b6b826 Stop distributed stream when caller exits\n5cbeb1b Add distributed model thread diagnostics\nd6656f1 Run sequential distributed MLX on model thread\nbbf51db Align distributed load stream and add stream logs\n5548160 Use default MLX stream for distributed generation\n581231b Patch actual MLX-LM generate module stream\nc01e100 Prepare MLX-LM streams per generation thread\nf20de8d Allow distributed text-only loading for vision models\n0b0487c Store prompt cache tokens thread-safely\n95fa089 Make timeouts shorterg\n7551f64 Support distributed continuous batching\n",
+          "stderr": ""
+        },
+        "diffstat": {
+          "command": [
+            "git",
+            "diff",
+            "--stat",
+            "upstream/main..upstream/yagil/dist"
+          ],
+          "returncode": 0,
+          "stdout": " mlx_engine/cache_wrapper.py                        |   20 +-\n mlx_engine/distributed_coordinator.py              |  464 +++++++\n mlx_engine/distributed_rank.py                     |  292 +++++\n mlx_engine/distributed_server.py                   |  701 ++++++++++\n mlx_engine/distributed_validation_harness.py       |  406 ++++++\n mlx_engine/distributed_validation_rank_entry.py    |   32 +\n mlx_engine/distributed_validation_runner.py        |  570 ++++++++\n mlx_engine/distributed_worker.py                   |  160 +++\n mlx_engine/generate.py                             |  493 ++++---\n mlx_engine/model_kit/__init__.py                   |    4 +-\n mlx_engine/model_kit/batched_model_kit.py          |   62 +-\n mlx_engine/model_kit/batched_vision/__init__.py    |    3 -\n .../model_kit/batched_vision/batch_generator.py    | 1167 -----------------\n .../model_kit/batched_vision/cache_io_thread.py    |  154 ---\n mlx_engine/model_kit/batched_vision/model_kit.py   |  651 ----------\n .../batched_vision/prompt_cache/__init__.py        |    1 -\n .../batched_vision/prompt_cache/blob_store.py      |  233 ----\n .../batched_vision/prompt_cache/cache_store.py     |  530 --------\n .../batched_vision/prompt_cache/chunks.py          |   99 --\n .../batched_vision/prompt_cache/coordinator.py     |  330 -----\n .../batched_vision/prompt_cache/disk_budget.py     |  133 --\n .../batched_vision/prompt_cache/image_spans.py     |   65 -\n .../batched_vision/prompt_cache/records.py         |  189 ---\n .../batched_vision/prompt_cache/restore_planner.py |   95 --\n .../model_kit/batched_vision/prompt_cache/types.py |  114 --\n .../model_kit/batched_vision/prompt_inputs.py      |  438 -------\n mlx_engine/model_kit/batched_vision/qwen_mrope.py  |  132 --\n .../model_kit/batched_vision/request_lifecycle.py  |  257 ----\n .../batched_vision/vision_feature_memoizer.py      |   17 -\n mlx_engine/model_kit/distributed_model_kit.py      | 1372 ++++++++++++++++++++\n mlx_engine/model_kit/model_kit.py                  |  159 ++-\n mlx_engine/model_kit/patches/gemma4.py             |  214 +--\n mlx_engine/model_kit/patches/lfm2_vl.py            |   19 -\n mlx_engine/model_kit/patches/qwen3_5.py            |  359 +----\n mlx_engine/model_kit/vision_add_ons/base.py        |   45 +\n mlx_engine/model_kit/vision_add_ons/gemma3.py      |   88 ++\n mlx_engine/model_kit/vision_add_ons/gemma3n.py     |  159 +++\n mlx_engine/model_kit/vision_add_ons/gemma4.py      |  129 ++\n mlx_engine/model_kit/vision_add_ons/lfm2_vl.py     |  148 +++\n mlx_engine/model_kit/vision_add_ons/load_utils.py  |  257 ++++\n mlx_engine/model_kit/vision_add_ons/mistral3.py    |  127 ++\n mlx_engine/model_kit/vision_add_ons/pixtral.py     |   95 ++\n .../vision_add_ons/process_prompt_with_images.py   |   81 ++\n mlx_engine/model_kit/vision_add_ons/qwen2_vl.py    |   92 ++\n mlx_engine/model_kit/vision_add_ons/qwen3_5.py     |  186 +++\n mlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py |   35 +\n mlx_engine/model_kit/vision_add_ons/qwen3_vl.py    |   64 +\n .../model_kit/vision_add_ons/qwen3_vl_moe.py       |   64 +\n .../model_kit/vision_add_ons/qwen_vl_utils.py      |  118 ++\n .../vision_add_ons/vision_feature_memoizer.py      |   43 +\n .../processors/repetition_penalty_processor.py     |   12 -\n mlx_engine/utils/eot_tokens.py                     |   15 +-\n mlx_engine/utils/generation_helpers.py             |   65 +-\n mlx_engine/utils/mlx_lm_stream.py                  |  104 ++\n mlx_engine/utils/mlx_threading.py                  |   11 -\n mlx_engine/utils/prompt_progress_reporter.py       |   26 +-\n mlx_engine/utils/sampling.py                       |  113 --\n mlx_engine/utils/speculative_decoding.py           |   20 +-\n .../_transformers_compatibility.py}                |    3 +-\n mlx_engine/vision_model_kit/vision_model_kit.py    |  171 +++\n .../vision_model_kit/vision_model_wrapper.py       |  246 ++++\n requirements.txt                                   |   23 +-\n tests/test_batched_vision_batch_generator.py       |  736 -----------\n tests/test_batched_vision_blob_store.py            |   80 --\n tests/test_batched_vision_cache_io_thread.py       |  162 ---\n tests/test_batched_vision_cache_store.py           |  273 ----\n tests/test_batched_vision_chunks.py                |   71 -\n tests/test_batched_vision_coordinator.py           |  216 ---\n tests/test_batched_vision_disk_budget.py           |  108 --\n tests/test_batched_vision_image_spans.py           |   53 -\n tests/test_batched_vision_model_kit.py             |  173 ---\n tests/test_batched_vision_parity.py                |  497 -------\n tests/test_batched_vision_prompt_inputs.py         |  454 -------\n tests/test_batched_vision_qwen_mrope.py            |   83 --\n tests/test_batched_vision_records.py               |  172 ---\n tests/test_batched_vision_request_lifecycle.py     |  210 ---\n tests/test_batched_vision_restore_planner.py       |  109 --\n tests/test_cache_wrapper.py                        |   20 +\n tests/test_patched_gemma4.py                       |  293 +++--\n tests/test_patched_qwen3_5.py                      |  783 +----------\n tests/test_prefill_step_size.py                    |   46 +-\n tests/test_repetition_penalty_processor.py         |   27 -\n tests/test_vision_feature_cache.py                 |  233 ++--\n tests/test_vision_models.py                        |  720 +++++-----\n 84 files changed, 7664 insertions(+), 10330 deletions(-)\n",
+          "stderr": ""
+        },
+        "changed_files": {
+          "command": [
+            "git",
+            "diff",
+            "--name-status",
+            "upstream/main..upstream/yagil/dist"
+          ],
+          "returncode": 0,
+          "stdout": "M\tmlx_engine/cache_wrapper.py\nA\tmlx_engine/distributed_coordinator.py\nA\tmlx_engine/distributed_rank.py\nA\tmlx_engine/distributed_server.py\nA\tmlx_engine/distributed_validation_harness.py\nA\tmlx_engine/distributed_validation_rank_entry.py\nA\tmlx_engine/distributed_validation_runner.py\nA\tmlx_engine/distributed_worker.py\nM\tmlx_engine/generate.py\nM\tmlx_engine/model_kit/__init__.py\nM\tmlx_engine/model_kit/batched_model_kit.py\nD\tmlx_engine/model_kit/batched_vision/__init__.py\nD\tmlx_engine/model_kit/batched_vision/batch_generator.py\nD\tmlx_engine/model_kit/batched_vision/cache_io_thread.py\nD\tmlx_engine/model_kit/batched_vision/model_kit.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/__init__.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/blob_store.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/chunks.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/disk_budget.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/image_spans.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/records.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/restore_planner.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/types.py\nD\tmlx_engine/model_kit/batched_vision/prompt_inputs.py\nD\tmlx_engine/model_kit/batched_vision/qwen_mrope.py\nD\tmlx_engine/model_kit/batched_vision/request_lifecycle.py\nD\tmlx_engine/model_kit/batched_vision/vision_feature_memoizer.py\nA\tmlx_engine/model_kit/distributed_model_kit.py\nM\tmlx_engine/model_kit/model_kit.py\nM\tmlx_engine/model_kit/patches/gemma4.py\nD\tmlx_engine/model_kit/patches/lfm2_vl.py\nM\tmlx_engine/model_kit/patches/qwen3_5.py\nA\tmlx_engine/model_kit/vision_add_ons/base.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma3.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma3n.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma4.py\nA\tmlx_engine/model_kit/vision_add_ons/lfm2_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/load_utils.py\nA\tmlx_engine/model_kit/vision_add_ons/mistral3.py\nA\tmlx_engine/model_kit/vision_add_ons/pixtral.py\nA\tmlx_engine/model_kit/vision_add_ons/process_prompt_with_images.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen2_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_5.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_vl_moe.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen_vl_utils.py\nA\tmlx_engine/model_kit/vision_add_ons/vision_feature_memoizer.py\nM\tmlx_engine/processors/repetition_penalty_processor.py\nM\tmlx_engine/utils/eot_tokens.py\nM\tmlx_engine/utils/generation_helpers.py\nA\tmlx_engine/utils/mlx_lm_stream.py\nD\tmlx_engine/utils/mlx_threading.py\nM\tmlx_engine/utils/prompt_progress_reporter.py\nD\tmlx_engine/utils/sampling.py\nM\tmlx_engine/utils/speculative_decoding.py\nR097\tmlx_engine/model_kit/batched_vision/transformers_compatibility.py\tmlx_engine/vision_model_kit/_transformers_compatibility.py\nA\tmlx_engine/vision_model_kit/vision_model_kit.py\nA\tmlx_engine/vision_model_kit/vision_model_wrapper.py\nM\trequirements.txt\nD\ttests/test_batched_vision_batch_generator.py\nD\ttests/test_batched_vision_blob_store.py\nD\ttests/test_batched_vision_cache_io_thread.py\nD\ttests/test_batched_vision_cache_store.py\nD\ttests/test_batched_vision_chunks.py\nD\ttests/test_batched_vision_coordinator.py\nD\ttests/test_batched_vision_disk_budget.py\nD\ttests/test_batched_vision_image_spans.py\nD\ttests/test_batched_vision_model_kit.py\nD\ttests/test_batched_vision_parity.py\nD\ttests/test_batched_vision_prompt_inputs.py\nD\ttests/test_batched_vision_qwen_mrope.py\nD\ttests/test_batched_vision_records.py\nD\ttests/test_batched_vision_request_lifecycle.py\nD\ttests/test_batched_vision_restore_planner.py\nM\ttests/test_cache_wrapper.py\nM\ttests/test_patched_gemma4.py\nM\ttests/test_patched_qwen3_5.py\nM\ttests/test_prefill_step_size.py\nD\ttests/test_repetition_penalty_processor.py\nM\ttests/test_vision_feature_cache.py\nM\ttests/test_vision_models.py\n",
+          "stderr": ""
+        },
+        "cherry": {
+          "command": [
+            "git",
+            "cherry",
+            "-v",
+            "HEAD",
+            "upstream/yagil/dist"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "branch": "upstream/yagil/mlx-dist-non-batched",
+      "head": "c86c23a",
+      "ref_info": {
+        "ref": "upstream/yagil/mlx-dist-non-batched",
+        "head": "c86c23a",
+        "committer_date": "2026-06-08 00:20:54 -0700",
+        "subject": "Run Qwen VLM prompts on model thread"
+      },
+      "ahead_behind_vs_upstream_main": {
+        "left": 5,
+        "right": 35
+      },
+      "recent_commits": [
+        "c86c23a Run Qwen VLM prompts on model thread",
+        "3e41fdf Run MLX VLM generation on model thread",
+        "b7019fc Handle early distributed cancel requests",
+        "958ffb8 Run Gemma 4 MLX generation on model thread",
+        "e5a6faf Run distributed MLX scheduler on model thread",
+        "c8275b6 Align distributed MLX prompt caching",
+        "366ebd4 Preserve backpressure in distributed stream bridge",
+        "4b6b826 Stop distributed stream when caller exits",
+        "5cbeb1b Add distributed model thread diagnostics",
+        "d6656f1 Run sequential distributed MLX on model thread",
+        "bbf51db Align distributed load stream and add stream logs",
+        "5548160 Use default MLX stream for distributed generation"
+      ],
+      "diffstat": "mlx_engine/cache_wrapper.py                        |   20 +-\n mlx_engine/distributed_coordinator.py              |  464 ++++++\n mlx_engine/distributed_rank.py                     |  292 ++++\n mlx_engine/distributed_server.py                   |  701 ++++++++\n mlx_engine/distributed_validation_harness.py       |  406 +++++\n mlx_engine/distributed_validation_rank_entry.py    |   32 +\n mlx_engine/distributed_validation_runner.py        |  570 +++++++\n mlx_engine/distributed_worker.py                   |  160 ++\n mlx_engine/generate.py                             |  521 +++---\n mlx_engine/model_kit/__init__.py                   |    4 +-\n mlx_engine/model_kit/batched_model_kit.py          |   62 +-\n mlx_engine/model_kit/batched_vision/__init__.py    |    3 -\n .../model_kit/batched_vision/batch_generator.py    | 1167 --------------\n .../model_kit/batched_vision/cache_io_thread.py    |  154 --\n mlx_engine/model_kit/batched_vision/model_kit.py   |  651 --------\n .../batched_vision/prompt_cache/__init__.py        |    1 -\n .../batched_vision/prompt_cache/blob_store.py      |  233 ---\n .../batched_vision/prompt_cache/cache_store.py     |  530 -------\n .../batched_vision/prompt_cache/chunks.py          |   99 --\n .../batched_vision/prompt_cache/coordinator.py     |  330 ----\n .../batched_vision/prompt_cache/disk_budget.py     |  133 --\n .../batched_vision/prompt_cache/image_spans.py     |   65 -\n .../batched_vision/prompt_cache/records.py         |  189 ---\n .../batched_vision/prompt_cache/restore_planner.py |   95 --\n .../model_kit/batched_vision/prompt_cache/types.py |  114 --\n .../model_kit/batched_vision/prompt_inputs.py      |  438 -----\n mlx_engine/model_kit/batched_vision/qwen_mrope.py  |  132 --\n .../model_kit/batched_vision/request_lifecycle.py  |  257 ---\n .../batched_vision/vision_feature_memoizer.py      |   17 -\n mlx_engine/model_kit/distributed_model_kit.py      | 1671 ++++++++++++++++++++\n mlx_engine/model_kit/model_kit.py                  |  336 +++-\n mlx_engine/model_kit/patches/gemma4.py             |  214 +--\n mlx_engine/model_kit/patches/lfm2_vl.py            |   19 -\n mlx_engine/model_kit/patches/qwen3_5.py            |  359 +----\n mlx_engine/model_kit/vision_add_ons/base.py        |   45 +\n mlx_engine/model_kit/vision_add_ons/gemma3.py      |   88 ++\n mlx_engine/model_kit/vision_add_ons/gemma3n.py     |  159 ++\n mlx_engine/model_kit/vision_add_ons/gemma4.py      |  129 ++\n mlx_engine/model_kit/vision_add_ons/lfm2_vl.py     |  148 ++\n mlx_engine/model_kit/vision_add_ons/load_utils.py  |  257 +++\n mlx_engine/model_kit/vision_add_ons/mistral3.py    |  127 ++\n mlx_engine/model_kit/vision_add_ons/pixtral.py     |   95 ++\n .../vision_add_ons/process_prompt_with_images.py   |   81 +\n mlx_engine/model_kit/vision_add_ons/qwen2_vl.py    |   92 ++\n mlx_engine/model_kit/vision_add_ons/qwen3_5.py     |  186 +++\n mlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py |   35 +\n mlx_engine/model_kit/vision_add_ons/qwen3_vl.py    |   64 +\n .../model_kit/vision_add_ons/qwen3_vl_moe.py       |   64 +\n .../model_kit/vision_add_ons/qwen_vl_utils.py      |  118 ++\n .../vision_add_ons/vision_feature_memoizer.py      |   43 +\n .../processors/repetition_penalty_processor.py     |   12 -\n mlx_engine/utils/eot_tokens.py                     |   15 +-\n mlx_engine/utils/generation_helpers.py             |   65 +-\n mlx_engine/utils/mlx_lm_stream.py                  |  104 ++\n mlx_engine/utils/mlx_threading.py                  |   11 -\n mlx_engine/utils/prompt_progress_reporter.py       |   26 +-\n mlx_engine/utils/sampling.py                       |  113 --\n mlx_engine/utils/speculative_decoding.py           |   20 +-\n .../_transformers_compatibility.py}                |    3 +-\n mlx_engine/vision_model_kit/vision_model_kit.py    |  194 +++\n .../vision_model_kit/vision_model_wrapper.py       |  246 +++\n requirements.txt                                   |   23 +-\n tests/test_batched_vision_batch_generator.py       |  736 ---------\n tests/test_batched_vision_blob_store.py            |   80 -\n tests/test_batched_vision_cache_io_thread.py       |  162 --\n tests/test_batched_vision_cache_store.py           |  273 ----\n tests/test_batched_vision_chunks.py                |   71 -\n tests/test_batched_vision_coordinator.py           |  216 ---\n tests/test_batched_vision_disk_budget.py           |  108 --\n tests/test_batched_vision_image_spans.py           |   53 -\n tests/test_batched_vision_model_kit.py             |  173 --\n tests/test_batched_vision_parity.py                |  497 ------\n tests/test_batched_vision_prompt_inputs.py         |  454 ------\n tests/test_batched_vision_qwen_mrope.py            |   83 -\n tests/test_batched_vision_records.py               |  172 --\n tests/test_batched_vision_request_lifecycle.py     |  210 ---\n tests/test_batched_vision_restore_planner.py       |  109 --\n tests/test_cache_wrapper.py                        |   20 +\n tests/test_patched_gemma4.py                       |  293 +++-\n tests/test_patched_qwen3_5.py                      |  783 +--------\n tests/test_prefill_step_size.py                    |   46 +-\n tests/test_repetition_penalty_processor.py         |   27 -\n tests/test_vision_feature_cache.py                 |  233 ++-\n tests/test_vision_models.py                        |  720 +++++----\n 84 files changed, 8205 insertions(+), 10316 deletions(-)",
+      "changed_files": [
+        "M\tmlx_engine/cache_wrapper.py",
+        "A\tmlx_engine/distributed_coordinator.py",
+        "A\tmlx_engine/distributed_rank.py",
+        "A\tmlx_engine/distributed_server.py",
+        "A\tmlx_engine/distributed_validation_harness.py",
+        "A\tmlx_engine/distributed_validation_rank_entry.py",
+        "A\tmlx_engine/distributed_validation_runner.py",
+        "A\tmlx_engine/distributed_worker.py",
+        "M\tmlx_engine/generate.py",
+        "M\tmlx_engine/model_kit/__init__.py",
+        "M\tmlx_engine/model_kit/batched_model_kit.py",
+        "D\tmlx_engine/model_kit/batched_vision/__init__.py",
+        "D\tmlx_engine/model_kit/batched_vision/batch_generator.py",
+        "D\tmlx_engine/model_kit/batched_vision/cache_io_thread.py",
+        "D\tmlx_engine/model_kit/batched_vision/model_kit.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/__init__.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/blob_store.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/chunks.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/disk_budget.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/image_spans.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/records.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/restore_planner.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/types.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_inputs.py",
+        "D\tmlx_engine/model_kit/batched_vision/qwen_mrope.py",
+        "D\tmlx_engine/model_kit/batched_vision/request_lifecycle.py",
+        "D\tmlx_engine/model_kit/batched_vision/vision_feature_memoizer.py",
+        "A\tmlx_engine/model_kit/distributed_model_kit.py",
+        "M\tmlx_engine/model_kit/model_kit.py",
+        "M\tmlx_engine/model_kit/patches/gemma4.py",
+        "D\tmlx_engine/model_kit/patches/lfm2_vl.py",
+        "M\tmlx_engine/model_kit/patches/qwen3_5.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/base.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma3.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma3n.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma4.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/lfm2_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/load_utils.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/mistral3.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/pixtral.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/process_prompt_with_images.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen2_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_5.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_vl_moe.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen_vl_utils.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/vision_feature_memoizer.py",
+        "M\tmlx_engine/processors/repetition_penalty_processor.py",
+        "M\tmlx_engine/utils/eot_tokens.py",
+        "M\tmlx_engine/utils/generation_helpers.py",
+        "A\tmlx_engine/utils/mlx_lm_stream.py",
+        "D\tmlx_engine/utils/mlx_threading.py",
+        "M\tmlx_engine/utils/prompt_progress_reporter.py",
+        "D\tmlx_engine/utils/sampling.py",
+        "M\tmlx_engine/utils/speculative_decoding.py",
+        "R097\tmlx_engine/model_kit/batched_vision/transformers_compatibility.py\tmlx_engine/vision_model_kit/_transformers_compatibility.py",
+        "A\tmlx_engine/vision_model_kit/vision_model_kit.py",
+        "A\tmlx_engine/vision_model_kit/vision_model_wrapper.py",
+        "M\trequirements.txt",
+        "D\ttests/test_batched_vision_batch_generator.py",
+        "D\ttests/test_batched_vision_blob_store.py",
+        "D\ttests/test_batched_vision_cache_io_thread.py",
+        "D\ttests/test_batched_vision_cache_store.py",
+        "D\ttests/test_batched_vision_chunks.py",
+        "D\ttests/test_batched_vision_coordinator.py",
+        "D\ttests/test_batched_vision_disk_budget.py",
+        "D\ttests/test_batched_vision_image_spans.py",
+        "D\ttests/test_batched_vision_model_kit.py",
+        "D\ttests/test_batched_vision_parity.py",
+        "D\ttests/test_batched_vision_prompt_inputs.py",
+        "D\ttests/test_batched_vision_qwen_mrope.py",
+        "D\ttests/test_batched_vision_records.py",
+        "D\ttests/test_batched_vision_request_lifecycle.py",
+        "D\ttests/test_batched_vision_restore_planner.py",
+        "M\ttests/test_cache_wrapper.py",
+        "M\ttests/test_patched_gemma4.py",
+        "M\ttests/test_patched_qwen3_5.py",
+        "M\ttests/test_prefill_step_size.py",
+        "D\ttests/test_repetition_penalty_processor.py",
+        "M\ttests/test_vision_feature_cache.py",
+        "M\ttests/test_vision_models.py"
+      ],
+      "unmatched_patch_ids": [
+        "+ c8275b612e067be9091c5aac90788df843fd21bf Align distributed MLX prompt caching",
+        "+ e5a6faf59bcc201d6d454232062930cdf3010eb0 Run distributed MLX scheduler on model thread",
+        "+ 958ffb8ebe89cd54e5fa8977a6bbb40c3150f575 Run Gemma 4 MLX generation on model thread",
+        "+ b7019fc3f59bfa4aeba89c66b1c3970057f4ca22 Handle early distributed cancel requests",
+        "+ 3e41fdfcd3ee35127bf2b828ff7307eb21f4350c Run MLX VLM generation on model thread",
+        "+ c86c23ae9ff957c1c4f34e9e21e6563b627ab2cc Run Qwen VLM prompts on model thread"
+      ],
+      "commands": {
+        "head": {
+          "command": [
+            "git",
+            "rev-parse",
+            "--short",
+            "upstream/yagil/mlx-dist-non-batched"
+          ],
+          "returncode": 0,
+          "stdout": "c86c23a\n",
+          "stderr": ""
+        },
+        "for_each_ref": {
+          "command": [
+            "git",
+            "for-each-ref",
+            "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso8601)|%(subject)",
+            "refs/remotes/upstream/yagil/mlx-dist-non-batched"
+          ],
+          "returncode": 0,
+          "stdout": "upstream/yagil/mlx-dist-non-batched|c86c23a|2026-06-08 00:20:54 -0700|Run Qwen VLM prompts on model thread\n",
+          "stderr": ""
+        },
+        "ahead_behind": {
+          "command": [
+            "git",
+            "rev-list",
+            "--left-right",
+            "--count",
+            "upstream/main...upstream/yagil/mlx-dist-non-batched"
+          ],
+          "returncode": 0,
+          "stdout": "5\t35\n",
+          "stderr": ""
+        },
+        "recent_commits": {
+          "command": [
+            "git",
+            "log",
+            "--oneline",
+            "--max-count=12",
+            "upstream/main..upstream/yagil/mlx-dist-non-batched"
+          ],
+          "returncode": 0,
+          "stdout": "c86c23a Run Qwen VLM prompts on model thread\n3e41fdf Run MLX VLM generation on model thread\nb7019fc Handle early distributed cancel requests\n958ffb8 Run Gemma 4 MLX generation on model thread\ne5a6faf Run distributed MLX scheduler on model thread\nc8275b6 Align distributed MLX prompt caching\n366ebd4 Preserve backpressure in distributed stream bridge\n4b6b826 Stop distributed stream when caller exits\n5cbeb1b Add distributed model thread diagnostics\nd6656f1 Run sequential distributed MLX on model thread\nbbf51db Align distributed load stream and add stream logs\n5548160 Use default MLX stream for distributed generation\n",
+          "stderr": ""
+        },
+        "diffstat": {
+          "command": [
+            "git",
+            "diff",
+            "--stat",
+            "upstream/main..upstream/yagil/mlx-dist-non-batched"
+          ],
+          "returncode": 0,
+          "stdout": " mlx_engine/cache_wrapper.py                        |   20 +-\n mlx_engine/distributed_coordinator.py              |  464 ++++++\n mlx_engine/distributed_rank.py                     |  292 ++++\n mlx_engine/distributed_server.py                   |  701 ++++++++\n mlx_engine/distributed_validation_harness.py       |  406 +++++\n mlx_engine/distributed_validation_rank_entry.py    |   32 +\n mlx_engine/distributed_validation_runner.py        |  570 +++++++\n mlx_engine/distributed_worker.py                   |  160 ++\n mlx_engine/generate.py                             |  521 +++---\n mlx_engine/model_kit/__init__.py                   |    4 +-\n mlx_engine/model_kit/batched_model_kit.py          |   62 +-\n mlx_engine/model_kit/batched_vision/__init__.py    |    3 -\n .../model_kit/batched_vision/batch_generator.py    | 1167 --------------\n .../model_kit/batched_vision/cache_io_thread.py    |  154 --\n mlx_engine/model_kit/batched_vision/model_kit.py   |  651 --------\n .../batched_vision/prompt_cache/__init__.py        |    1 -\n .../batched_vision/prompt_cache/blob_store.py      |  233 ---\n .../batched_vision/prompt_cache/cache_store.py     |  530 -------\n .../batched_vision/prompt_cache/chunks.py          |   99 --\n .../batched_vision/prompt_cache/coordinator.py     |  330 ----\n .../batched_vision/prompt_cache/disk_budget.py     |  133 --\n .../batched_vision/prompt_cache/image_spans.py     |   65 -\n .../batched_vision/prompt_cache/records.py         |  189 ---\n .../batched_vision/prompt_cache/restore_planner.py |   95 --\n .../model_kit/batched_vision/prompt_cache/types.py |  114 --\n .../model_kit/batched_vision/prompt_inputs.py      |  438 -----\n mlx_engine/model_kit/batched_vision/qwen_mrope.py  |  132 --\n .../model_kit/batched_vision/request_lifecycle.py  |  257 ---\n .../batched_vision/vision_feature_memoizer.py      |   17 -\n mlx_engine/model_kit/distributed_model_kit.py      | 1671 ++++++++++++++++++++\n mlx_engine/model_kit/model_kit.py                  |  336 +++-\n mlx_engine/model_kit/patches/gemma4.py             |  214 +--\n mlx_engine/model_kit/patches/lfm2_vl.py            |   19 -\n mlx_engine/model_kit/patches/qwen3_5.py            |  359 +----\n mlx_engine/model_kit/vision_add_ons/base.py        |   45 +\n mlx_engine/model_kit/vision_add_ons/gemma3.py      |   88 ++\n mlx_engine/model_kit/vision_add_ons/gemma3n.py     |  159 ++\n mlx_engine/model_kit/vision_add_ons/gemma4.py      |  129 ++\n mlx_engine/model_kit/vision_add_ons/lfm2_vl.py     |  148 ++\n mlx_engine/model_kit/vision_add_ons/load_utils.py  |  257 +++\n mlx_engine/model_kit/vision_add_ons/mistral3.py    |  127 ++\n mlx_engine/model_kit/vision_add_ons/pixtral.py     |   95 ++\n .../vision_add_ons/process_prompt_with_images.py   |   81 +\n mlx_engine/model_kit/vision_add_ons/qwen2_vl.py    |   92 ++\n mlx_engine/model_kit/vision_add_ons/qwen3_5.py     |  186 +++\n mlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py |   35 +\n mlx_engine/model_kit/vision_add_ons/qwen3_vl.py    |   64 +\n .../model_kit/vision_add_ons/qwen3_vl_moe.py       |   64 +\n .../model_kit/vision_add_ons/qwen_vl_utils.py      |  118 ++\n .../vision_add_ons/vision_feature_memoizer.py      |   43 +\n .../processors/repetition_penalty_processor.py     |   12 -\n mlx_engine/utils/eot_tokens.py                     |   15 +-\n mlx_engine/utils/generation_helpers.py             |   65 +-\n mlx_engine/utils/mlx_lm_stream.py                  |  104 ++\n mlx_engine/utils/mlx_threading.py                  |   11 -\n mlx_engine/utils/prompt_progress_reporter.py       |   26 +-\n mlx_engine/utils/sampling.py                       |  113 --\n mlx_engine/utils/speculative_decoding.py           |   20 +-\n .../_transformers_compatibility.py}                |    3 +-\n mlx_engine/vision_model_kit/vision_model_kit.py    |  194 +++\n .../vision_model_kit/vision_model_wrapper.py       |  246 +++\n requirements.txt                                   |   23 +-\n tests/test_batched_vision_batch_generator.py       |  736 ---------\n tests/test_batched_vision_blob_store.py            |   80 -\n tests/test_batched_vision_cache_io_thread.py       |  162 --\n tests/test_batched_vision_cache_store.py           |  273 ----\n tests/test_batched_vision_chunks.py                |   71 -\n tests/test_batched_vision_coordinator.py           |  216 ---\n tests/test_batched_vision_disk_budget.py           |  108 --\n tests/test_batched_vision_image_spans.py           |   53 -\n tests/test_batched_vision_model_kit.py             |  173 --\n tests/test_batched_vision_parity.py                |  497 ------\n tests/test_batched_vision_prompt_inputs.py         |  454 ------\n tests/test_batched_vision_qwen_mrope.py            |   83 -\n tests/test_batched_vision_records.py               |  172 --\n tests/test_batched_vision_request_lifecycle.py     |  210 ---\n tests/test_batched_vision_restore_planner.py       |  109 --\n tests/test_cache_wrapper.py                        |   20 +\n tests/test_patched_gemma4.py                       |  293 +++-\n tests/test_patched_qwen3_5.py                      |  783 +--------\n tests/test_prefill_step_size.py                    |   46 +-\n tests/test_repetition_penalty_processor.py         |   27 -\n tests/test_vision_feature_cache.py                 |  233 ++-\n tests/test_vision_models.py                        |  720 +++++----\n 84 files changed, 8205 insertions(+), 10316 deletions(-)\n",
+          "stderr": ""
+        },
+        "changed_files": {
+          "command": [
+            "git",
+            "diff",
+            "--name-status",
+            "upstream/main..upstream/yagil/mlx-dist-non-batched"
+          ],
+          "returncode": 0,
+          "stdout": "M\tmlx_engine/cache_wrapper.py\nA\tmlx_engine/distributed_coordinator.py\nA\tmlx_engine/distributed_rank.py\nA\tmlx_engine/distributed_server.py\nA\tmlx_engine/distributed_validation_harness.py\nA\tmlx_engine/distributed_validation_rank_entry.py\nA\tmlx_engine/distributed_validation_runner.py\nA\tmlx_engine/distributed_worker.py\nM\tmlx_engine/generate.py\nM\tmlx_engine/model_kit/__init__.py\nM\tmlx_engine/model_kit/batched_model_kit.py\nD\tmlx_engine/model_kit/batched_vision/__init__.py\nD\tmlx_engine/model_kit/batched_vision/batch_generator.py\nD\tmlx_engine/model_kit/batched_vision/cache_io_thread.py\nD\tmlx_engine/model_kit/batched_vision/model_kit.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/__init__.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/blob_store.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/chunks.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/disk_budget.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/image_spans.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/records.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/restore_planner.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/types.py\nD\tmlx_engine/model_kit/batched_vision/prompt_inputs.py\nD\tmlx_engine/model_kit/batched_vision/qwen_mrope.py\nD\tmlx_engine/model_kit/batched_vision/request_lifecycle.py\nD\tmlx_engine/model_kit/batched_vision/vision_feature_memoizer.py\nA\tmlx_engine/model_kit/distributed_model_kit.py\nM\tmlx_engine/model_kit/model_kit.py\nM\tmlx_engine/model_kit/patches/gemma4.py\nD\tmlx_engine/model_kit/patches/lfm2_vl.py\nM\tmlx_engine/model_kit/patches/qwen3_5.py\nA\tmlx_engine/model_kit/vision_add_ons/base.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma3.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma3n.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma4.py\nA\tmlx_engine/model_kit/vision_add_ons/lfm2_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/load_utils.py\nA\tmlx_engine/model_kit/vision_add_ons/mistral3.py\nA\tmlx_engine/model_kit/vision_add_ons/pixtral.py\nA\tmlx_engine/model_kit/vision_add_ons/process_prompt_with_images.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen2_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_5.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_vl_moe.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen_vl_utils.py\nA\tmlx_engine/model_kit/vision_add_ons/vision_feature_memoizer.py\nM\tmlx_engine/processors/repetition_penalty_processor.py\nM\tmlx_engine/utils/eot_tokens.py\nM\tmlx_engine/utils/generation_helpers.py\nA\tmlx_engine/utils/mlx_lm_stream.py\nD\tmlx_engine/utils/mlx_threading.py\nM\tmlx_engine/utils/prompt_progress_reporter.py\nD\tmlx_engine/utils/sampling.py\nM\tmlx_engine/utils/speculative_decoding.py\nR097\tmlx_engine/model_kit/batched_vision/transformers_compatibility.py\tmlx_engine/vision_model_kit/_transformers_compatibility.py\nA\tmlx_engine/vision_model_kit/vision_model_kit.py\nA\tmlx_engine/vision_model_kit/vision_model_wrapper.py\nM\trequirements.txt\nD\ttests/test_batched_vision_batch_generator.py\nD\ttests/test_batched_vision_blob_store.py\nD\ttests/test_batched_vision_cache_io_thread.py\nD\ttests/test_batched_vision_cache_store.py\nD\ttests/test_batched_vision_chunks.py\nD\ttests/test_batched_vision_coordinator.py\nD\ttests/test_batched_vision_disk_budget.py\nD\ttests/test_batched_vision_image_spans.py\nD\ttests/test_batched_vision_model_kit.py\nD\ttests/test_batched_vision_parity.py\nD\ttests/test_batched_vision_prompt_inputs.py\nD\ttests/test_batched_vision_qwen_mrope.py\nD\ttests/test_batched_vision_records.py\nD\ttests/test_batched_vision_request_lifecycle.py\nD\ttests/test_batched_vision_restore_planner.py\nM\ttests/test_cache_wrapper.py\nM\ttests/test_patched_gemma4.py\nM\ttests/test_patched_qwen3_5.py\nM\ttests/test_prefill_step_size.py\nD\ttests/test_repetition_penalty_processor.py\nM\ttests/test_vision_feature_cache.py\nM\ttests/test_vision_models.py\n",
+          "stderr": ""
+        },
+        "cherry": {
+          "command": [
+            "git",
+            "cherry",
+            "-v",
+            "HEAD",
+            "upstream/yagil/mlx-dist-non-batched"
+          ],
+          "returncode": 0,
+          "stdout": "+ c8275b612e067be9091c5aac90788df843fd21bf Align distributed MLX prompt caching\n+ e5a6faf59bcc201d6d454232062930cdf3010eb0 Run distributed MLX scheduler on model thread\n+ 958ffb8ebe89cd54e5fa8977a6bbb40c3150f575 Run Gemma 4 MLX generation on model thread\n+ b7019fc3f59bfa4aeba89c66b1c3970057f4ca22 Handle early distributed cancel requests\n+ 3e41fdfcd3ee35127bf2b828ff7307eb21f4350c Run MLX VLM generation on model thread\n+ c86c23ae9ff957c1c4f34e9e21e6563b627ab2cc Run Qwen VLM prompts on model thread\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "branch": "upstream/neil/vlm-parity-ci",
+      "head": "ea1a6bb",
+      "ref_info": {
+        "ref": "upstream/neil/vlm-parity-ci",
+        "head": "ea1a6bb",
+        "committer_date": "2026-05-27 18:29:25 -0400",
+        "subject": "Relax VLM concurrency logprob parity"
+      },
+      "ahead_behind_vs_upstream_main": {
+        "left": 5,
+        "right": 82
+      },
+      "recent_commits": [
+        "ea1a6bb Relax VLM concurrency logprob parity",
+        "9d4a4ee Add batched VLM parity tests",
+        "406af8a Add Qwen3.5 continuous batching parity test",
+        "c390565 Add Qwen3.5 VLM generation trace parity test",
+        "722f351 Add Qwen3.5 VLM restore parity test",
+        "b229b95 Normalize VLM concurrency limit",
+        "cf058d7 Fix VLM model kit setup edge cases",
+        "b1456ee Fix batched VLM prompt progress reporting",
+        "99e2328 Log lifetime prompt cache evictions",
+        "6455eb7 Run sequential model kit on owner thread",
+        "81fc5d8 Avoid rebuilding VLM detokenizer per request",
+        "02b1d0e Fix batched vision structured processors"
+      ],
+      "diffstat": "mlx_engine/generate.py                             |  42 +-\n mlx_engine/model_kit/__init__.py                   |   4 +-\n mlx_engine/model_kit/batched_model_kit.py          |   4 -\n .../model_kit/batched_vision/batch_generator.py    | 110 +----\n .../model_kit/batched_vision/cache_io_thread.py    |   6 +-\n mlx_engine/model_kit/batched_vision/model_kit.py   | 137 +-----\n .../batched_vision/prompt_cache/cache_store.py     |  12 -\n .../model_kit/batched_vision/prompt_inputs.py      |  63 +--\n .../batched_vision/vision_feature_memoizer.py      |  17 -\n mlx_engine/model_kit/model_kit.py                  |  98 +++-\n mlx_engine/model_kit/patches/gemma4.py             | 214 +++-----\n mlx_engine/model_kit/patches/lfm2_vl.py            |  19 -\n mlx_engine/model_kit/patches/qwen3_5.py            | 228 +--------\n mlx_engine/model_kit/vision_add_ons/base.py        |  45 ++\n mlx_engine/model_kit/vision_add_ons/gemma3.py      |  88 ++++\n mlx_engine/model_kit/vision_add_ons/gemma3n.py     | 159 ++++++\n mlx_engine/model_kit/vision_add_ons/gemma4.py      | 129 +++++\n mlx_engine/model_kit/vision_add_ons/lfm2_vl.py     | 148 ++++++\n mlx_engine/model_kit/vision_add_ons/load_utils.py  | 257 ++++++++++\n mlx_engine/model_kit/vision_add_ons/mistral3.py    | 127 +++++\n mlx_engine/model_kit/vision_add_ons/pixtral.py     |  95 ++++\n .../vision_add_ons/process_prompt_with_images.py   |  81 +++\n mlx_engine/model_kit/vision_add_ons/qwen2_vl.py    |  92 ++++\n mlx_engine/model_kit/vision_add_ons/qwen3_5.py     | 186 +++++++\n mlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py |  35 ++\n mlx_engine/model_kit/vision_add_ons/qwen3_vl.py    |  64 +++\n .../model_kit/vision_add_ons/qwen3_vl_moe.py       |  64 +++\n .../model_kit/vision_add_ons/qwen_vl_utils.py      | 118 +++++\n .../vision_add_ons/vision_feature_memoizer.py      |  43 ++\n mlx_engine/utils/mlx_threading.py                  |  11 -\n .../_transformers_compatibility.py}                |   3 +-\n mlx_engine/vision_model_kit/vision_model_kit.py    | 171 +++++++\n .../vision_model_kit/vision_model_wrapper.py       | 246 ++++++++++\n requirements.txt                                   |  59 ++-\n tests/test_batched_vision_batch_generator.py       | 341 -------------\n tests/test_batched_vision_cache_store.py           |  25 -\n tests/test_batched_vision_coordinator.py           |  78 +--\n tests/test_batched_vision_model_kit.py             | 173 -------\n tests/test_batched_vision_parity.py                |  92 ++--\n tests/test_batched_vision_prompt_inputs.py         |  79 ---\n tests/test_patched_gemma4.py                       | 113 -----\n tests/test_patched_qwen3_5.py                      | 544 +++------------------\n tests/test_vision_feature_cache.py                 | 233 ++++-----\n tests/test_vision_models.py                        |  92 ++--\n 44 files changed, 2654 insertions(+), 2291 deletions(-)",
+      "changed_files": [
+        "M\tmlx_engine/generate.py",
+        "M\tmlx_engine/model_kit/__init__.py",
+        "M\tmlx_engine/model_kit/batched_model_kit.py",
+        "M\tmlx_engine/model_kit/batched_vision/batch_generator.py",
+        "M\tmlx_engine/model_kit/batched_vision/cache_io_thread.py",
+        "M\tmlx_engine/model_kit/batched_vision/model_kit.py",
+        "M\tmlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py",
+        "M\tmlx_engine/model_kit/batched_vision/prompt_inputs.py",
+        "D\tmlx_engine/model_kit/batched_vision/vision_feature_memoizer.py",
+        "M\tmlx_engine/model_kit/model_kit.py",
+        "M\tmlx_engine/model_kit/patches/gemma4.py",
+        "D\tmlx_engine/model_kit/patches/lfm2_vl.py",
+        "M\tmlx_engine/model_kit/patches/qwen3_5.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/base.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma3.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma3n.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma4.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/lfm2_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/load_utils.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/mistral3.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/pixtral.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/process_prompt_with_images.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen2_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_5.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_vl_moe.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen_vl_utils.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/vision_feature_memoizer.py",
+        "D\tmlx_engine/utils/mlx_threading.py",
+        "R097\tmlx_engine/model_kit/batched_vision/transformers_compatibility.py\tmlx_engine/vision_model_kit/_transformers_compatibility.py",
+        "A\tmlx_engine/vision_model_kit/vision_model_kit.py",
+        "A\tmlx_engine/vision_model_kit/vision_model_wrapper.py",
+        "M\trequirements.txt",
+        "M\ttests/test_batched_vision_batch_generator.py",
+        "M\ttests/test_batched_vision_cache_store.py",
+        "M\ttests/test_batched_vision_coordinator.py",
+        "D\ttests/test_batched_vision_model_kit.py",
+        "M\ttests/test_batched_vision_parity.py",
+        "M\ttests/test_batched_vision_prompt_inputs.py",
+        "D\ttests/test_patched_gemma4.py",
+        "M\ttests/test_patched_qwen3_5.py",
+        "M\ttests/test_vision_feature_cache.py",
+        "M\ttests/test_vision_models.py"
+      ],
+      "unmatched_patch_ids": [
+        "+ 0c3aede4b91faa1b8593d8d7205bbffba33466a6 Add batched vision backend",
+        "+ 50f75c08cac1143b978bf8074b48ca41c8ddeb13 Add VLM prompt spill cache",
+        "+ 5251729e4d5741ce7fb92c9856069daaead6482e Split VLM safetensor spool",
+        "+ c9b679a86c6e62e2c3e7c31d676039bcede75169 Split VLM prompt cache payload",
+        "+ 99b4730be6f30d75383b997c9a6a6e30c41d7c6c Simplify batched vision scheduler",
+        "+ 7abc8cf60d47f5b67310dce5065a989152cd47c9 Split VLM prompt cache planning",
+        "+ 2cc7f6cbbe65868fa6b5833f04fc7d6393c3c7ab Add span-aware VLM prompt spill cache",
+        "+ 40d7761e86fa109acbcc3466ed1c297ca641d808 Clarify VLM prefix cache chunk naming",
+        "+ 1322bf2465c1e3ac445bbb6458b3a27b5db13090 Add VLM hot prompt cache saves",
+        "+ ec879a3304785bbbe40eee94931435a5f808724b Refine VLM spill cache disk budget",
+        "+ 5631674d140c7d686be9975081337697f4f62ed2 Refine VLM spill cache eviction",
+        "+ d6c1b9d5b2a63b12a6f8547fbf536966b7a617c6 Align VLM spill cache with physical records",
+        "+ eff978fa801c2eb3780b64edb47090114eaad24f Refine VLM cache save points",
+        "+ c1013c3ec88726bdc041151d39a2c118beb07f09 Clarify VLM cache save points",
+        "+ 2064bb3da429491c004f4b31a2d4e62050cadaa6 Refactor batched vision cache modules",
+        "+ 2fa9ea4645218c2d5d9da06fe3483fbd31302ba2 Simplify batched vision cache store",
+        "+ 7fa5e3c9a14a336e9a78ec71ab2c38b1c023c78b Simplify batched vision generator",
+        "+ 270f0a64085b5ff1e4795b25091029af57a6213d Add batched VLM logits processors",
+        "+ 92691c9f030e1de442ba22d770e14ee2b70a78c3 Improve batched vision generation",
+        "+ c0b9686e5c79d7d0044f3c1d8ec8ef3f03bfd4b2 Update batched vision tests",
+        "+ 31418e4faf7754d1eaf545d2e7cbc4b3d895d8b2 Refine batched vision prompt cache restore",
+        "+ 430d10999dcfc883e8075dce2d91edfad9bb5837 Add batched vision prompt cache tests",
+        "+ 57d35bf3cb0e394250d28fe887e97934e793ad60 Add batched vision cache tests",
+        "+ 7800d3e54130b2b5511e9ee4566a52aba562b7fb Add batched vision prompt input tests",
+        "+ 085b85dfd5f6220b953b53eb9535cd56733fae72 Simplify generate model kit typing",
+        "+ ddff92d704e9ab353410e6727ac9c7335b5adfbb Stop tracking batched vision smoke script",
+        "+ cc80b490778d3966d81fd5e82302f3a105ac4214 Tighten batched vision cache lifecycle",
+        "+ 0d7f069d9b18ec9cd27f699b0ddd56d71ab26948 Simplify batched vision cache chunking",
+        "+ 55e30061809d70276ea05a36cfb965e8ae18ff1d Improve Qwen prompt cache checkpointing",
+        "+ b400e74bc42cb449fdd6f0d5b7f99b2113fd05ad Guard rotating prompt cache saves",
+        "+ 965ddd9c24dc721283dffa636ab606f02373b8df Preserve Gemma batched vision masks",
+        "+ 2aaa61f0df11e5759535c2c866be1955eeb6162a Avoid default VLM top logprobs work",
+        "+ 94af3ba574b52b52e8be21bb94a9ae57d918860c Fix cached VLM prompt kwargs restore",
+        "+ cef9c62610b789807a27e726f83338263212cac1 Validate KV prompt cache record coverage",
+        "+ 329eed8d986d0e799544f20b6f40676c3358628b Group VLM generation row state",
+        "+ 58f9bb21f51e734874cad39a18777cfe50efb3be Tighten batched vision response metadata",
+        "+ 4e63fa7816b6373570befe2c03a4ab1f89a9982a Tighten batched VLM request handling",
+        "+ a8a0478f9bf1ddb56297633c5674ad72a255c402 Optimize single-row VLM batching",
+        "+ d4c47361a0174fc8bf7d1ac16a8870077d8c2c04 Sync scalar Qwen RoPE state",
+        "+ 884bccb3ec3b3f3127e0697ca6fe6645bd1758d8 Fix wrapped rotating cache records",
+        "+ 12442833d00d89c2a8be22f9444054edc8278546 Preserve budget-fitting prompt cache restores",
+        "+ c8bf1908c9b61a5a878d0b0254ff194f90ddf39e Evict failed prompt cache records",
+        "+ 32de1b3ef440fbb303798d3573a8e40f6c482faf Avoid scalar cache response aliasing",
+        "+ 6632e61b91851605ad8ce67b7f8a2e91f9c8ecf0 Tighten batched vision failure boundaries",
+        "+ 2bfe647805f6f34600af15313476d2c3b302fdaf Make VLM cache snapshots best effort",
+        "+ 8cce9b3fd8846cf95c4ea130f9d13843080f78d6 Update VLM prefill alignment test",
+        "+ 95b06d2c1420852d408544667cd324abf868de56 Restore semantic cache test assertions",
+        "+ 19b04bfa3e93597c5be747b90a5c4bad5e89a7fb Document Qwen MRoPE workaround",
+        "+ 4180b437089528a51f0a8aa0c9c3c049f7873cbf Clarify VLM prompt cache restore names",
+        "+ 67ed0dc3319dad9a4d529642b3c734672e7f8989 Preserve restore chains after partial cache saves",
+        "+ f2fd3cfab2751df800d8a0d816011d626679d563 Keep hot cache fallback after disk restore miss",
+        "+ c675d2712ee1fa29a7eb6eded47178f851b98483 Tighten VLM prompt cache restore handoffs",
+        "+ caf7dd509a23bd0a5ecea977ae9552477041ce84 Fix VLM test compatibility",
+        "+ 77a2acd36f58486ffc2ec2f38e8cb32369d73006 Fix VLM cache budget failure and trim tests",
+        "+ d8614f81a19c821bb5558ce7077f88d88d25a8eb Disable disk cache on budget estimate failure",
+        "+ 64801d2ae22b0d7e350570001ed1610186f63b55 Stabilize Gemma3n cache prompt test",
+        "+ 93b1ade3adec7722837653f341309e8e447a4583 Stabilize Gemma3n cache reuse test",
+        "+ 694109129017f1196290ef6eb718e8b433737f81 Restore Gemma3n cache semantic assertions",
+        "+ 3742cf627c2b8441c03ac4cedde33843c3de176d Stabilize Gemma3n long prompt cache test",
+        "+ 25f0f9acfc1549cad961c64a13e99f5f3df79b5a Stabilize Gemma3n long prompt author test",
+        "+ 63b8ff6589e3dd74486f169f5b76680823ec6a29 Stabilize Gemma long prompt cache tests",
+        "+ 7172a15bc0d9e6077cbb1004b6acb8f1ac79770d Fix Gemma3 batched vision mask handling",
+        "+ 04cf7b72a7404e666650c2a83ef0493390864c62 Gate Gemma3 attention mask drop",
+        "+ e4fcfb9a72d4d7286bbcef0dbfe5338a2c3b2ceb Route VLM attention masks in batched prefill",
+        "+ bb20ef7958179bcd734e981f6e5e38f281316049 Adjust VLM prompt cache disk budget",
+        "+ 20b94ded2c9f97d79fe7a76421e1e39962c9275e Fix Granite4 batched vision DeepStack slicing",
+        "+ b7587360df0ff3d59fbb23d5847bd0f5a9393ea0 Speed up batched vision repeat penalty",
+        "+ c9389c8dcd3db41f3b6f5b636961e6587ac2b6d0 Fix worker-safe sampling",
+        "+ 80261802fec56533a04a5d6487039d80909830b5 Fix thread-local prompt cache tokens",
+        "+ a814a9520da2db68fe29a9d008dcbccf1625794e Fix Qwen3.5 text fast path in batched vision",
+        "+ 02b1d0ecabc40f9807287428c36c1cecb41fec2e Fix batched vision structured processors",
+        "+ 81fc5d806e723504b2cecf0e0894abf4de0009bc Avoid rebuilding VLM detokenizer per request",
+        "+ 6455eb7a1620983fc64bfa57ebab76590e8e2369 Run sequential model kit on owner thread",
+        "+ 99e2328b198d85e564acf2b5fe5944d228ab15a2 Log lifetime prompt cache evictions",
+        "+ b1456ee905f3253a1a96d245f1ec3e9795fd66c3 Fix batched VLM prompt progress reporting",
+        "+ cf058d70196f1feb1b987f3d9f5871989924dec0 Fix VLM model kit setup edge cases",
+        "+ b229b959aa30420778561b28abb335563369576e Normalize VLM concurrency limit",
+        "+ 722f35145593e7fc7a2f7cf12c1d42a5eac2a07f Add Qwen3.5 VLM restore parity test",
+        "+ c390565e401bd45886acf61c5440cf45eca3a2a5 Add Qwen3.5 VLM generation trace parity test",
+        "+ 406af8a7f7d7ee891a41c518688d22c8149435c1 Add Qwen3.5 continuous batching parity test",
+        "+ 9d4a4eeef701d70d880ebe9773f0e1add0b69110 Add batched VLM parity tests",
+        "+ ea1a6bb164a83c7b0e4c4f6e75f431e5569502aa Relax VLM concurrency logprob parity"
+      ],
+      "commands": {
+        "head": {
+          "command": [
+            "git",
+            "rev-parse",
+            "--short",
+            "upstream/neil/vlm-parity-ci"
+          ],
+          "returncode": 0,
+          "stdout": "ea1a6bb\n",
+          "stderr": ""
+        },
+        "for_each_ref": {
+          "command": [
+            "git",
+            "for-each-ref",
+            "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso8601)|%(subject)",
+            "refs/remotes/upstream/neil/vlm-parity-ci"
+          ],
+          "returncode": 0,
+          "stdout": "upstream/neil/vlm-parity-ci|ea1a6bb|2026-05-27 18:29:25 -0400|Relax VLM concurrency logprob parity\n",
+          "stderr": ""
+        },
+        "ahead_behind": {
+          "command": [
+            "git",
+            "rev-list",
+            "--left-right",
+            "--count",
+            "upstream/main...upstream/neil/vlm-parity-ci"
+          ],
+          "returncode": 0,
+          "stdout": "5\t82\n",
+          "stderr": ""
+        },
+        "recent_commits": {
+          "command": [
+            "git",
+            "log",
+            "--oneline",
+            "--max-count=12",
+            "upstream/main..upstream/neil/vlm-parity-ci"
+          ],
+          "returncode": 0,
+          "stdout": "ea1a6bb Relax VLM concurrency logprob parity\n9d4a4ee Add batched VLM parity tests\n406af8a Add Qwen3.5 continuous batching parity test\nc390565 Add Qwen3.5 VLM generation trace parity test\n722f351 Add Qwen3.5 VLM restore parity test\nb229b95 Normalize VLM concurrency limit\ncf058d7 Fix VLM model kit setup edge cases\nb1456ee Fix batched VLM prompt progress reporting\n99e2328 Log lifetime prompt cache evictions\n6455eb7 Run sequential model kit on owner thread\n81fc5d8 Avoid rebuilding VLM detokenizer per request\n02b1d0e Fix batched vision structured processors\n",
+          "stderr": ""
+        },
+        "diffstat": {
+          "command": [
+            "git",
+            "diff",
+            "--stat",
+            "upstream/main..upstream/neil/vlm-parity-ci"
+          ],
+          "returncode": 0,
+          "stdout": " mlx_engine/generate.py                             |  42 +-\n mlx_engine/model_kit/__init__.py                   |   4 +-\n mlx_engine/model_kit/batched_model_kit.py          |   4 -\n .../model_kit/batched_vision/batch_generator.py    | 110 +----\n .../model_kit/batched_vision/cache_io_thread.py    |   6 +-\n mlx_engine/model_kit/batched_vision/model_kit.py   | 137 +-----\n .../batched_vision/prompt_cache/cache_store.py     |  12 -\n .../model_kit/batched_vision/prompt_inputs.py      |  63 +--\n .../batched_vision/vision_feature_memoizer.py      |  17 -\n mlx_engine/model_kit/model_kit.py                  |  98 +++-\n mlx_engine/model_kit/patches/gemma4.py             | 214 +++-----\n mlx_engine/model_kit/patches/lfm2_vl.py            |  19 -\n mlx_engine/model_kit/patches/qwen3_5.py            | 228 +--------\n mlx_engine/model_kit/vision_add_ons/base.py        |  45 ++\n mlx_engine/model_kit/vision_add_ons/gemma3.py      |  88 ++++\n mlx_engine/model_kit/vision_add_ons/gemma3n.py     | 159 ++++++\n mlx_engine/model_kit/vision_add_ons/gemma4.py      | 129 +++++\n mlx_engine/model_kit/vision_add_ons/lfm2_vl.py     | 148 ++++++\n mlx_engine/model_kit/vision_add_ons/load_utils.py  | 257 ++++++++++\n mlx_engine/model_kit/vision_add_ons/mistral3.py    | 127 +++++\n mlx_engine/model_kit/vision_add_ons/pixtral.py     |  95 ++++\n .../vision_add_ons/process_prompt_with_images.py   |  81 +++\n mlx_engine/model_kit/vision_add_ons/qwen2_vl.py    |  92 ++++\n mlx_engine/model_kit/vision_add_ons/qwen3_5.py     | 186 +++++++\n mlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py |  35 ++\n mlx_engine/model_kit/vision_add_ons/qwen3_vl.py    |  64 +++\n .../model_kit/vision_add_ons/qwen3_vl_moe.py       |  64 +++\n .../model_kit/vision_add_ons/qwen_vl_utils.py      | 118 +++++\n .../vision_add_ons/vision_feature_memoizer.py      |  43 ++\n mlx_engine/utils/mlx_threading.py                  |  11 -\n .../_transformers_compatibility.py}                |   3 +-\n mlx_engine/vision_model_kit/vision_model_kit.py    | 171 +++++++\n .../vision_model_kit/vision_model_wrapper.py       | 246 ++++++++++\n requirements.txt                                   |  59 ++-\n tests/test_batched_vision_batch_generator.py       | 341 -------------\n tests/test_batched_vision_cache_store.py           |  25 -\n tests/test_batched_vision_coordinator.py           |  78 +--\n tests/test_batched_vision_model_kit.py             | 173 -------\n tests/test_batched_vision_parity.py                |  92 ++--\n tests/test_batched_vision_prompt_inputs.py         |  79 ---\n tests/test_patched_gemma4.py                       | 113 -----\n tests/test_patched_qwen3_5.py                      | 544 +++------------------\n tests/test_vision_feature_cache.py                 | 233 ++++-----\n tests/test_vision_models.py                        |  92 ++--\n 44 files changed, 2654 insertions(+), 2291 deletions(-)\n",
+          "stderr": ""
+        },
+        "changed_files": {
+          "command": [
+            "git",
+            "diff",
+            "--name-status",
+            "upstream/main..upstream/neil/vlm-parity-ci"
+          ],
+          "returncode": 0,
+          "stdout": "M\tmlx_engine/generate.py\nM\tmlx_engine/model_kit/__init__.py\nM\tmlx_engine/model_kit/batched_model_kit.py\nM\tmlx_engine/model_kit/batched_vision/batch_generator.py\nM\tmlx_engine/model_kit/batched_vision/cache_io_thread.py\nM\tmlx_engine/model_kit/batched_vision/model_kit.py\nM\tmlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py\nM\tmlx_engine/model_kit/batched_vision/prompt_inputs.py\nD\tmlx_engine/model_kit/batched_vision/vision_feature_memoizer.py\nM\tmlx_engine/model_kit/model_kit.py\nM\tmlx_engine/model_kit/patches/gemma4.py\nD\tmlx_engine/model_kit/patches/lfm2_vl.py\nM\tmlx_engine/model_kit/patches/qwen3_5.py\nA\tmlx_engine/model_kit/vision_add_ons/base.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma3.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma3n.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma4.py\nA\tmlx_engine/model_kit/vision_add_ons/lfm2_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/load_utils.py\nA\tmlx_engine/model_kit/vision_add_ons/mistral3.py\nA\tmlx_engine/model_kit/vision_add_ons/pixtral.py\nA\tmlx_engine/model_kit/vision_add_ons/process_prompt_with_images.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen2_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_5.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_5_moe.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_vl_moe.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen_vl_utils.py\nA\tmlx_engine/model_kit/vision_add_ons/vision_feature_memoizer.py\nD\tmlx_engine/utils/mlx_threading.py\nR097\tmlx_engine/model_kit/batched_vision/transformers_compatibility.py\tmlx_engine/vision_model_kit/_transformers_compatibility.py\nA\tmlx_engine/vision_model_kit/vision_model_kit.py\nA\tmlx_engine/vision_model_kit/vision_model_wrapper.py\nM\trequirements.txt\nM\ttests/test_batched_vision_batch_generator.py\nM\ttests/test_batched_vision_cache_store.py\nM\ttests/test_batched_vision_coordinator.py\nD\ttests/test_batched_vision_model_kit.py\nM\ttests/test_batched_vision_parity.py\nM\ttests/test_batched_vision_prompt_inputs.py\nD\ttests/test_patched_gemma4.py\nM\ttests/test_patched_qwen3_5.py\nM\ttests/test_vision_feature_cache.py\nM\ttests/test_vision_models.py\n",
+          "stderr": ""
+        },
+        "cherry": {
+          "command": [
+            "git",
+            "cherry",
+            "-v",
+            "HEAD",
+            "upstream/neil/vlm-parity-ci"
+          ],
+          "returncode": 0,
+          "stdout": "+ 0c3aede4b91faa1b8593d8d7205bbffba33466a6 Add batched vision backend\n+ 50f75c08cac1143b978bf8074b48ca41c8ddeb13 Add VLM prompt spill cache\n+ 5251729e4d5741ce7fb92c9856069daaead6482e Split VLM safetensor spool\n+ c9b679a86c6e62e2c3e7c31d676039bcede75169 Split VLM prompt cache payload\n+ 99b4730be6f30d75383b997c9a6a6e30c41d7c6c Simplify batched vision scheduler\n+ 7abc8cf60d47f5b67310dce5065a989152cd47c9 Split VLM prompt cache planning\n+ 2cc7f6cbbe65868fa6b5833f04fc7d6393c3c7ab Add span-aware VLM prompt spill cache\n+ 40d7761e86fa109acbcc3466ed1c297ca641d808 Clarify VLM prefix cache chunk naming\n+ 1322bf2465c1e3ac445bbb6458b3a27b5db13090 Add VLM hot prompt cache saves\n+ ec879a3304785bbbe40eee94931435a5f808724b Refine VLM spill cache disk budget\n+ 5631674d140c7d686be9975081337697f4f62ed2 Refine VLM spill cache eviction\n+ d6c1b9d5b2a63b12a6f8547fbf536966b7a617c6 Align VLM spill cache with physical records\n+ eff978fa801c2eb3780b64edb47090114eaad24f Refine VLM cache save points\n+ c1013c3ec88726bdc041151d39a2c118beb07f09 Clarify VLM cache save points\n+ 2064bb3da429491c004f4b31a2d4e62050cadaa6 Refactor batched vision cache modules\n+ 2fa9ea4645218c2d5d9da06fe3483fbd31302ba2 Simplify batched vision cache store\n+ 7fa5e3c9a14a336e9a78ec71ab2c38b1c023c78b Simplify batched vision generator\n+ 270f0a64085b5ff1e4795b25091029af57a6213d Add batched VLM logits processors\n+ 92691c9f030e1de442ba22d770e14ee2b70a78c3 Improve batched vision generation\n+ c0b9686e5c79d7d0044f3c1d8ec8ef3f03bfd4b2 Update batched vision tests\n+ 31418e4faf7754d1eaf545d2e7cbc4b3d895d8b2 Refine batched vision prompt cache restore\n+ 430d10999dcfc883e8075dce2d91edfad9bb5837 Add batched vision prompt cache tests\n+ 57d35bf3cb0e394250d28fe887e97934e793ad60 Add batched vision cache tests\n+ 7800d3e54130b2b5511e9ee4566a52aba562b7fb Add batched vision prompt input tests\n+ 085b85dfd5f6220b953b53eb9535cd56733fae72 Simplify generate model kit typing\n+ ddff92d704e9ab353410e6727ac9c7335b5adfbb Stop tracking batched vision smoke script\n+ cc80b490778d3966d81fd5e82302f3a105ac4214 Tighten batched vision cache lifecycle\n+ 0d7f069d9b18ec9cd27f699b0ddd56d71ab26948 Simplify batched vision cache chunking\n+ 55e30061809d70276ea05a36cfb965e8ae18ff1d Improve Qwen prompt cache checkpointing\n+ b400e74bc42cb449fdd6f0d5b7f99b2113fd05ad Guard rotating prompt cache saves\n+ 965ddd9c24dc721283dffa636ab606f02373b8df Preserve Gemma batched vision masks\n+ 2aaa61f0df11e5759535c2c866be1955eeb6162a Avoid default VLM top logprobs work\n+ 94af3ba574b52b52e8be21bb94a9ae57d918860c Fix cached VLM prompt kwargs restore\n+ cef9c62610b789807a27e726f83338263212cac1 Validate KV prompt cache record coverage\n+ 329eed8d986d0e799544f20b6f40676c3358628b Group VLM generation row state\n+ 58f9bb21f51e734874cad39a18777cfe50efb3be Tighten batched vision response metadata\n+ 4e63fa7816b6373570befe2c03a4ab1f89a9982a Tighten batched VLM request handling\n+ a8a0478f9bf1ddb56297633c5674ad72a255c402 Optimize single-row VLM batching\n+ d4c47361a0174fc8bf7d1ac16a8870077d8c2c04 Sync scalar Qwen RoPE state\n+ 884bccb3ec3b3f3127e0697ca6fe6645bd1758d8 Fix wrapped rotating cache records\n+ 12442833d00d89c2a8be22f9444054edc8278546 Preserve budget-fitting prompt cache restores\n+ c8bf1908c9b61a5a878d0b0254ff194f90ddf39e Evict failed prompt cache records\n+ 32de1b3ef440fbb303798d3573a8e40f6c482faf Avoid scalar cache response aliasing\n+ 6632e61b91851605ad8ce67b7f8a2e91f9c8ecf0 Tighten batched vision failure boundaries\n+ 2bfe647805f6f34600af15313476d2c3b302fdaf Make VLM cache snapshots best effort\n+ 8cce9b3fd8846cf95c4ea130f9d13843080f78d6 Update VLM prefill alignment test\n+ 95b06d2c1420852d408544667cd324abf868de56 Restore semantic cache test assertions\n+ 19b04bfa3e93597c5be747b90a5c4bad5e89a7fb Document Qwen MRoPE workaround\n+ 4180b437089528a51f0a8aa0c9c3c049f7873cbf Clarify VLM prompt cache restore names\n+ 67ed0dc3319dad9a4d529642b3c734672e7f8989 Preserve restore chains after partial cache saves\n+ f2fd3cfab2751df800d8a0d816011d626679d563 Keep hot cache fallback after disk restore miss\n+ c675d2712ee1fa29a7eb6eded47178f851b98483 Tighten VLM prompt cache restore handoffs\n+ caf7dd509a23bd0a5ecea977ae9552477041ce84 Fix VLM test compatibility\n+ 77a2acd36f58486ffc2ec2f38e8cb32369d73006 Fix VLM cache budget failure and trim tests\n+ d8614f81a19c821bb5558ce7077f88d88d25a8eb Disable disk cache on budget estimate failure\n+ 64801d2ae22b0d7e350570001ed1610186f63b55 Stabilize Gemma3n cache prompt test\n+ 93b1ade3adec7722837653f341309e8e447a4583 Stabilize Gemma3n cache reuse test\n+ 694109129017f1196290ef6eb718e8b433737f81 Restore Gemma3n cache semantic assertions\n+ 3742cf627c2b8441c03ac4cedde33843c3de176d Stabilize Gemma3n long prompt cache test\n+ 25f0f9acfc1549cad961c64a13e99f5f3df79b5a Stabilize Gemma3n long prompt author test\n+ 63b8ff6589e3dd74486f169f5b76680823ec6a29 Stabilize Gemma long prompt cache tests\n+ 7172a15bc0d9e6077cbb1004b6acb8f1ac79770d Fix Gemma3 batched vision mask handling\n+ 04cf7b72a7404e666650c2a83ef0493390864c62 Gate Gemma3 attention mask drop\n+ e4fcfb9a72d4d7286bbcef0dbfe5338a2c3b2ceb Route VLM attention masks in batched prefill\n+ bb20ef7958179bcd734e981f6e5e38f281316049 Adjust VLM prompt cache disk budget\n+ 20b94ded2c9f97d79fe7a76421e1e39962c9275e Fix Granite4 batched vision DeepStack slicing\n+ b7587360df0ff3d59fbb23d5847bd0f5a9393ea0 Speed up batched vision repeat penalty\n+ c9389c8dcd3db41f3b6f5b636961e6587ac2b6d0 Fix worker-safe sampling\n+ 80261802fec56533a04a5d6487039d80909830b5 Fix thread-local prompt cache tokens\n+ a814a9520da2db68fe29a9d008dcbccf1625794e Fix Qwen3.5 text fast path in batched vision\n+ 02b1d0ecabc40f9807287428c36c1cecb41fec2e Fix batched vision structured processors\n+ 81fc5d806e723504b2cecf0e0894abf4de0009bc Avoid rebuilding VLM detokenizer per request\n+ 6455eb7a1620983fc64bfa57ebab76590e8e2369 Run sequential model kit on owner thread\n+ 99e2328b198d85e564acf2b5fe5944d228ab15a2 Log lifetime prompt cache evictions\n+ b1456ee905f3253a1a96d245f1ec3e9795fd66c3 Fix batched VLM prompt progress reporting\n+ cf058d70196f1feb1b987f3d9f5871989924dec0 Fix VLM model kit setup edge cases\n+ b229b959aa30420778561b28abb335563369576e Normalize VLM concurrency limit\n+ 722f35145593e7fc7a2f7cf12c1d42a5eac2a07f Add Qwen3.5 VLM restore parity test\n+ c390565e401bd45886acf61c5440cf45eca3a2a5 Add Qwen3.5 VLM generation trace parity test\n+ 406af8a7f7d7ee891a41c518688d22c8149435c1 Add Qwen3.5 continuous batching parity test\n+ 9d4a4eeef701d70d880ebe9773f0e1add0b69110 Add batched VLM parity tests\n+ ea1a6bb164a83c7b0e4c4f6e75f431e5569502aa Relax VLM concurrency logprob parity\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "branch": "upstream/will/lfm-2.5-unified",
+      "head": "461015c",
+      "ref_info": {
+        "ref": "upstream/will/lfm-2.5-unified",
+        "head": "461015c",
+        "committer_date": "2026-01-16 11:41:16 -0500",
+        "subject": "Add test for LFM 2.5 caching"
+      },
+      "ahead_behind_vs_upstream_main": {
+        "left": 25,
+        "right": 1
+      },
+      "recent_commits": [
+        "461015c Add test for LFM 2.5 caching"
+      ],
+      "diffstat": "batched_demo.py                                    |  568 ----------\n demo.py                                            |    3 -\n mlx_engine/__init__.py                             |    4 -\n mlx_engine/cache_wrapper.py                        |  494 ++++-----\n mlx_engine/generate.py                             |  923 +++++-----------\n mlx_engine/model_kit/__init__.py                   |    4 -\n mlx_engine/model_kit/batched_model_kit.py          |  456 --------\n mlx_engine/model_kit/batched_model_kit_types.py    |   57 -\n mlx_engine/model_kit/batched_vision/__init__.py    |    3 -\n .../model_kit/batched_vision/batch_generator.py    | 1167 --------------------\n .../model_kit/batched_vision/cache_io_thread.py    |  154 ---\n mlx_engine/model_kit/batched_vision/model_kit.py   |  651 -----------\n .../batched_vision/prompt_cache/__init__.py        |    1 -\n .../batched_vision/prompt_cache/blob_store.py      |  233 ----\n .../batched_vision/prompt_cache/cache_store.py     |  530 ---------\n .../batched_vision/prompt_cache/chunks.py          |   99 --\n .../batched_vision/prompt_cache/coordinator.py     |  330 ------\n .../batched_vision/prompt_cache/disk_budget.py     |  133 ---\n .../batched_vision/prompt_cache/image_spans.py     |   65 --\n .../batched_vision/prompt_cache/records.py         |  189 ----\n .../batched_vision/prompt_cache/restore_planner.py |   95 --\n .../model_kit/batched_vision/prompt_cache/types.py |  114 --\n .../model_kit/batched_vision/prompt_inputs.py      |  438 --------\n mlx_engine/model_kit/batched_vision/qwen_mrope.py  |  132 ---\n .../model_kit/batched_vision/request_lifecycle.py  |  257 -----\n .../batched_vision/vision_feature_memoizer.py      |   17 -\n mlx_engine/model_kit/model_kit.py                  |  180 ++-\n mlx_engine/model_kit/patches/gemma4.py             |  154 ---\n mlx_engine/model_kit/patches/lfm2_vl.py            |   19 -\n mlx_engine/model_kit/patches/qwen3_5.py            |  725 ------------\n mlx_engine/model_kit/vision_add_ons/base.py        |   34 +\n mlx_engine/model_kit/vision_add_ons/gemma3.py      |   87 ++\n mlx_engine/model_kit/vision_add_ons/gemma3n.py     |  155 +++\n mlx_engine/model_kit/vision_add_ons/lfm2_vl.py     |  144 +++\n mlx_engine/model_kit/vision_add_ons/load_utils.py  |  257 +++++\n mlx_engine/model_kit/vision_add_ons/mistral3.py    |  122 ++\n mlx_engine/model_kit/vision_add_ons/pixtral.py     |   91 ++\n .../vision_add_ons/process_prompt_with_images.py   |   79 ++\n mlx_engine/model_kit/vision_add_ons/qwen2_vl.py    |   91 ++\n mlx_engine/model_kit/vision_add_ons/qwen3_vl.py    |   63 ++\n .../model_kit/vision_add_ons/qwen3_vl_moe.py       |   63 ++\n .../model_kit/vision_add_ons/qwen_vl_utils.py      |   95 ++\n .../processors/repetition_penalty_processor.py     |   12 -\n mlx_engine/utils/eot_tokens.py                     |   14 +-\n mlx_engine/utils/generation_helpers.py             |   98 --\n mlx_engine/utils/generation_result.py              |   32 -\n mlx_engine/utils/mlx_threading.py                  |   11 -\n mlx_engine/utils/prompt_progress_reporter.py       |   83 +-\n mlx_engine/utils/sampling.py                       |  113 --\n mlx_engine/utils/speculative_decoding.py           |    8 -\n .../_transformers_compatibility.py}                |    3 +-\n mlx_engine/vision_model_kit/vision_model_kit.py    |  161 +++\n .../vision_model_kit/vision_model_wrapper.py       |  214 ++++\n requirements.txt                                   |   71 +-\n tests/data/ben_franklin_autobiography_start.txt    |   58 -\n tests/data/equations.jpg                           |  Bin 59577 -> 0 bytes\n tests/patched_model_test_utils.py                  |   96 --\n tests/shared.py                                    |   10 -\n tests/test_batched_generation.py                   |  130 ---\n tests/test_batched_vision_batch_generator.py       |  736 ------------\n tests/test_batched_vision_blob_store.py            |   80 --\n tests/test_batched_vision_cache_io_thread.py       |  162 ---\n tests/test_batched_vision_cache_store.py           |  273 -----\n tests/test_batched_vision_chunks.py                |   71 --\n tests/test_batched_vision_coordinator.py           |  216 ----\n tests/test_batched_vision_disk_budget.py           |  108 --\n tests/test_batched_vision_image_spans.py           |   53 -\n tests/test_batched_vision_model_kit.py             |  173 ---\n tests/test_batched_vision_parity.py                |  497 ---------\n tests/test_batched_vision_prompt_inputs.py         |  454 --------\n tests/test_batched_vision_qwen_mrope.py            |   83 --\n tests/test_batched_vision_records.py               |  172 ---\n tests/test_batched_vision_request_lifecycle.py     |  210 ----\n tests/test_batched_vision_restore_planner.py       |  109 --\n tests/test_cache_wrapper.py                        |  334 +-----\n tests/test_patched_gemma4.py                       |  113 --\n tests/test_patched_qwen3_5.py                      | 1051 ------------------\n tests/test_prefill_step_size.py                    |  268 -----\n tests/test_repetition_penalty_processor.py         |   27 -\n tests/test_text_models.py                          |   54 +-\n tests/test_vision_feature_cache.py                 |  158 ---\n tests/test_vision_models.py                        |  933 ++++------------\n tests/utils/test_prompt_progress_reporter.py       |   20 +-\n 83 files changed, 2609 insertions(+), 14336 deletions(-)",
+      "changed_files": [
+        "D\tbatched_demo.py",
+        "M\tdemo.py",
+        "M\tmlx_engine/__init__.py",
+        "M\tmlx_engine/cache_wrapper.py",
+        "M\tmlx_engine/generate.py",
+        "M\tmlx_engine/model_kit/__init__.py",
+        "D\tmlx_engine/model_kit/batched_model_kit.py",
+        "D\tmlx_engine/model_kit/batched_model_kit_types.py",
+        "D\tmlx_engine/model_kit/batched_vision/__init__.py",
+        "D\tmlx_engine/model_kit/batched_vision/batch_generator.py",
+        "D\tmlx_engine/model_kit/batched_vision/cache_io_thread.py",
+        "D\tmlx_engine/model_kit/batched_vision/model_kit.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/__init__.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/blob_store.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/chunks.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/disk_budget.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/image_spans.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/records.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/restore_planner.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/types.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_inputs.py",
+        "D\tmlx_engine/model_kit/batched_vision/qwen_mrope.py",
+        "D\tmlx_engine/model_kit/batched_vision/request_lifecycle.py",
+        "D\tmlx_engine/model_kit/batched_vision/vision_feature_memoizer.py",
+        "M\tmlx_engine/model_kit/model_kit.py",
+        "D\tmlx_engine/model_kit/patches/gemma4.py",
+        "D\tmlx_engine/model_kit/patches/lfm2_vl.py",
+        "D\tmlx_engine/model_kit/patches/qwen3_5.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/base.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma3.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma3n.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/lfm2_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/load_utils.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/mistral3.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/pixtral.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/process_prompt_with_images.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen2_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_vl_moe.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen_vl_utils.py",
+        "M\tmlx_engine/processors/repetition_penalty_processor.py",
+        "M\tmlx_engine/utils/eot_tokens.py",
+        "D\tmlx_engine/utils/generation_helpers.py",
+        "D\tmlx_engine/utils/generation_result.py",
+        "D\tmlx_engine/utils/mlx_threading.py",
+        "M\tmlx_engine/utils/prompt_progress_reporter.py",
+        "D\tmlx_engine/utils/sampling.py",
+        "M\tmlx_engine/utils/speculative_decoding.py",
+        "R097\tmlx_engine/model_kit/batched_vision/transformers_compatibility.py\tmlx_engine/vision_model_kit/_transformers_compatibility.py",
+        "A\tmlx_engine/vision_model_kit/vision_model_kit.py",
+        "A\tmlx_engine/vision_model_kit/vision_model_wrapper.py",
+        "M\trequirements.txt",
+        "M\ttests/data/ben_franklin_autobiography_start.txt",
+        "D\ttests/data/equations.jpg",
+        "D\ttests/patched_model_test_utils.py",
+        "M\ttests/shared.py",
+        "D\ttests/test_batched_generation.py",
+        "D\ttests/test_batched_vision_batch_generator.py",
+        "D\ttests/test_batched_vision_blob_store.py",
+        "D\ttests/test_batched_vision_cache_io_thread.py",
+        "D\ttests/test_batched_vision_cache_store.py",
+        "D\ttests/test_batched_vision_chunks.py",
+        "D\ttests/test_batched_vision_coordinator.py",
+        "D\ttests/test_batched_vision_disk_budget.py",
+        "D\ttests/test_batched_vision_image_spans.py",
+        "D\ttests/test_batched_vision_model_kit.py",
+        "D\ttests/test_batched_vision_parity.py",
+        "D\ttests/test_batched_vision_prompt_inputs.py",
+        "D\ttests/test_batched_vision_qwen_mrope.py",
+        "D\ttests/test_batched_vision_records.py",
+        "D\ttests/test_batched_vision_request_lifecycle.py",
+        "D\ttests/test_batched_vision_restore_planner.py",
+        "M\ttests/test_cache_wrapper.py",
+        "D\ttests/test_patched_gemma4.py",
+        "D\ttests/test_patched_qwen3_5.py",
+        "D\ttests/test_prefill_step_size.py",
+        "D\ttests/test_repetition_penalty_processor.py",
+        "M\ttests/test_text_models.py",
+        "D\ttests/test_vision_feature_cache.py",
+        "M\ttests/test_vision_models.py",
+        "M\ttests/utils/test_prompt_progress_reporter.py"
+      ],
+      "unmatched_patch_ids": [
+        "+ 461015c789cb88ebb8a5dea339ef38bd0c887ae7 Add test for LFM 2.5 caching"
+      ],
+      "commands": {
+        "head": {
+          "command": [
+            "git",
+            "rev-parse",
+            "--short",
+            "upstream/will/lfm-2.5-unified"
+          ],
+          "returncode": 0,
+          "stdout": "461015c\n",
+          "stderr": ""
+        },
+        "for_each_ref": {
+          "command": [
+            "git",
+            "for-each-ref",
+            "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso8601)|%(subject)",
+            "refs/remotes/upstream/will/lfm-2.5-unified"
+          ],
+          "returncode": 0,
+          "stdout": "upstream/will/lfm-2.5-unified|461015c|2026-01-16 11:41:16 -0500|Add test for LFM 2.5 caching\n",
+          "stderr": ""
+        },
+        "ahead_behind": {
+          "command": [
+            "git",
+            "rev-list",
+            "--left-right",
+            "--count",
+            "upstream/main...upstream/will/lfm-2.5-unified"
+          ],
+          "returncode": 0,
+          "stdout": "25\t1\n",
+          "stderr": ""
+        },
+        "recent_commits": {
+          "command": [
+            "git",
+            "log",
+            "--oneline",
+            "--max-count=12",
+            "upstream/main..upstream/will/lfm-2.5-unified"
+          ],
+          "returncode": 0,
+          "stdout": "461015c Add test for LFM 2.5 caching\n",
+          "stderr": ""
+        },
+        "diffstat": {
+          "command": [
+            "git",
+            "diff",
+            "--stat",
+            "upstream/main..upstream/will/lfm-2.5-unified"
+          ],
+          "returncode": 0,
+          "stdout": " batched_demo.py                                    |  568 ----------\n demo.py                                            |    3 -\n mlx_engine/__init__.py                             |    4 -\n mlx_engine/cache_wrapper.py                        |  494 ++++-----\n mlx_engine/generate.py                             |  923 +++++-----------\n mlx_engine/model_kit/__init__.py                   |    4 -\n mlx_engine/model_kit/batched_model_kit.py          |  456 --------\n mlx_engine/model_kit/batched_model_kit_types.py    |   57 -\n mlx_engine/model_kit/batched_vision/__init__.py    |    3 -\n .../model_kit/batched_vision/batch_generator.py    | 1167 --------------------\n .../model_kit/batched_vision/cache_io_thread.py    |  154 ---\n mlx_engine/model_kit/batched_vision/model_kit.py   |  651 -----------\n .../batched_vision/prompt_cache/__init__.py        |    1 -\n .../batched_vision/prompt_cache/blob_store.py      |  233 ----\n .../batched_vision/prompt_cache/cache_store.py     |  530 ---------\n .../batched_vision/prompt_cache/chunks.py          |   99 --\n .../batched_vision/prompt_cache/coordinator.py     |  330 ------\n .../batched_vision/prompt_cache/disk_budget.py     |  133 ---\n .../batched_vision/prompt_cache/image_spans.py     |   65 --\n .../batched_vision/prompt_cache/records.py         |  189 ----\n .../batched_vision/prompt_cache/restore_planner.py |   95 --\n .../model_kit/batched_vision/prompt_cache/types.py |  114 --\n .../model_kit/batched_vision/prompt_inputs.py      |  438 --------\n mlx_engine/model_kit/batched_vision/qwen_mrope.py  |  132 ---\n .../model_kit/batched_vision/request_lifecycle.py  |  257 -----\n .../batched_vision/vision_feature_memoizer.py      |   17 -\n mlx_engine/model_kit/model_kit.py                  |  180 ++-\n mlx_engine/model_kit/patches/gemma4.py             |  154 ---\n mlx_engine/model_kit/patches/lfm2_vl.py            |   19 -\n mlx_engine/model_kit/patches/qwen3_5.py            |  725 ------------\n mlx_engine/model_kit/vision_add_ons/base.py        |   34 +\n mlx_engine/model_kit/vision_add_ons/gemma3.py      |   87 ++\n mlx_engine/model_kit/vision_add_ons/gemma3n.py     |  155 +++\n mlx_engine/model_kit/vision_add_ons/lfm2_vl.py     |  144 +++\n mlx_engine/model_kit/vision_add_ons/load_utils.py  |  257 +++++\n mlx_engine/model_kit/vision_add_ons/mistral3.py    |  122 ++\n mlx_engine/model_kit/vision_add_ons/pixtral.py     |   91 ++\n .../vision_add_ons/process_prompt_with_images.py   |   79 ++\n mlx_engine/model_kit/vision_add_ons/qwen2_vl.py    |   91 ++\n mlx_engine/model_kit/vision_add_ons/qwen3_vl.py    |   63 ++\n .../model_kit/vision_add_ons/qwen3_vl_moe.py       |   63 ++\n .../model_kit/vision_add_ons/qwen_vl_utils.py      |   95 ++\n .../processors/repetition_penalty_processor.py     |   12 -\n mlx_engine/utils/eot_tokens.py                     |   14 +-\n mlx_engine/utils/generation_helpers.py             |   98 --\n mlx_engine/utils/generation_result.py              |   32 -\n mlx_engine/utils/mlx_threading.py                  |   11 -\n mlx_engine/utils/prompt_progress_reporter.py       |   83 +-\n mlx_engine/utils/sampling.py                       |  113 --\n mlx_engine/utils/speculative_decoding.py           |    8 -\n .../_transformers_compatibility.py}                |    3 +-\n mlx_engine/vision_model_kit/vision_model_kit.py    |  161 +++\n .../vision_model_kit/vision_model_wrapper.py       |  214 ++++\n requirements.txt                                   |   71 +-\n tests/data/ben_franklin_autobiography_start.txt    |   58 -\n tests/data/equations.jpg                           |  Bin 59577 -> 0 bytes\n tests/patched_model_test_utils.py                  |   96 --\n tests/shared.py                                    |   10 -\n tests/test_batched_generation.py                   |  130 ---\n tests/test_batched_vision_batch_generator.py       |  736 ------------\n tests/test_batched_vision_blob_store.py            |   80 --\n tests/test_batched_vision_cache_io_thread.py       |  162 ---\n tests/test_batched_vision_cache_store.py           |  273 -----\n tests/test_batched_vision_chunks.py                |   71 --\n tests/test_batched_vision_coordinator.py           |  216 ----\n tests/test_batched_vision_disk_budget.py           |  108 --\n tests/test_batched_vision_image_spans.py           |   53 -\n tests/test_batched_vision_model_kit.py             |  173 ---\n tests/test_batched_vision_parity.py                |  497 ---------\n tests/test_batched_vision_prompt_inputs.py         |  454 --------\n tests/test_batched_vision_qwen_mrope.py            |   83 --\n tests/test_batched_vision_records.py               |  172 ---\n tests/test_batched_vision_request_lifecycle.py     |  210 ----\n tests/test_batched_vision_restore_planner.py       |  109 --\n tests/test_cache_wrapper.py                        |  334 +-----\n tests/test_patched_gemma4.py                       |  113 --\n tests/test_patched_qwen3_5.py                      | 1051 ------------------\n tests/test_prefill_step_size.py                    |  268 -----\n tests/test_repetition_penalty_processor.py         |   27 -\n tests/test_text_models.py                          |   54 +-\n tests/test_vision_feature_cache.py                 |  158 ---\n tests/test_vision_models.py                        |  933 ++++------------\n tests/utils/test_prompt_progress_reporter.py       |   20 +-\n 83 files changed, 2609 insertions(+), 14336 deletions(-)\n",
+          "stderr": ""
+        },
+        "changed_files": {
+          "command": [
+            "git",
+            "diff",
+            "--name-status",
+            "upstream/main..upstream/will/lfm-2.5-unified"
+          ],
+          "returncode": 0,
+          "stdout": "D\tbatched_demo.py\nM\tdemo.py\nM\tmlx_engine/__init__.py\nM\tmlx_engine/cache_wrapper.py\nM\tmlx_engine/generate.py\nM\tmlx_engine/model_kit/__init__.py\nD\tmlx_engine/model_kit/batched_model_kit.py\nD\tmlx_engine/model_kit/batched_model_kit_types.py\nD\tmlx_engine/model_kit/batched_vision/__init__.py\nD\tmlx_engine/model_kit/batched_vision/batch_generator.py\nD\tmlx_engine/model_kit/batched_vision/cache_io_thread.py\nD\tmlx_engine/model_kit/batched_vision/model_kit.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/__init__.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/blob_store.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/chunks.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/disk_budget.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/image_spans.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/records.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/restore_planner.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/types.py\nD\tmlx_engine/model_kit/batched_vision/prompt_inputs.py\nD\tmlx_engine/model_kit/batched_vision/qwen_mrope.py\nD\tmlx_engine/model_kit/batched_vision/request_lifecycle.py\nD\tmlx_engine/model_kit/batched_vision/vision_feature_memoizer.py\nM\tmlx_engine/model_kit/model_kit.py\nD\tmlx_engine/model_kit/patches/gemma4.py\nD\tmlx_engine/model_kit/patches/lfm2_vl.py\nD\tmlx_engine/model_kit/patches/qwen3_5.py\nA\tmlx_engine/model_kit/vision_add_ons/base.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma3.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma3n.py\nA\tmlx_engine/model_kit/vision_add_ons/lfm2_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/load_utils.py\nA\tmlx_engine/model_kit/vision_add_ons/mistral3.py\nA\tmlx_engine/model_kit/vision_add_ons/pixtral.py\nA\tmlx_engine/model_kit/vision_add_ons/process_prompt_with_images.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen2_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_vl_moe.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen_vl_utils.py\nM\tmlx_engine/processors/repetition_penalty_processor.py\nM\tmlx_engine/utils/eot_tokens.py\nD\tmlx_engine/utils/generation_helpers.py\nD\tmlx_engine/utils/generation_result.py\nD\tmlx_engine/utils/mlx_threading.py\nM\tmlx_engine/utils/prompt_progress_reporter.py\nD\tmlx_engine/utils/sampling.py\nM\tmlx_engine/utils/speculative_decoding.py\nR097\tmlx_engine/model_kit/batched_vision/transformers_compatibility.py\tmlx_engine/vision_model_kit/_transformers_compatibility.py\nA\tmlx_engine/vision_model_kit/vision_model_kit.py\nA\tmlx_engine/vision_model_kit/vision_model_wrapper.py\nM\trequirements.txt\nM\ttests/data/ben_franklin_autobiography_start.txt\nD\ttests/data/equations.jpg\nD\ttests/patched_model_test_utils.py\nM\ttests/shared.py\nD\ttests/test_batched_generation.py\nD\ttests/test_batched_vision_batch_generator.py\nD\ttests/test_batched_vision_blob_store.py\nD\ttests/test_batched_vision_cache_io_thread.py\nD\ttests/test_batched_vision_cache_store.py\nD\ttests/test_batched_vision_chunks.py\nD\ttests/test_batched_vision_coordinator.py\nD\ttests/test_batched_vision_disk_budget.py\nD\ttests/test_batched_vision_image_spans.py\nD\ttests/test_batched_vision_model_kit.py\nD\ttests/test_batched_vision_parity.py\nD\ttests/test_batched_vision_prompt_inputs.py\nD\ttests/test_batched_vision_qwen_mrope.py\nD\ttests/test_batched_vision_records.py\nD\ttests/test_batched_vision_request_lifecycle.py\nD\ttests/test_batched_vision_restore_planner.py\nM\ttests/test_cache_wrapper.py\nD\ttests/test_patched_gemma4.py\nD\ttests/test_patched_qwen3_5.py\nD\ttests/test_prefill_step_size.py\nD\ttests/test_repetition_penalty_processor.py\nM\ttests/test_text_models.py\nD\ttests/test_vision_feature_cache.py\nM\ttests/test_vision_models.py\nM\ttests/utils/test_prompt_progress_reporter.py\n",
+          "stderr": ""
+        },
+        "cherry": {
+          "command": [
+            "git",
+            "cherry",
+            "-v",
+            "HEAD",
+            "upstream/will/lfm-2.5-unified"
+          ],
+          "returncode": 0,
+          "stdout": "+ 461015c789cb88ebb8a5dea339ef38bd0c887ae7 Add test for LFM 2.5 caching\n",
+          "stderr": ""
+        }
+      }
+    },
+    {
+      "branch": "upstream/neil/img-caching",
+      "head": "7dfe3cd",
+      "ref_info": {
+        "ref": "upstream/neil/img-caching",
+        "head": "7dfe3cd",
+        "committer_date": "2025-10-29 10:36:19 -0400",
+        "subject": "cleanup"
+      },
+      "ahead_behind_vs_upstream_main": {
+        "left": 39,
+        "right": 13
+      },
+      "recent_commits": [
+        "7dfe3cd cleanup",
+        "fd38585 cleanup",
+        "36c360a cleanup",
+        "4e94de9 remove list",
+        "973907b checkpoint",
+        "c05c241 checkpoint",
+        "47e1d8a checkpoint",
+        "1ae4732 test non-swa model",
+        "cb2dba7 simplify",
+        "c9777fe working test",
+        "6a04c0e use text-only hook",
+        "2ce6b9d working p1"
+      ],
+      "diffstat": "batched_demo.py                                    |  568 ----------\n demo.py                                            |   55 +-\n mlx_engine/__init__.py                             |    4 -\n mlx_engine/cache_wrapper.py                        |  625 ++++++-----\n .../models/ernie4_5/tokenization_ernie4_5.py       |    2 +-\n .../models/lfm2_vl/router_lfm2_vl_processor.py     |   60 -\n mlx_engine/generate.py                             |  946 +++++-----------\n mlx_engine/model_kit/__init__.py                   |    4 -\n mlx_engine/model_kit/batched_model_kit.py          |  456 --------\n mlx_engine/model_kit/batched_model_kit_types.py    |   57 -\n mlx_engine/model_kit/batched_vision/__init__.py    |    3 -\n .../model_kit/batched_vision/batch_generator.py    | 1167 --------------------\n .../model_kit/batched_vision/cache_io_thread.py    |  154 ---\n mlx_engine/model_kit/batched_vision/model_kit.py   |  651 -----------\n .../batched_vision/prompt_cache/__init__.py        |    1 -\n .../batched_vision/prompt_cache/blob_store.py      |  233 ----\n .../batched_vision/prompt_cache/cache_store.py     |  530 ---------\n .../batched_vision/prompt_cache/chunks.py          |   99 --\n .../batched_vision/prompt_cache/coordinator.py     |  330 ------\n .../batched_vision/prompt_cache/disk_budget.py     |  133 ---\n .../batched_vision/prompt_cache/image_spans.py     |   65 --\n .../batched_vision/prompt_cache/records.py         |  189 ----\n .../batched_vision/prompt_cache/restore_planner.py |   95 --\n .../model_kit/batched_vision/prompt_cache/types.py |  114 --\n .../model_kit/batched_vision/prompt_inputs.py      |  438 --------\n mlx_engine/model_kit/batched_vision/qwen_mrope.py  |  132 ---\n .../model_kit/batched_vision/request_lifecycle.py  |  257 -----\n .../batched_vision/vision_feature_memoizer.py      |   17 -\n mlx_engine/model_kit/model_kit.py                  |  262 +++--\n mlx_engine/model_kit/patches/gemma4.py             |  154 ---\n mlx_engine/model_kit/patches/lfm2_vl.py            |   19 -\n mlx_engine/model_kit/patches/qwen3_5.py            |  725 ------------\n mlx_engine/model_kit/vision_add_ons/base.py        |   34 +\n mlx_engine/model_kit/vision_add_ons/gemma3.py      |   87 ++\n mlx_engine/model_kit/vision_add_ons/gemma3n.py     |  155 +++\n mlx_engine/model_kit/vision_add_ons/lfm2_vl.py     |  118 ++\n mlx_engine/model_kit/vision_add_ons/load_utils.py  |  252 +++++\n mlx_engine/model_kit/vision_add_ons/mistral3.py    |  109 ++\n mlx_engine/model_kit/vision_add_ons/pixtral.py     |   91 ++\n .../vision_add_ons/process_prompt_with_images.py   |   81 ++\n mlx_engine/model_kit/vision_add_ons/qwen2_vl.py    |  128 +++\n mlx_engine/model_kit/vision_add_ons/qwen3_vl.py    |   63 ++\n .../model_kit/vision_add_ons/qwen3_vl_moe.py       |   63 ++\n .../model_kit/vision_add_ons/qwen_vl_utils.py      |   95 ++\n .../processors/repetition_penalty_processor.py     |   12 -\n mlx_engine/utils/eot_tokens.py                     |   35 +-\n mlx_engine/utils/fix_mistral_pre_tokenizer.py      |   70 --\n mlx_engine/utils/generation_helpers.py             |   98 --\n mlx_engine/utils/generation_result.py              |   32 -\n mlx_engine/utils/mlx_threading.py                  |   11 -\n mlx_engine/utils/progress_decorators.py            |  100 ++\n mlx_engine/utils/prompt_processing.py              |    7 +-\n mlx_engine/utils/prompt_progress_events.py         |  108 --\n mlx_engine/utils/prompt_progress_reporter.py       |  272 -----\n mlx_engine/utils/register_models.py                |   21 +-\n mlx_engine/utils/sampling.py                       |  113 --\n mlx_engine/utils/speculative_decoding.py           |    8 -\n .../_transformers_compatibility.py}                |    3 +-\n mlx_engine/vision_model_kit/vision_model_kit.py    |  156 +++\n .../vision_model_kit/vision_model_wrapper.py       |  210 ++++\n requirements.txt                                   |  107 +-\n tests/data/ben_franklin_autobiography_start.txt    |   58 -\n tests/data/equations.jpg                           |  Bin 59577 -> 0 bytes\n tests/patched_model_test_utils.py                  |   96 --\n tests/shared.py                                    |   92 --\n tests/test_batched_generation.py                   |  130 ---\n tests/test_batched_vision_batch_generator.py       |  736 ------------\n tests/test_batched_vision_blob_store.py            |   80 --\n tests/test_batched_vision_cache_io_thread.py       |  162 ---\n tests/test_batched_vision_cache_store.py           |  273 -----\n tests/test_batched_vision_chunks.py                |   71 --\n tests/test_batched_vision_coordinator.py           |  216 ----\n tests/test_batched_vision_disk_budget.py           |  108 --\n tests/test_batched_vision_image_spans.py           |   53 -\n tests/test_batched_vision_model_kit.py             |  173 ---\n tests/test_batched_vision_parity.py                |  497 ---------\n tests/test_batched_vision_prompt_inputs.py         |  454 --------\n tests/test_batched_vision_qwen_mrope.py            |   83 --\n tests/test_batched_vision_records.py               |  172 ---\n tests/test_batched_vision_request_lifecycle.py     |  210 ----\n tests/test_batched_vision_restore_planner.py       |  109 --\n tests/test_cache_wrapper.py                        |  356 +-----\n tests/test_patched_gemma4.py                       |  113 --\n tests/test_patched_qwen3_5.py                      | 1051 ------------------\n tests/test_prefill_step_size.py                    |  268 -----\n tests/test_repetition_penalty_processor.py         |   27 -\n tests/test_stop_string_processor.py                |    4 +-\n tests/test_text_models.py                          |  134 +--\n tests/test_vision_cache.py                         |  198 ++++\n tests/test_vision_feature_cache.py                 |  158 ---\n tests/test_vision_models.py                        | 1091 +++++-------------\n tests/utils/test_progress_decorators.py            |  116 ++\n tests/utils/test_prompt_progress_events.py         |  335 ------\n tests/utils/test_prompt_progress_reporter.py       |  207 ----\n 94 files changed, 3302 insertions(+), 15713 deletions(-)",
+      "changed_files": [
+        "D\tbatched_demo.py",
+        "M\tdemo.py",
+        "M\tmlx_engine/__init__.py",
+        "M\tmlx_engine/cache_wrapper.py",
+        "M\tmlx_engine/external/models/ernie4_5/tokenization_ernie4_5.py",
+        "D\tmlx_engine/external/models/lfm2_vl/router_lfm2_vl_processor.py",
+        "M\tmlx_engine/generate.py",
+        "M\tmlx_engine/model_kit/__init__.py",
+        "D\tmlx_engine/model_kit/batched_model_kit.py",
+        "D\tmlx_engine/model_kit/batched_model_kit_types.py",
+        "D\tmlx_engine/model_kit/batched_vision/__init__.py",
+        "D\tmlx_engine/model_kit/batched_vision/batch_generator.py",
+        "D\tmlx_engine/model_kit/batched_vision/cache_io_thread.py",
+        "D\tmlx_engine/model_kit/batched_vision/model_kit.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/__init__.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/blob_store.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/chunks.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/disk_budget.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/image_spans.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/records.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/restore_planner.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_cache/types.py",
+        "D\tmlx_engine/model_kit/batched_vision/prompt_inputs.py",
+        "D\tmlx_engine/model_kit/batched_vision/qwen_mrope.py",
+        "D\tmlx_engine/model_kit/batched_vision/request_lifecycle.py",
+        "D\tmlx_engine/model_kit/batched_vision/vision_feature_memoizer.py",
+        "M\tmlx_engine/model_kit/model_kit.py",
+        "D\tmlx_engine/model_kit/patches/gemma4.py",
+        "D\tmlx_engine/model_kit/patches/lfm2_vl.py",
+        "D\tmlx_engine/model_kit/patches/qwen3_5.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/base.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma3.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/gemma3n.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/lfm2_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/load_utils.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/mistral3.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/pixtral.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/process_prompt_with_images.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen2_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_vl.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen3_vl_moe.py",
+        "A\tmlx_engine/model_kit/vision_add_ons/qwen_vl_utils.py",
+        "M\tmlx_engine/processors/repetition_penalty_processor.py",
+        "M\tmlx_engine/utils/eot_tokens.py",
+        "D\tmlx_engine/utils/fix_mistral_pre_tokenizer.py",
+        "D\tmlx_engine/utils/generation_helpers.py",
+        "D\tmlx_engine/utils/generation_result.py",
+        "D\tmlx_engine/utils/mlx_threading.py",
+        "A\tmlx_engine/utils/progress_decorators.py",
+        "M\tmlx_engine/utils/prompt_processing.py",
+        "D\tmlx_engine/utils/prompt_progress_events.py",
+        "D\tmlx_engine/utils/prompt_progress_reporter.py",
+        "M\tmlx_engine/utils/register_models.py",
+        "D\tmlx_engine/utils/sampling.py",
+        "M\tmlx_engine/utils/speculative_decoding.py",
+        "R097\tmlx_engine/model_kit/batched_vision/transformers_compatibility.py\tmlx_engine/vision_model_kit/_transformers_compatibility.py",
+        "A\tmlx_engine/vision_model_kit/vision_model_kit.py",
+        "A\tmlx_engine/vision_model_kit/vision_model_wrapper.py",
+        "M\trequirements.txt",
+        "M\ttests/data/ben_franklin_autobiography_start.txt",
+        "D\ttests/data/equations.jpg",
+        "D\ttests/patched_model_test_utils.py",
+        "M\ttests/shared.py",
+        "D\ttests/test_batched_generation.py",
+        "D\ttests/test_batched_vision_batch_generator.py",
+        "D\ttests/test_batched_vision_blob_store.py",
+        "D\ttests/test_batched_vision_cache_io_thread.py",
+        "D\ttests/test_batched_vision_cache_store.py",
+        "D\ttests/test_batched_vision_chunks.py",
+        "D\ttests/test_batched_vision_coordinator.py",
+        "D\ttests/test_batched_vision_disk_budget.py",
+        "D\ttests/test_batched_vision_image_spans.py",
+        "D\ttests/test_batched_vision_model_kit.py",
+        "D\ttests/test_batched_vision_parity.py",
+        "D\ttests/test_batched_vision_prompt_inputs.py",
+        "D\ttests/test_batched_vision_qwen_mrope.py",
+        "D\ttests/test_batched_vision_records.py",
+        "D\ttests/test_batched_vision_request_lifecycle.py",
+        "D\ttests/test_batched_vision_restore_planner.py",
+        "M\ttests/test_cache_wrapper.py",
+        "D\ttests/test_patched_gemma4.py",
+        "D\ttests/test_patched_qwen3_5.py",
+        "D\ttests/test_prefill_step_size.py",
+        "D\ttests/test_repetition_penalty_processor.py",
+        "M\ttests/test_stop_string_processor.py",
+        "M\ttests/test_text_models.py",
+        "A\ttests/test_vision_cache.py",
+        "D\ttests/test_vision_feature_cache.py",
+        "M\ttests/test_vision_models.py",
+        "A\ttests/utils/test_progress_decorators.py",
+        "D\ttests/utils/test_prompt_progress_events.py",
+        "D\ttests/utils/test_prompt_progress_reporter.py"
+      ],
+      "unmatched_patch_ids": [
+        "+ db145daf763f55ac57ff05e883c6373beae5db7e refactor qwen2_vl vision add on",
+        "+ 2ce6b9d77f861ce893e2618df1776e35989ee54a working p1",
+        "+ 6a04c0e7e54e8d550e8da995a48ba8d1f6cc6707 use text-only hook",
+        "+ c9777fe146a641b261d8b0a9e4b7025853b6338d working test",
+        "+ cb2dba7b4227c6c3a71871168422035a7bbd8c94 simplify",
+        "+ 1ae47321059103ad9db9263cccf70b7cf98580e3 test non-swa model",
+        "+ 47e1d8a52d181f310a1799acc7082eb598ed0d11 checkpoint",
+        "+ c05c2416bba386ff1261e1627e492b8a4efc6fc9 checkpoint",
+        "+ 973907bdf0ca1cd8f6ab54524e0ce11860d92e9d checkpoint",
+        "+ 4e94de98231f42ad01c3942d25e90c173d214b29 remove list",
+        "+ 36c360a5ee9352439f954b43c182f570197d58f6 cleanup",
+        "+ fd38585257b6c24ddd60bc4d7d43d89487cb9fca cleanup",
+        "+ 7dfe3cdeeedf289b9b8bed72f67fcabe201765c2 cleanup"
+      ],
+      "commands": {
+        "head": {
+          "command": [
+            "git",
+            "rev-parse",
+            "--short",
+            "upstream/neil/img-caching"
+          ],
+          "returncode": 0,
+          "stdout": "7dfe3cd\n",
+          "stderr": ""
+        },
+        "for_each_ref": {
+          "command": [
+            "git",
+            "for-each-ref",
+            "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso8601)|%(subject)",
+            "refs/remotes/upstream/neil/img-caching"
+          ],
+          "returncode": 0,
+          "stdout": "upstream/neil/img-caching|7dfe3cd|2025-10-29 10:36:19 -0400|cleanup\n",
+          "stderr": ""
+        },
+        "ahead_behind": {
+          "command": [
+            "git",
+            "rev-list",
+            "--left-right",
+            "--count",
+            "upstream/main...upstream/neil/img-caching"
+          ],
+          "returncode": 0,
+          "stdout": "39\t13\n",
+          "stderr": ""
+        },
+        "recent_commits": {
+          "command": [
+            "git",
+            "log",
+            "--oneline",
+            "--max-count=12",
+            "upstream/main..upstream/neil/img-caching"
+          ],
+          "returncode": 0,
+          "stdout": "7dfe3cd cleanup\nfd38585 cleanup\n36c360a cleanup\n4e94de9 remove list\n973907b checkpoint\nc05c241 checkpoint\n47e1d8a checkpoint\n1ae4732 test non-swa model\ncb2dba7 simplify\nc9777fe working test\n6a04c0e use text-only hook\n2ce6b9d working p1\n",
+          "stderr": ""
+        },
+        "diffstat": {
+          "command": [
+            "git",
+            "diff",
+            "--stat",
+            "upstream/main..upstream/neil/img-caching"
+          ],
+          "returncode": 0,
+          "stdout": " batched_demo.py                                    |  568 ----------\n demo.py                                            |   55 +-\n mlx_engine/__init__.py                             |    4 -\n mlx_engine/cache_wrapper.py                        |  625 ++++++-----\n .../models/ernie4_5/tokenization_ernie4_5.py       |    2 +-\n .../models/lfm2_vl/router_lfm2_vl_processor.py     |   60 -\n mlx_engine/generate.py                             |  946 +++++-----------\n mlx_engine/model_kit/__init__.py                   |    4 -\n mlx_engine/model_kit/batched_model_kit.py          |  456 --------\n mlx_engine/model_kit/batched_model_kit_types.py    |   57 -\n mlx_engine/model_kit/batched_vision/__init__.py    |    3 -\n .../model_kit/batched_vision/batch_generator.py    | 1167 --------------------\n .../model_kit/batched_vision/cache_io_thread.py    |  154 ---\n mlx_engine/model_kit/batched_vision/model_kit.py   |  651 -----------\n .../batched_vision/prompt_cache/__init__.py        |    1 -\n .../batched_vision/prompt_cache/blob_store.py      |  233 ----\n .../batched_vision/prompt_cache/cache_store.py     |  530 ---------\n .../batched_vision/prompt_cache/chunks.py          |   99 --\n .../batched_vision/prompt_cache/coordinator.py     |  330 ------\n .../batched_vision/prompt_cache/disk_budget.py     |  133 ---\n .../batched_vision/prompt_cache/image_spans.py     |   65 --\n .../batched_vision/prompt_cache/records.py         |  189 ----\n .../batched_vision/prompt_cache/restore_planner.py |   95 --\n .../model_kit/batched_vision/prompt_cache/types.py |  114 --\n .../model_kit/batched_vision/prompt_inputs.py      |  438 --------\n mlx_engine/model_kit/batched_vision/qwen_mrope.py  |  132 ---\n .../model_kit/batched_vision/request_lifecycle.py  |  257 -----\n .../batched_vision/vision_feature_memoizer.py      |   17 -\n mlx_engine/model_kit/model_kit.py                  |  262 +++--\n mlx_engine/model_kit/patches/gemma4.py             |  154 ---\n mlx_engine/model_kit/patches/lfm2_vl.py            |   19 -\n mlx_engine/model_kit/patches/qwen3_5.py            |  725 ------------\n mlx_engine/model_kit/vision_add_ons/base.py        |   34 +\n mlx_engine/model_kit/vision_add_ons/gemma3.py      |   87 ++\n mlx_engine/model_kit/vision_add_ons/gemma3n.py     |  155 +++\n mlx_engine/model_kit/vision_add_ons/lfm2_vl.py     |  118 ++\n mlx_engine/model_kit/vision_add_ons/load_utils.py  |  252 +++++\n mlx_engine/model_kit/vision_add_ons/mistral3.py    |  109 ++\n mlx_engine/model_kit/vision_add_ons/pixtral.py     |   91 ++\n .../vision_add_ons/process_prompt_with_images.py   |   81 ++\n mlx_engine/model_kit/vision_add_ons/qwen2_vl.py    |  128 +++\n mlx_engine/model_kit/vision_add_ons/qwen3_vl.py    |   63 ++\n .../model_kit/vision_add_ons/qwen3_vl_moe.py       |   63 ++\n .../model_kit/vision_add_ons/qwen_vl_utils.py      |   95 ++\n .../processors/repetition_penalty_processor.py     |   12 -\n mlx_engine/utils/eot_tokens.py                     |   35 +-\n mlx_engine/utils/fix_mistral_pre_tokenizer.py      |   70 --\n mlx_engine/utils/generation_helpers.py             |   98 --\n mlx_engine/utils/generation_result.py              |   32 -\n mlx_engine/utils/mlx_threading.py                  |   11 -\n mlx_engine/utils/progress_decorators.py            |  100 ++\n mlx_engine/utils/prompt_processing.py              |    7 +-\n mlx_engine/utils/prompt_progress_events.py         |  108 --\n mlx_engine/utils/prompt_progress_reporter.py       |  272 -----\n mlx_engine/utils/register_models.py                |   21 +-\n mlx_engine/utils/sampling.py                       |  113 --\n mlx_engine/utils/speculative_decoding.py           |    8 -\n .../_transformers_compatibility.py}                |    3 +-\n mlx_engine/vision_model_kit/vision_model_kit.py    |  156 +++\n .../vision_model_kit/vision_model_wrapper.py       |  210 ++++\n requirements.txt                                   |  107 +-\n tests/data/ben_franklin_autobiography_start.txt    |   58 -\n tests/data/equations.jpg                           |  Bin 59577 -> 0 bytes\n tests/patched_model_test_utils.py                  |   96 --\n tests/shared.py                                    |   92 --\n tests/test_batched_generation.py                   |  130 ---\n tests/test_batched_vision_batch_generator.py       |  736 ------------\n tests/test_batched_vision_blob_store.py            |   80 --\n tests/test_batched_vision_cache_io_thread.py       |  162 ---\n tests/test_batched_vision_cache_store.py           |  273 -----\n tests/test_batched_vision_chunks.py                |   71 --\n tests/test_batched_vision_coordinator.py           |  216 ----\n tests/test_batched_vision_disk_budget.py           |  108 --\n tests/test_batched_vision_image_spans.py           |   53 -\n tests/test_batched_vision_model_kit.py             |  173 ---\n tests/test_batched_vision_parity.py                |  497 ---------\n tests/test_batched_vision_prompt_inputs.py         |  454 --------\n tests/test_batched_vision_qwen_mrope.py            |   83 --\n tests/test_batched_vision_records.py               |  172 ---\n tests/test_batched_vision_request_lifecycle.py     |  210 ----\n tests/test_batched_vision_restore_planner.py       |  109 --\n tests/test_cache_wrapper.py                        |  356 +-----\n tests/test_patched_gemma4.py                       |  113 --\n tests/test_patched_qwen3_5.py                      | 1051 ------------------\n tests/test_prefill_step_size.py                    |  268 -----\n tests/test_repetition_penalty_processor.py         |   27 -\n tests/test_stop_string_processor.py                |    4 +-\n tests/test_text_models.py                          |  134 +--\n tests/test_vision_cache.py                         |  198 ++++\n tests/test_vision_feature_cache.py                 |  158 ---\n tests/test_vision_models.py                        | 1091 +++++-------------\n tests/utils/test_progress_decorators.py            |  116 ++\n tests/utils/test_prompt_progress_events.py         |  335 ------\n tests/utils/test_prompt_progress_reporter.py       |  207 ----\n 94 files changed, 3302 insertions(+), 15713 deletions(-)\n",
+          "stderr": ""
+        },
+        "changed_files": {
+          "command": [
+            "git",
+            "diff",
+            "--name-status",
+            "upstream/main..upstream/neil/img-caching"
+          ],
+          "returncode": 0,
+          "stdout": "D\tbatched_demo.py\nM\tdemo.py\nM\tmlx_engine/__init__.py\nM\tmlx_engine/cache_wrapper.py\nM\tmlx_engine/external/models/ernie4_5/tokenization_ernie4_5.py\nD\tmlx_engine/external/models/lfm2_vl/router_lfm2_vl_processor.py\nM\tmlx_engine/generate.py\nM\tmlx_engine/model_kit/__init__.py\nD\tmlx_engine/model_kit/batched_model_kit.py\nD\tmlx_engine/model_kit/batched_model_kit_types.py\nD\tmlx_engine/model_kit/batched_vision/__init__.py\nD\tmlx_engine/model_kit/batched_vision/batch_generator.py\nD\tmlx_engine/model_kit/batched_vision/cache_io_thread.py\nD\tmlx_engine/model_kit/batched_vision/model_kit.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/__init__.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/blob_store.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/chunks.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/disk_budget.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/image_spans.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/records.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/restore_planner.py\nD\tmlx_engine/model_kit/batched_vision/prompt_cache/types.py\nD\tmlx_engine/model_kit/batched_vision/prompt_inputs.py\nD\tmlx_engine/model_kit/batched_vision/qwen_mrope.py\nD\tmlx_engine/model_kit/batched_vision/request_lifecycle.py\nD\tmlx_engine/model_kit/batched_vision/vision_feature_memoizer.py\nM\tmlx_engine/model_kit/model_kit.py\nD\tmlx_engine/model_kit/patches/gemma4.py\nD\tmlx_engine/model_kit/patches/lfm2_vl.py\nD\tmlx_engine/model_kit/patches/qwen3_5.py\nA\tmlx_engine/model_kit/vision_add_ons/base.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma3.py\nA\tmlx_engine/model_kit/vision_add_ons/gemma3n.py\nA\tmlx_engine/model_kit/vision_add_ons/lfm2_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/load_utils.py\nA\tmlx_engine/model_kit/vision_add_ons/mistral3.py\nA\tmlx_engine/model_kit/vision_add_ons/pixtral.py\nA\tmlx_engine/model_kit/vision_add_ons/process_prompt_with_images.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen2_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_vl.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen3_vl_moe.py\nA\tmlx_engine/model_kit/vision_add_ons/qwen_vl_utils.py\nM\tmlx_engine/processors/repetition_penalty_processor.py\nM\tmlx_engine/utils/eot_tokens.py\nD\tmlx_engine/utils/fix_mistral_pre_tokenizer.py\nD\tmlx_engine/utils/generation_helpers.py\nD\tmlx_engine/utils/generation_result.py\nD\tmlx_engine/utils/mlx_threading.py\nA\tmlx_engine/utils/progress_decorators.py\nM\tmlx_engine/utils/prompt_processing.py\nD\tmlx_engine/utils/prompt_progress_events.py\nD\tmlx_engine/utils/prompt_progress_reporter.py\nM\tmlx_engine/utils/register_models.py\nD\tmlx_engine/utils/sampling.py\nM\tmlx_engine/utils/speculative_decoding.py\nR097\tmlx_engine/model_kit/batched_vision/transformers_compatibility.py\tmlx_engine/vision_model_kit/_transformers_compatibility.py\nA\tmlx_engine/vision_model_kit/vision_model_kit.py\nA\tmlx_engine/vision_model_kit/vision_model_wrapper.py\nM\trequirements.txt\nM\ttests/data/ben_franklin_autobiography_start.txt\nD\ttests/data/equations.jpg\nD\ttests/patched_model_test_utils.py\nM\ttests/shared.py\nD\ttests/test_batched_generation.py\nD\ttests/test_batched_vision_batch_generator.py\nD\ttests/test_batched_vision_blob_store.py\nD\ttests/test_batched_vision_cache_io_thread.py\nD\ttests/test_batched_vision_cache_store.py\nD\ttests/test_batched_vision_chunks.py\nD\ttests/test_batched_vision_coordinator.py\nD\ttests/test_batched_vision_disk_budget.py\nD\ttests/test_batched_vision_image_spans.py\nD\ttests/test_batched_vision_model_kit.py\nD\ttests/test_batched_vision_parity.py\nD\ttests/test_batched_vision_prompt_inputs.py\nD\ttests/test_batched_vision_qwen_mrope.py\nD\ttests/test_batched_vision_records.py\nD\ttests/test_batched_vision_request_lifecycle.py\nD\ttests/test_batched_vision_restore_planner.py\nM\ttests/test_cache_wrapper.py\nD\ttests/test_patched_gemma4.py\nD\ttests/test_patched_qwen3_5.py\nD\ttests/test_prefill_step_size.py\nD\ttests/test_repetition_penalty_processor.py\nM\ttests/test_stop_string_processor.py\nM\ttests/test_text_models.py\nA\ttests/test_vision_cache.py\nD\ttests/test_vision_feature_cache.py\nM\ttests/test_vision_models.py\nA\ttests/utils/test_progress_decorators.py\nD\ttests/utils/test_prompt_progress_events.py\nD\ttests/utils/test_prompt_progress_reporter.py\n",
+          "stderr": ""
+        },
+        "cherry": {
+          "command": [
+            "git",
+            "cherry",
+            "-v",
+            "HEAD",
+            "upstream/neil/img-caching"
+          ],
+          "returncode": 0,
+          "stdout": "+ db145daf763f55ac57ff05e883c6373beae5db7e refactor qwen2_vl vision add on\n+ 2ce6b9d77f861ce893e2618df1776e35989ee54a working p1\n+ 6a04c0e7e54e8d550e8da995a48ba8d1f6cc6707 use text-only hook\n+ c9777fe146a641b261d8b0a9e4b7025853b6338d working test\n+ cb2dba7b4227c6c3a71871168422035a7bbd8c94 simplify\n+ 1ae47321059103ad9db9263cccf70b7cf98580e3 test non-swa model\n+ 47e1d8a52d181f310a1799acc7082eb598ed0d11 checkpoint\n+ c05c2416bba386ff1261e1627e492b8a4efc6fc9 checkpoint\n+ 973907bdf0ca1cd8f6ab54524e0ce11860d92e9d checkpoint\n+ 4e94de98231f42ad01c3942d25e90c173d214b29 remove list\n+ 36c360a5ee9352439f954b43c182f570197d58f6 cleanup\n+ fd38585257b6c24ddd60bc4d7d43d89487cb9fca cleanup\n+ 7dfe3cdeeedf289b9b8bed72f67fcabe201765c2 cleanup\n",
+          "stderr": ""
+        }
+      }
+    }
+  ],
+  "commands": {
+    "fetch": {
+      "command": [
+        "git",
+        "fetch",
+        "--all",
+        "--prune"
+      ],
+      "returncode": 0,
+      "stdout": "Fetching origin\nFetching upstream\n",
+      "stderr": ""
+    },
+    "head": {
+      "command": [
+        "git",
+        "rev-parse",
+        "--short",
+        "HEAD"
+      ],
+      "returncode": 0,
+      "stdout": "e5e4b5b\n",
+      "stderr": ""
+    },
+    "upstream_head": {
+      "command": [
+        "git",
+        "rev-parse",
+        "--short",
+        "upstream/main"
+      ],
+      "returncode": 0,
+      "stdout": "8ae2610\n",
+      "stderr": ""
+    },
+    "origin_head": {
+      "command": [
+        "git",
+        "rev-parse",
+        "--short",
+        "origin/mlx-vlm-restore-eval-followup"
+      ],
+      "returncode": 0,
+      "stdout": "8f0fa26\n",
+      "stderr": ""
+    },
+    "upstream_counts": {
+      "command": [
+        "git",
+        "rev-list",
+        "--left-right",
+        "--count",
+        "HEAD...upstream/main"
+      ],
+      "returncode": 0,
+      "stdout": "232\t1\n",
+      "stderr": ""
+    },
+    "origin_counts": {
+      "command": [
+        "git",
+        "rev-list",
+        "--left-right",
+        "--count",
+        "HEAD...origin/mlx-vlm-restore-eval-followup"
+      ],
+      "returncode": 0,
+      "stdout": "37\t0\n",
+      "stderr": ""
+    },
+    "upstream_refs": {
+      "command": [
+        "git",
+        "for-each-ref",
+        "--sort=-committerdate",
+        "--format=%(refname:short)|%(objectname:short)|%(committerdate:iso8601)|%(subject)",
+        "refs/remotes/upstream"
+      ],
+      "returncode": 0,
+      "stdout": "upstream/neil/gemma4-tool-context|9aa3db2|2026-07-08 18:36:49 -0400|Rename Gemma4 grammar edge case test\nupstream|8ae2610|2026-06-24 10:45:49 -0400|Handle Gemma4 bidirectional visual prefill (#340)\nupstream/main|8ae2610|2026-06-24 10:45:49 -0400|Handle Gemma4 bidirectional visual prefill (#340)\nupstream/yagil/mlx-dist-non-batched|c86c23a|2026-06-08 00:20:54 -0700|Run Qwen VLM prompts on model thread\nupstream/yagil/dist|366ebd4|2026-05-27 22:21:49 -0400|Preserve backpressure in distributed stream bridge\nupstream/neil/vlm-parity-ci|ea1a6bb|2026-05-27 18:29:25 -0400|Relax VLM concurrency logprob parity\nupstream/will/qwen3.5-dump|fc4d488|2026-03-27 16:53:23 -0400|sort, pre + post processed\nupstream/will/qwen3.5-debug|2c265bc|2026-03-27 12:52:18 -0400|debug log\nupstream/will/qwen3.5-unified|3d49a30|2026-03-25 21:36:41 -0400|multi-image fix\nupstream/will/lfm-2.5-unified|461015c|2026-01-16 11:41:16 -0500|Add test for LFM 2.5 caching\nupstream/neil/img-caching|7dfe3cd|2025-10-29 10:36:19 -0400|cleanup\nupstream/revert-196-will/mistral3-empty-input-embeds|c8970c9|2025-07-17 16:51:50 -0400|Revert \"[Mistral3] Send empty (instead of fake) input IDs (#196)\"\nupstream/neil/phi3_v|161ff8f|2025-04-11 11:01:28 -0400|add test\nupstream/ryan/fix-image-loading|1a141d6|2025-03-12 12:23:59 -0400|Fix image loading\n",
+      "stderr": ""
+    }
+  },
+  "notes": [
+    "This report is factual only; it does not classify promotion readiness.",
+    "A cherry-pick still requires human triage, retained benchmarks, quality gates, and live LM Studio validation before promotion."
+  ]
+}

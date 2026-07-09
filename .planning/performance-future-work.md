@@ -6707,3 +6707,55 @@ Validation:
 - `python3 -m json.tool .planning/m57-upstream-candidate-refresh-20260709.json`
   -> passed.
 - `git diff --check` -> passed.
+
+### M58 upstream scan tooling (2026-07-09)
+
+Feature `m58-upstream-scan-tooling` adds a reusable factual JSON reporter for
+repeat upstream candidate scans. The tool does not classify promotion
+readiness, apply cherry-picks, or change runtime behavior.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m58-upstream-scan-tooling-20260709.json`
+- **Generated scan report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m58-upstream-candidate-scan-report-20260709.json`
+- **Script:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/upstream_candidate_scan.py`
+- **Tests:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_upstream_candidate_scan.py`
+
+Scan command:
+
+```bash
+.venv-py312/bin/python scripts/upstream_candidate_scan.py \
+  --fetch \
+  --output .planning/m58-upstream-candidate-scan-report-20260709.json
+```
+
+Generated report summary:
+
+- `head=e5e4b5b`
+- `upstream_main_head=8ae2610`
+- `origin_branch_head=8f0fa26`
+- `head_vs_upstream_main`: left `232`, right `1`
+- `head_vs_origin_branch`: left `37`, right `0`
+- candidate branch count: `6`
+- unmatched patch-id counts by branch:
+  - `upstream/neil/gemma4-tool-context`: `18`
+  - `upstream/yagil/dist`: `0`
+  - `upstream/yagil/mlx-dist-non-batched`: `6`
+  - `upstream/neil/vlm-parity-ci`: `82`
+  - `upstream/will/lfm-2.5-unified`: `1`
+  - `upstream/neil/img-caching`: `13`
+
+Validation:
+
+- `python3 -m py_compile scripts/upstream_candidate_scan.py tests/test_upstream_candidate_scan.py`
+  -> passed.
+- `.venv-py312/bin/python -m pytest tests/test_upstream_candidate_scan.py -q`
+  -> `3 passed`.
+- `python3 -m json.tool .planning/m58-upstream-candidate-scan-report-20260709.json`
+  -> passed.
+- `python3 -m json.tool .planning/m58-upstream-scan-tooling-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
+
+Decision: **SCAN TOOLING ONLY / NO PROMOTION / RUNTIME UNCHANGED**. Use the
+scan reporter for future upstream refreshes, then manually classify candidates
+before any cherry-pick. Runtime promotion still requires retained benchmarks,
+quality gates, and live LM Studio validation.

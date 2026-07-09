@@ -477,6 +477,20 @@ reuse, missing `Silas` fidelity, cache-reuse ratio regression, or prefill ratio
 regression. It computes ratio fields from older reports when the benchmark
 report only contains token counts.
 
+To produce a factual JSON snapshot of upstream branches before considering any
+new cherry-pick, run:
+
+```bash
+python scripts/upstream_candidate_scan.py \
+  --fetch \
+  --output .planning/upstream-candidate-scan.json
+```
+
+The report records upstream refs, `HEAD` versus upstream/origin counts, recent
+branch commits, changed files, diffstat, and patch-id unmatched commits. It is
+an evidence collector only; promotion still requires human triage, retained
+benchmarks, response-quality gates, and live LM Studio validation.
+
 Example:
 
 ```bash
