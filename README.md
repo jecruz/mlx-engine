@@ -434,6 +434,18 @@ materialization counter collection; `eval_barrier_ms` covers the mandatory
 restore-time `mx.eval(...)` barrier that prevents lazy disk-loaded arrays from
 crossing cache-I/O-thread stream state into generation.
 
+To summarize restore eval split evidence across one or more `shared_bench.py`
+JSON reports, run:
+
+```bash
+python scripts/vlm_restore_eval_split_report.py reports/run-a.json reports/run-b.json \
+  --output .planning/vlm-restore-eval-split-summary.json
+```
+
+The report extracts `vlm_cache_restore_detail` events from runner stderr,
+computes `eval_barrier_ms / eval_ms`, and preserves row-error/cache/output
+evidence so repeated-sample barrier decisions are auditable.
+
 Example:
 
 ```bash

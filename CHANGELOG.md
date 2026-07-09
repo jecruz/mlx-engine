@@ -4,6 +4,9 @@
 
 ### Added
 
+- Add `scripts/vlm_restore_eval_split_report.py` to summarize
+  `vlm_cache_restore_detail` split timing across repeated `shared_bench.py`
+  reports with row-error/cache/output evidence.
 - Add `eval_collect_ms` and `eval_barrier_ms` to VLM
   `vlm_cache_restore_detail` / `vlm_cache_restore_cost_model` timing events so
   restore-eval investigations can separate target discovery from the mandatory

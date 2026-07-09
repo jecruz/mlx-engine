@@ -6209,3 +6209,45 @@ collection overhead is not a viable latency candidate for the retained
 LFM2.5-VL warm-restore lane. Any future restore-eval optimization must reduce
 or safely restructure the actual materialization barrier while preserving
 cross-thread stream safety and quality.
+
+### M47 restore eval split report tool (2026-07-09)
+
+Feature `m47-restore-eval-report-tool` makes repeated restore eval split
+evidence reproducible and readable before future barrier-level optimization
+attempts.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m47-restore-eval-report-tool-20260709.json`
+- **Generated summary:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m47-restore-eval-split-summary-20260709.json`
+- **Script:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/vlm_restore_eval_split_report.py`
+- **Tests:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_vlm_restore_eval_split_report.py`
+
+The script parses one or more `shared_bench.py` JSON reports, extracts
+`vlm_cache_restore_detail` timing events from runner stderr, computes
+`eval_barrier_ms / eval_ms` per sample, preserves row-error/cache/output
+evidence, and classifies the set as barrier-dominated only when all samples meet
+the configured threshold.
+
+M45/M46 generated summary:
+
+- `sample_count=3`
+- `missing_timing_reports=[]`
+- `row_errors=0`
+- `barrier_dominated=true`
+- `eval_collect_ms`: min `0.048`, max `0.050`, avg `0.0493`
+- `eval_barrier_ms`: min `4.586`, max `5.996`, avg `5.162`
+- `eval_ms`: min `4.644`, max `6.052`, avg `5.219`
+- `barrier_share_of_eval_ms`: min `98.75%`, max `99.07%`, avg `98.89%`
+
+Validation:
+
+- `.venv-py312/bin/python -m pytest tests/test_vlm_restore_eval_split_report.py -q`
+  -> `3 passed`.
+- `python3 -m py_compile scripts/vlm_restore_eval_split_report.py` -> passed.
+- `python3 -m json.tool .planning/m47-restore-eval-split-summary-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
+
+Decision: **REPORTING TOOL ONLY / NO PROMOTION / RUNTIME UNCHANGED**. Use this
+tool for future restore eval candidates before making promotion claims; the
+current M45/M46 summary confirms barrier domination and no target-collection
+optimization target.
