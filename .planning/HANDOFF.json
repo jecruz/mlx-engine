@@ -1,6 +1,6 @@
 {
   "version": "3.0",
-  "timestamp_utc": "2026-07-09T05:05:00Z",
+  "timestamp_utc": "2026-07-10T00:00:00Z",
   "context": "research",
   "status": "active-blocked-on-lmstudio-model-index-visibility",
   "project": "MLX-engine prompt/inference performance",
@@ -10,24 +10,24 @@
   "active_goal": "Advance the Mac-local MLX inference stack only with changes that measurably improve retained prompt-processing or generation latency, preserve response quality, and do not increase runtime instability.",
   "latest_commits": [
     {
-      "sha": "753e9a8",
-      "message": "[#1190] record LM Studio model resolution diagnostics"
+      "sha": "a1a9dea",
+      "message": "[#1190] add upstream candidate history report"
     },
     {
-      "sha": "7f798b1",
-      "message": "[#1190] probe LM Studio server validation state"
+      "sha": "aa445f2",
+      "message": "[#1190] add upstream scan diff report"
     },
     {
-      "sha": "45025c8",
-      "message": "[#1190] add upstream candidate scan reporter"
+      "sha": "309794d",
+      "message": "[#1190] add LFM2.5 promotion gate"
     },
     {
-      "sha": "e5e4b5b",
-      "message": "[#1190] refresh upstream MLX candidate scan"
+      "sha": "c096505",
+      "message": "[#1190] add LFM2.5 cache evidence report"
     },
     {
-      "sha": "edf0c23",
-      "message": "[#1190] refresh current MLX performance handoff"
+      "sha": "605a947",
+      "message": "[#1190] add readable upstream scan report"
     }
   ],
   "recent_milestones": [
@@ -59,6 +59,42 @@
       "status": "blocked-before-inference",
       "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m60-lmstudio-load-import-diagnostics-20260709.json",
       "summary": "lms load --estimate-only on the retained absolute model directory returned Model not found. lms import --dry-run on model.safetensors is not a viable MLX directory registration path."
+    },
+    {
+      "id": "M61",
+      "name": "Handoff refresh",
+      "status": "blocked-before-inference",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m61-current-handoff-refresh-20260709.json",
+      "summary": "Updated planning/handoff state and kept the LM Studio visibility blocker as active."
+    },
+    {
+      "id": "M62",
+      "name": "Upstream readable scan",
+      "status": "done",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-readable-scan-20260709.json",
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-candidate-scan-report-20260709.json",
+      "summary": "Scored the M62 upstream scan against prior head and prepared readable markdown report artifacts."
+    },
+    {
+      "id": "M65",
+      "name": "Upstream scan diff tooling",
+      "status": "done-no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m65-upstream-candidate-scan-diff-20260709.json",
+      "summary": "Added review-only diff artifacts for adjacent upstream candidate scan states; candidate branches remained unchanged."
+    },
+    {
+      "id": "M66",
+      "name": "Upstream scan history",
+      "status": "done-no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m66-upstream-candidate-history-20260709.json",
+      "summary": "Added a review-only multi-scan history renderer and documented no-promotion candidate triage evidence."
+    },
+    {
+      "id": "M67",
+      "name": "Upstream candidate refresh",
+      "status": "done-no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m67-upstream-candidate-refresh-20260710.json",
+      "summary": "Refreshed local-head upstream scan evidence (`a1a9dea`), with unchanged six-branch payload status."
     }
   ],
   "blockers": [
@@ -89,6 +125,22 @@
     "If no LM Studio progress is possible, continue only with isolated local hypotheses that preserve the no-promotion rule until live validation is available."
   ],
   "validation": [
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m67-upstream-candidate-scan-report-20260710.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json --output .planning/m67-upstream-candidate-scan-diff-20260710.md --title \"M67 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json --output .planning/m67-upstream-candidate-history-20260710.md --title \"M67 Upstream Candidate Scan History\"",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m67-upstream-candidate-refresh-20260710.json",
+      "result": "passed"
+    },
     {
       "command": "python3 -m json.tool .planning/m60-lmstudio-load-import-diagnostics-20260709.json",
       "result": "passed"
