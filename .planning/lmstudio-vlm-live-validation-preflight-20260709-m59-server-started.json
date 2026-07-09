@@ -1,0 +1,111 @@
+{
+  "model_key": "lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+  "hf_url": "https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+  "ready_for_live_validation": false,
+  "model_visible_to_lms": {
+    "visible": false,
+    "matching_entries": [],
+    "reason": "model key is absent from lms ls --json"
+  },
+  "model_dir": {
+    "path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+    "exists": true,
+    "is_dir": true,
+    "required_files": {
+      "config.json": true,
+      "model.safetensors": true,
+      "model.safetensors.index.json": true,
+      "processor_config.json": true,
+      "tokenizer.json": true,
+      "tokenizer_config.json": true
+    },
+    "complete": true
+  },
+  "lmstudio_store_model_dir": {
+    "path": "/Users/jeffreycruz/.lmstudio/models/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+    "exists": false,
+    "is_dir": false,
+    "required_files": {
+      "config.json": false,
+      "model.safetensors": false,
+      "model.safetensors.index.json": false,
+      "processor_config.json": false,
+      "tokenizer.json": false,
+      "tokenizer_config.json": false
+    },
+    "complete": false,
+    "store_dir": "/Users/jeffreycruz/.lmstudio/models",
+    "note": "Informational only. A complete directory in this store is not enough; `lms ls --json` must expose the model key before live validation."
+  },
+  "model_data": {
+    "path": "/Users/jeffreycruz/.lmstudio/.internal/model-data.json",
+    "exists": true,
+    "contains_model_key": true,
+    "entry": {
+      "source": {
+        "type": "huggingface",
+        "owner": "lmstudio-community",
+        "repo": "LFM2.5-VL-1.6B-MLX-8bit",
+        "file": null
+      },
+      "transitive": false,
+      "lastLoadedTimestamp": 1782178363822
+    }
+  },
+  "commands": {
+    "runtime_ls": {
+      "command": [
+        "lms",
+        "runtime",
+        "ls"
+      ],
+      "returncode": 0,
+      "stdout": "LLM ENGINE                                                                              SELECTED    MODEL FORMAT\nllama.cpp-mac-arm64-apple-metal-advsimd@2.25.0                                             \u2713            GGUF    \nllama.cpp-mac-arm64-apple-metal-advsimd@2.24.0                                                          GGUF    \nllama.cpp-mac-arm64-apple-metal-advsimd@2.23.1                                                          GGUF    \nllama.cpp-mac-arm64-apple-metal-advsimd@2.23.0                                                          GGUF    \nllama.cpp-mac-arm64-apple-metal-advsimd@2.20.1                                                          GGUF    \nmlx-llm-mac-arm64-apple-metal-advsimd@1.10.0                                                            MLX     \nmlx-llm-mac-arm64-apple-metal-advsimd@1.9.0                                                             MLX     \nmlx-llm-mac-arm64-apple-metal-advsimd@1.8.5                                                             MLX     \nmlx-llm-mac-arm64-apple-metal-advsimd@1.8.4                                                             MLX     \nmlx-llm-mac-arm64-apple-metal-advsimd-cheetara-mlx-thread-unsafe-runtime@2026.6.2303       \u2713            MLX     \nmlx-llm-mac-arm64-apple-metal-advsimd-mlx-engine-unload-guard@2026.6.19                                 MLX     \n",
+      "stderr": "",
+      "timed_out": false
+    },
+    "server_status": {
+      "command": [
+        "lms",
+        "server",
+        "status"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "The server is running on port 4521.\n",
+      "timed_out": false
+    },
+    "loaded_models": {
+      "command": [
+        "lms",
+        "ps"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": "No models are currently loaded.\n\nTo load a model, run:\n\n    lms load <model path>\n",
+      "timed_out": false
+    },
+    "lms_ls_json": {
+      "command": [
+        "lms",
+        "ls",
+        "--json"
+      ],
+      "returncode": 0,
+      "stdout": "[{\"type\":\"embedding\",\"modelKey\":\"text-embedding-nomic-embed-text-v1.5\",\"format\":\"gguf\",\"displayName\":\"Nomic Embed Text v1.5\",\"publisher\":\"nomic-ai\",\"path\":\"nomic-ai/nomic-embed-text-v1.5-GGUF/nomic-embed-text-v1.5.Q4_K_M.gguf\",\"sizeBytes\":84106624,\"indexedModelIdentifier\":\"nomic-ai/nomic-embed-text-v1.5-GGUF/nomic-embed-text-v1.5.Q4_K_M.gguf\",\"deviceIdentifier\":null,\"architecture\":\"nomic-bert\",\"quantization\":{\"name\":\"Q4_K_M\",\"bits\":4},\"maxContextLength\":2048}]\n",
+      "stderr": "",
+      "timed_out": false
+    }
+  },
+  "next_supported_commands": [
+    "lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y",
+    "lms load lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --identifier m31-lfm25-vl --ttl 300 -y",
+    "lms server start"
+  ],
+  "notes": [
+    "Do not hand-edit LM Studio model-index cache files.",
+    "Do not treat a copied `~/.lmstudio/models/...` directory as loadable unless `lms ls --json` also exposes the model key.",
+    "Do not force `lms import` for MLX model.safetensors files; the CLI treats that as a non-model file and prompts interactively.",
+    "Proceed to backend registration and live /v1/chat/completions validation only after this report says ready_for_live_validation=true."
+  ]
+}

@@ -6759,3 +6759,39 @@ Decision: **SCAN TOOLING ONLY / NO PROMOTION / RUNTIME UNCHANGED**. Use the
 scan reporter for future upstream refreshes, then manually classify candidates
 before any cherry-pick. Runtime promotion still requires retained benchmarks,
 quality gates, and live LM Studio validation.
+
+### M59 LM Studio server state probe (2026-07-09)
+
+Feature `m59-lmstudio-server-state-probe` checks whether starting the supported
+LM Studio local server changes the retained LFM2.5-VL live-validation preflight
+result. This is a reversible external-state diagnostic only; it does not change
+`mlx-engine` runtime behavior.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m59-lmstudio-server-state-probe-20260709.json`
+- **Preflight while server running:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m59-server-started.json`
+
+Commands and result:
+
+- `lms server status` before probe -> server not running.
+- `lms ps` -> no models loaded.
+- `lms ls --json` -> only `text-embedding-nomic-embed-text-v1.5` visible.
+- `lms server start` -> success, server running on port `4521`.
+- preflight while server was running -> `ready_for_live_validation=false`,
+  `model_visible_to_lms=false`, `model_dir_complete=true`.
+- `lsof -nP -iTCP:4521 -sTCP:LISTEN` -> LM Studio PID `1921` listening on
+  `127.0.0.1:4521` during the diagnostic.
+- `lms server stop && lms server status` -> server stopped; final status not
+  running.
+
+Validation:
+
+- `python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m59-server-started.json`
+  -> passed.
+- `python3 -m json.tool .planning/m59-lmstudio-server-state-probe-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
+
+Decision: **LIVE VALIDATION BLOCKED BY MODEL VISIBILITY / NO PROMOTION /
+RUNTIME UNCHANGED**. Server state is not the blocker. The retained LFM2.5-VL
+model key must appear in `lms ls --json` before any live LM Studio inference
+validation or runtime promotion.
