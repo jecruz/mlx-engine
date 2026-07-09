@@ -6644,3 +6644,66 @@ Validation:
 - `git diff --check` -> passed.
 
 Decision: **HANDOFF REFRESH ONLY / NO PROMOTION / RUNTIME UNCHANGED**.
+
+### M57 upstream candidate refresh (2026-07-09)
+
+Feature `m57-upstream-candidate-refresh` refreshes upstream candidate triage
+before any new runtime change.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m57-upstream-candidate-refresh-20260709.json`
+- **Current head:** `edf0c23`
+- **Upstream main:** `8ae2610` (`Handle Gemma4 bidirectional visual prefill (#340)`)
+- **Origin tracking head:** `8f0fa26`
+
+Commands:
+
+```bash
+git fetch --all --prune
+git for-each-ref --sort=-committerdate \
+  --format='%(refname:short)|%(objectname:short)|%(committerdate:iso8601)|%(subject)' \
+  refs/remotes/upstream
+git rev-list --left-right --count HEAD...upstream/main
+git rev-list --left-right --count HEAD...origin/mlx-vlm-restore-eval-followup
+git rev-list --left-right --count upstream/main...<candidate-branch>
+git diff --stat upstream/main..<candidate-branch>
+git diff --name-status upstream/main..<candidate-branch>
+```
+
+Result:
+
+- `HEAD...upstream/main`: `231` local-only, `1` upstream-only. The
+  upstream-only commit remains the already-audited Gemma4 #340 head.
+- `HEAD...origin/mlx-vlm-restore-eval-followup`: `36` local-only, `0`
+  origin-only.
+- `upstream/neil/gemma4-tool-context` remains at `9aa3db2`, unchanged from
+  M43. Deferred because it is Gemma4 tool-runtime / grammar / reasoning-guard
+  work, not a bounded retained prompt-processing or cache-latency candidate.
+- `upstream/yagil/dist` produced no unmatched patch-id candidates relative to
+  `HEAD`; it remains a broad distributed rewrite and no new cherry-pick is
+  selected.
+- `upstream/yagil/mlx-dist-non-batched` has six unmatched distributed/model
+  thread commits (`c8275b6`, `e5a6faf`, `958ffb8`, `b7019fc`, `3e41fdf`,
+  `c86c23a`). Deferred because they are coupled scheduler/runtime changes that
+  need their own retained benchmark and stability lane.
+- `upstream/neil/vlm-parity-ci` contains useful-looking bounded commits, but
+  content inspection shows the current branch already has the bounded VLM
+  detokenizer, prompt-progress, max-seq clamp, and Mistral tokenizer setup
+  behavior. The remaining owner-thread change is broad sequential runtime
+  threading work and is deferred.
+- `upstream/will/lfm-2.5-unified` only adds a prompting LFM2.5 caching test.
+  M51 already adapted the useful behavior as a non-prompting retained-model
+  gate, and M52-M54 added benchmark/compare tooling.
+- `upstream/neil/img-caching` remains an older WIP/checkpoint image-caching
+  branch against a deleted/renamed vision architecture. No bounded
+  cherry-pickable candidate was identified.
+
+Decision: **NO CHERRY-PICK / NO PROMOTION / RUNTIME UNCHANGED**. Keep runtime
+unchanged. Repeat this scan if upstream advances; otherwise only start a local
+candidate that has a retained benchmark path and can remain no-promotion until
+live LM Studio validation is unblocked.
+
+Validation:
+
+- `python3 -m json.tool .planning/m57-upstream-candidate-refresh-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.

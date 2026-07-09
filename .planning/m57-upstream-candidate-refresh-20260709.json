@@ -1,0 +1,168 @@
+{
+  "milestone": "M57-upstream-candidate-refresh",
+  "timestamp_utc": "2026-07-09T04:05:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "head": "edf0c23",
+  "objective": "Refresh upstream performance, cache, stream, and stability candidate triage before attempting any new runtime change.",
+  "commands": [
+    "git fetch --all --prune",
+    "git for-each-ref --sort=-committerdate --format='%(refname:short)|%(objectname:short)|%(committerdate:iso8601)|%(subject)' refs/remotes/upstream",
+    "git rev-list --left-right --count HEAD...upstream/main",
+    "git rev-list --left-right --count HEAD...origin/mlx-vlm-restore-eval-followup",
+    "git rev-list --left-right --count upstream/main...<candidate-branch>",
+    "git diff --stat upstream/main..<candidate-branch>",
+    "git diff --name-status upstream/main..<candidate-branch>",
+    "git show 461015c -- tests/test_vision_models.py",
+    "git show 81fc5d8 -- mlx_engine/model_kit/batched_vision/model_kit.py",
+    "git show b1456ee -- mlx_engine/model_kit/batched_vision/model_kit.py",
+    "git show cf058d7 -- mlx_engine/model_kit/batched_vision/model_kit.py",
+    "git show 6455eb7 -- mlx_engine/generate.py mlx_engine/model_kit/model_kit.py",
+    "git show 8026180 -- mlx_engine/cache_wrapper.py"
+  ],
+  "remote_state": {
+    "upstream_main": {
+      "ref": "upstream/main",
+      "head": "8ae2610",
+      "subject": "Handle Gemma4 bidirectional visual prefill (#340)",
+      "head_to_upstream_main_counts": {
+        "local_only": 231,
+        "upstream_only": 1
+      },
+      "decision": "NO_CHERRY_PICK",
+      "reason": "No new mainline upstream commit beyond the already-audited Gemma4 #340 head. The branch retains the prior focused treatment instead of broad-merging upstream/main."
+    },
+    "origin_tracking": {
+      "ref": "origin/mlx-vlm-restore-eval-followup",
+      "head": "8f0fa26",
+      "head_to_origin_counts": {
+        "local_only": 36,
+        "origin_only": 0
+      }
+    }
+  },
+  "candidate_branches": [
+    {
+      "branch": "upstream/neil/gemma4-tool-context",
+      "head": "9aa3db2",
+      "committer_date": "2026-07-08 18:36:49 -0400",
+      "ahead_behind_vs_upstream_main": {
+        "upstream_main_only": 0,
+        "branch_only": 17
+      },
+      "decision": "DEFER",
+      "reason": "Head is unchanged from M43. The branch is a Gemma4 tool-runtime and grammar/reasoning-guard feature, not a bounded retained-workload prompt-processing or cache-latency candidate."
+    },
+    {
+      "branch": "upstream/yagil/dist",
+      "head": "366ebd4",
+      "committer_date": "2026-05-27 22:21:49 -0400",
+      "ahead_behind_vs_upstream_main": {
+        "upstream_main_only": 5,
+        "branch_only": 29
+      },
+      "decision": "NO_NEW_CHERRY_PICK",
+      "reason": "Patch-id scan produced no unmatched commits from this branch relative to HEAD. The branch is still a broad distributed rewrite and remains outside the retained local direct benchmark lane."
+    },
+    {
+      "branch": "upstream/yagil/mlx-dist-non-batched",
+      "head": "c86c23a",
+      "committer_date": "2026-06-08 00:20:54 -0700",
+      "ahead_behind_vs_upstream_main": {
+        "upstream_main_only": 5,
+        "branch_only": 35
+      },
+      "unmatched_commits": [
+        "c8275b6 Align distributed MLX prompt caching",
+        "e5a6faf Run distributed MLX scheduler on model thread",
+        "958ffb8 Run Gemma 4 MLX generation on model thread",
+        "b7019fc Handle early distributed cancel requests",
+        "3e41fdf Run MLX VLM generation on model thread",
+        "c86c23a Run Qwen VLM prompts on model thread"
+      ],
+      "decision": "DEFER",
+      "reason": "The unmatched commits are model-thread/distributed scheduler changes coupled to the distributed runtime. They are not a small reversible retained-workload candidate and would need full scheduler/runtime validation."
+    },
+    {
+      "branch": "upstream/neil/vlm-parity-ci",
+      "head": "ea1a6bb",
+      "committer_date": "2026-05-27 18:29:25 -0400",
+      "ahead_behind_vs_upstream_main": {
+        "upstream_main_only": 5,
+        "branch_only": 82
+      },
+      "bounded_commit_checks": [
+        {
+          "commit": "81fc5d8",
+          "subject": "Avoid rebuilding VLM detokenizer per request",
+          "decision": "ALREADY_PRESENT_BY_CONTENT",
+          "evidence": "Current BatchedVisionModelKit already defines _new_detokenizer with copy.copy fallback and uses it before request insert."
+        },
+        {
+          "commit": "b1456ee",
+          "subject": "Fix batched VLM prompt progress reporting",
+          "decision": "ALREADY_PRESENT_BY_CONTENT",
+          "evidence": "Current BatchedVisionModelKit already routes PromptProgressBeginEvent/PromptProgressEvent through PromptProgressReporter and emits cached-token begin events."
+        },
+        {
+          "commit": "cf058d7",
+          "subject": "Fix VLM model kit setup edge cases",
+          "decision": "ALREADY_PRESENT_BY_CONTENT",
+          "evidence": "Current BatchedVisionModelKit clamps max_seq_nums below 1 and applies fix_mistral_pre_tokenizer in tokenizer-only setup."
+        },
+        {
+          "commit": "6455eb7",
+          "subject": "Run sequential model kit on owner thread",
+          "decision": "DEFER",
+          "evidence": "This touches sequential ModelKit, generate.py cancellation, tokenizer/draft-model methods, and executor lifecycle. It is a broad threading contract change requiring separate retained text/VLM benchmark and stability validation."
+        }
+      ],
+      "decision": "DEFER",
+      "reason": "Useful bounded VLM changes are already present by content. Remaining unmatched model-thread/scheduler changes are broad and not promotable without a dedicated candidate branch and retained benchmarks."
+    },
+    {
+      "branch": "upstream/will/lfm-2.5-unified",
+      "head": "461015c",
+      "committer_date": "2026-01-16 11:41:16 -0500",
+      "ahead_behind_vs_upstream_main": {
+        "upstream_main_only": 25,
+        "branch_only": 1
+      },
+      "decision": "NO_CHERRY_PICK",
+      "reason": "The only branch-only commit adds a prompting model_getter-based LFM2.5 caching test. M51 already adapted the useful behavior as a non-prompting retained-model gate and M52-M54 added benchmark/compare tooling."
+    },
+    {
+      "branch": "upstream/neil/img-caching",
+      "head": "7dfe3cd",
+      "committer_date": "2025-10-29 10:36:19 -0400",
+      "ahead_behind_vs_upstream_main": {
+        "upstream_main_only": 39,
+        "branch_only": 13
+      },
+      "decision": "DEFER",
+      "reason": "The branch consists of WIP/checkpoint/cleanup commits on an older vision_add_ons architecture and deletes current batched_vision surfaces. No bounded cherry-pickable retained-workload candidate was identified."
+    }
+  ],
+  "decision": {
+    "status": "NO_CHERRY_PICK",
+    "runtime_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "live_lm_studio_validation": "blocked-before-inference",
+    "next_action": "Keep runtime unchanged. If a future upstream branch advances, repeat this scan; otherwise only start a local candidate that has a retained benchmark path and can remain no-promotion until live LM Studio validation is unblocked."
+  },
+  "validation": [
+    {
+      "command": "git fetch --all --prune",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m57-upstream-candidate-refresh-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ]
+}
