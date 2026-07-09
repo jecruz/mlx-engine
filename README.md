@@ -603,6 +603,32 @@ If you do override the runtime pair, provide both
 custom backend does not mix vendor app and Python runtimes from different
 LM Studio builds.
 
+### LM Studio VLM Live-Validation Preflight
+
+Before registering a custom backend for retained VLM cache validation, verify
+that LM Studio can actually load the retained model key:
+
+```bash
+.venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py \
+  --output .planning/lmstudio-vlm-live-validation-preflight.json
+```
+
+The preflight is read-only. It checks `lms runtime ls`, `lms server status`,
+`lms ps`, `lms ls --json`, the retained local LFM2.5-VL directory, and
+`~/.lmstudio/.internal/model-data.json`. It exits non-zero until the retained
+model appears in `lms ls --json`.
+
+If the model directory exists but `lms ls --json` does not expose the model key,
+use the supported LM Studio download/registration path instead of editing LM
+Studio cache files by hand:
+
+```bash
+lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y
+```
+
+Proceed to backend registration and live `/v1/chat/completions` validation only
+after the preflight reports `ready_for_live_validation=true`.
+
 ### VLM Restore Freshness Flush
 
 The VLM cache I/O thread now flushes an ordered prefix of immediately matching

@@ -5696,3 +5696,40 @@ Decision: **LIVE VALIDATION BLOCKED / NO LIVE LM STUDIO PROMOTION**. The M31
 direct validation remains retained. Before live promotion, first make the
 retained LFM2.5-VL MLX directory visible to LM Studio through a supported
 non-copy registration/download path so `lms ls` exposes a loadable model key.
+
+### M33 LM Studio VLM live-validation preflight (2026-07-08)
+
+Feature `m33-lmstudio-vlm-live-validation-preflight` adds a fail-closed
+preflight script so future live-validation attempts do not repeat ad hoc LM
+Studio cache edits or unsupported imports.
+
+- **Script:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lmstudio_vlm_live_validation_preflight.py`
+- **Live report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260708.json`
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m33-lmstudio-vlm-preflight-20260708.json`
+
+The preflight checks `lms runtime ls`, `lms server status`, `lms ps`,
+`lms ls --json`, the retained local LFM2.5-VL directory, and
+`~/.lmstudio/.internal/model-data.json`. It writes JSON evidence and exits
+non-zero until the retained model key is visible to `lms load`.
+
+Current result:
+
+- `ready_for_live_validation=false`
+- `model_visible_to_lms=false`
+- `model_dir_complete=true`
+- `model_data.contains_model_key=true`
+- server not running; no models loaded; prior custom MLX runtime selected
+
+Supported registration attempts:
+
+- `lms get lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y` failed because
+  the LM Studio resolver lowercased the artifact and could not resolve it.
+- `timeout 120 lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y`
+  resolved the correct 2.09 GB MLX artifact, but the transfer remained at
+  `0.00%` until timeout exit `124`.
+
+Decision: **PREFLIGHT ADDED / FAIL-CLOSED / LIVE VALIDATION STILL BLOCKED**.
+The next supported path is to rerun the Hugging Face URL `lms get` command when
+network/download progress is available, then rerun the preflight and proceed to
+custom-backend live `/v1/chat/completions` validation only after it reports
+`ready_for_live_validation=true`.

@@ -1,0 +1,42 @@
+{
+  "milestone": "M33-lmstudio-vlm-live-validation-preflight",
+  "date": "2026-07-08",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Replace ad hoc LM Studio model-registry probing with a reusable fail-closed preflight before live VLM validation.",
+  "artifacts": {
+    "script": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lmstudio_vlm_live_validation_preflight.py",
+    "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260708.json"
+  },
+  "live_preflight_result": {
+    "ready_for_live_validation": false,
+    "model_visible_to_lms": false,
+    "model_dir_complete": true,
+    "model_data_contains_model_key": true,
+    "server_status": "not running",
+    "loaded_models": "none",
+    "selected_mlx_runtime": "mlx-llm-mac-arm64-apple-metal-advsimd-cheetara-mlx-thread-unsafe-runtime@2026.6.2303"
+  },
+  "supported_registration_attempts": [
+    {
+      "command": "lms get lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y",
+      "status": "failed",
+      "evidence": "Failed to resolve artifact \"lmstudio-community/lfm2.5-vl-1.6b-mlx-8bit\": The artifact does not exist or you do not have permission to read it."
+    },
+    {
+      "command": "timeout 120 lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y",
+      "status": "timed_out",
+      "evidence": "Resolver found the correct 2.09 GB LFM2.5 VL 1.6B 8BIT [MLX] artifact, but download remained at 0.00% until timeout exit 124."
+    }
+  ],
+  "validation": [
+    ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260708.json",
+    ".venv-py312/bin/python -m py_compile scripts/lmstudio_vlm_live_validation_preflight.py"
+  ],
+  "decision": {
+    "status": "PREFLIGHT_ADDED_FAIL_CLOSED",
+    "live_validation_status": "still_blocked",
+    "next_supported_command": "lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y"
+  }
+}

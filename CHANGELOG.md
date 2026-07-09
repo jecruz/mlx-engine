@@ -4,6 +4,9 @@
 
 ### Added
 
+- Add `scripts/lmstudio_vlm_live_validation_preflight.py` to record whether
+  the retained LFM2.5-VL model is visible to `lms load` before live LM Studio
+  VLM validation.
 - Allow the shared thread-unsafe MLX stream experiment to be enabled through
   `/tmp/mlx-engine-thread-unsafe-stream` so the path can be probed inside the
   real LM Studio runtime when backend env vars are not preserved.
