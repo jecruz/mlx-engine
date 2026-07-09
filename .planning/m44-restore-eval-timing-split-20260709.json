@@ -1,0 +1,46 @@
+{
+  "milestone": "M44-restore-eval-timing-split",
+  "timestamp_utc": "2026-07-09T01:34:24Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Improve restore-eval benchmark evidence fidelity without changing restore behavior or weakening the restore-time mx.eval safety barrier.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_batched_vision_cache_store.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md"
+    ],
+    "details": [
+      "Keep the existing vlm_cache_restore_detail eval_ms field as the compatibility aggregate covering target collection plus barrier timing.",
+      "Add eval_collect_ms to isolate restore eval-target discovery and materialization counter collection.",
+      "Add eval_barrier_ms to isolate the mandatory restore-time mx.eval(...) call.",
+      "Carry both split fields through vlm_cache_restore_cost_model.",
+      "Do not alter eval target selection, record formats, restore assembly, or the mx.eval barrier."
+    ]
+  },
+  "validation": [
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_batched_vision_cache_store.py -q",
+      "status": "passed",
+      "result": "25 passed, 2 warnings in 4.83s"
+    },
+    {
+      "command": "python3 -m py_compile mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "DIAGNOSTICS_ONLY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "not-applicable-no-runtime-candidate",
+    "next_action": "Use the split fields in the next retained VLM timing run to determine whether the observed restore eval_ms is dominated by target collection or by the actual mx.eval barrier before attempting another restore-materialization change."
+  }
+}

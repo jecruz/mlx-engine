@@ -427,6 +427,13 @@ generation-stream preparation, startup warmup cases, prompt-cache preparation,
 Events are emitted at warning level so they are visible in default benchmark and demo
 logging configurations.
 
+For VLM persistent-cache restores, `vlm_cache_restore_detail` keeps the
+historical aggregate `eval_ms` field and also reports `eval_collect_ms` and
+`eval_barrier_ms`. `eval_collect_ms` covers restore-target discovery and
+materialization counter collection; `eval_barrier_ms` covers the mandatory
+restore-time `mx.eval(...)` barrier that prevents lazy disk-loaded arrays from
+crossing cache-I/O-thread stream state into generation.
+
 Example:
 
 ```bash

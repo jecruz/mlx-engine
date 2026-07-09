@@ -6077,3 +6077,41 @@ PROMOTION / RUNTIME UNCHANGED**. Keep the current runtime unchanged. Continue
 only with a new isolated local hypothesis or retry official LM Studio
 registration; do not run live validation until preflight reports
 `ready_for_live_validation=true`.
+
+### M44 restore eval timing split (2026-07-09)
+
+Feature `m44-restore-eval-timing-split` improves restore-eval benchmark
+evidence fidelity without changing restore behavior or weakening the
+restore-time `mx.eval(...)` safety barrier.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m44-restore-eval-timing-split-20260709.json`
+- **Code:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py`
+- **Tests:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_batched_vision_cache_store.py`
+- **Docs:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md`,
+  `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md`
+
+Change:
+
+- `vlm_cache_restore_detail` keeps the historical aggregate `eval_ms` field for
+  compatibility.
+- New `eval_collect_ms` records restore eval-target discovery and
+  materialization counter collection.
+- New `eval_barrier_ms` records the mandatory restore-time `mx.eval(...)`
+  barrier separately.
+- `vlm_cache_restore_cost_model` carries both split fields through with the
+  existing `eval_ms`.
+- No eval-target selection, record format, restore assembly, or barrier
+  behavior changed.
+
+Validation:
+
+- `.venv-py312/bin/python -m pytest tests/test_batched_vision_cache_store.py -q`
+  -> `25 passed`, `2 warnings`.
+- `python3 -m py_compile mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py`
+  -> passed.
+- `git diff --check` -> passed.
+
+Decision: **DIAGNOSTICS ONLY / NO PROMOTION / RUNTIME BEHAVIOR UNCHANGED**.
+Use the split fields in the next retained VLM timing run to decide whether the
+observed restore `eval_ms` is dominated by target collection or by the actual
+`mx.eval(...)` barrier before attempting another restore-materialization change.

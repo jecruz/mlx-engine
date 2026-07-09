@@ -4,6 +4,10 @@
 
 ### Added
 
+- Add `eval_collect_ms` and `eval_barrier_ms` to VLM
+  `vlm_cache_restore_detail` / `vlm_cache_restore_cost_model` timing events so
+  restore-eval investigations can separate target discovery from the mandatory
+  `mx.eval(...)` barrier.
 - Add `scripts/lmstudio_vlm_download_probe.py` to run the supported LM Studio
   VLM `lms get` registration path with bounded timeout and JSON evidence.
 - Add `scripts/lmstudio_vlm_live_validation_preflight.py` to record whether

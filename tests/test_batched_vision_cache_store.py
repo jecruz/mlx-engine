@@ -396,6 +396,10 @@ def test_cache_store_logs_restore_materialization_counters(
     restore_detail = next(
         event for event in events if event["event"] == "vlm_cache_restore_detail"
     )
+    assert restore_detail["eval_collect_ms"] >= 0.0
+    assert restore_detail["eval_barrier_ms"] >= 0.0
+    assert restore_detail["eval_ms"] >= restore_detail["eval_collect_ms"]
+    assert restore_detail["eval_ms"] >= restore_detail["eval_barrier_ms"]
     assert restore_detail["eval_target_count"] > 0
     assert restore_detail["materialized_bytes"] > 0
     assert restore_detail["eval_target_count"] == sum(
@@ -474,6 +478,8 @@ def test_cache_store_logs_restore_rotating_cost_model(
     ][RECORD_KIND_ROTATING_DELTA]
     assert cost_model["load_chunks_ms"] == restore_detail["load_chunks_ms"]
     assert cost_model["assemble_ms"] == restore_detail["assemble_ms"]
+    assert cost_model["eval_collect_ms"] == restore_detail["eval_collect_ms"]
+    assert cost_model["eval_barrier_ms"] == restore_detail["eval_barrier_ms"]
     assert cost_model["eval_ms"] == restore_detail["eval_ms"]
     assert cost_model["rotating_reducible_overhead"] is False
     assert cost_model["rotating_reducible_overhead_decision"] == "no-go"
@@ -512,6 +518,8 @@ def test_restore_rotating_cost_model_marks_equal_bytes_as_no_go():
         },
         load_chunks_ms=1.25,
         assemble_ms=0.5,
+        eval_collect_ms=0.75,
+        eval_barrier_ms=4.0,
         eval_ms=4.75,
         touch_ms=0.25,
         duration_ms=6.75,
@@ -525,6 +533,9 @@ def test_restore_rotating_cost_model_marks_equal_bytes_as_no_go():
     assert model["rotating_reducible_overhead_bytes"] == 0
     assert model["rotating_reducible_overhead"] is False
     assert model["rotating_reducible_overhead_decision"] == "no-go"
+    assert model["eval_collect_ms"] == 0.75
+    assert model["eval_barrier_ms"] == 4.0
+    assert model["eval_ms"] == 4.75
 
 
 def test_cache_store_restore_eval_barrier_materializes_disk_restore(

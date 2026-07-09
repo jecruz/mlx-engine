@@ -229,6 +229,8 @@ def _restore_rotating_cost_model(
     materialization_counters: dict[str, Any],
     load_chunks_ms: float,
     assemble_ms: float,
+    eval_collect_ms: float,
+    eval_barrier_ms: float,
     eval_ms: float,
     touch_ms: float,
     duration_ms: float,
@@ -279,6 +281,8 @@ def _restore_rotating_cost_model(
         "rotating_reducible_overhead_reason": reason,
         "load_chunks_ms": load_chunks_ms,
         "assemble_ms": assemble_ms,
+        "eval_collect_ms": eval_collect_ms,
+        "eval_barrier_ms": eval_barrier_ms,
         "eval_ms": eval_ms,
         "touch_ms": touch_ms,
         "duration_ms": duration_ms,
@@ -478,6 +482,7 @@ class VlmPromptCacheStore:
         # compatibility. Set MLX_ENGINE_RESTORE_EVAL_STATE_ONLY=1 to evaluate
         # just cache state payloads, which can reduce materialization work.
         eval_start = perf_counter() if timing_enabled else None
+        eval_collect_start = perf_counter() if timing_enabled else None
         eval_targets, materialization_counters = (
             _restore_eval_materialization_counters(
                 prompt_cache,
@@ -488,8 +493,11 @@ class VlmPromptCacheStore:
                 ),
             )
         )
+        eval_collect_ms = elapsed_ms(eval_collect_start) if timing_enabled else 0.0
+        eval_barrier_start = perf_counter() if timing_enabled else None
         if eval_targets:
             mx.eval(*eval_targets)
+        eval_barrier_ms = elapsed_ms(eval_barrier_start) if timing_enabled else 0.0
         eval_ms = elapsed_ms(eval_start) if timing_enabled else 0.0
 
         # Restore access refreshes exactly the records used by this chain.
@@ -511,6 +519,8 @@ class VlmPromptCacheStore:
                 materialization_counters=materialization_counters,
                 load_chunks_ms=load_chunks_ms,
                 assemble_ms=assemble_ms,
+                eval_collect_ms=eval_collect_ms,
+                eval_barrier_ms=eval_barrier_ms,
                 eval_ms=eval_ms,
                 touch_ms=touch_ms,
                 duration_ms=elapsed_ms(restore_start),
@@ -526,6 +536,8 @@ class VlmPromptCacheStore:
                 record_bytes_by_kind=record_bytes_by_kind,
                 load_chunks_ms=load_chunks_ms,
                 assemble_ms=assemble_ms,
+                eval_collect_ms=eval_collect_ms,
+                eval_barrier_ms=eval_barrier_ms,
                 eval_ms=eval_ms,
                 **materialization_counters,
                 touch_ms=touch_ms,
