@@ -5607,3 +5607,36 @@ and a clean pairwise quality/performance gate before any promotion discussion.
 ### Validation contract assertion
 
 - `VAL-M29-005` (Synthesis decision treats deterministic scoring as authoritative and records retained evidence + latency + caveats + no-default-change + route exclusions): **MET**. Every retained report/inspect/score path is cited above; deterministic score table and secondary judge summary are recorded; latency table and cold-TTFT variability caveat are recorded; per-cell data-capture-only limitation is recorded as the matrix limitation; no-single-sample promotion statement is recorded explicitly; and the no-LM-Studio / no-adapter / no-DFlash / no-MoE / no-forced-sequential inference-under-test statement is recorded explicitly. The synthesis decision is **data-only / no-default-change / no promotion**.
+
+### M30 upstream scan (2026-07-08)
+
+Upstream `lmstudio-ai/mlx-engine` was refreshed with `git fetch upstream --prune`
+and scanned for a small, isolated runtime candidate that could plausibly improve
+the retained Mac-local prompt-processing or generation lane without resetting
+the #1190 evidence base.
+
+- **Evidence artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/upstream-scan-20260708-mlx-engine.json`
+- **Mainline watch list:** `8ae2610` (Gemma4 bidirectional visual prefill), `ae24add` (disable Qwen ragged attention kernel), `e47768b` (clear Qwen text rope state), `e2f0e89` (disk-based VLM caching/continuous batching), and `ef77245` (sequential prompt-cache checkpoints).
+- **Branch scan:** `upstream/neil/gemma4-tool-context`, `upstream/neil/img-caching`, `upstream/neil/vlm-parity-ci`, `upstream/will/lfm-2.5-unified`, `upstream/yagil/dist`, and `upstream/yagil/mlx-dist-non-batched`.
+- **Decision:** **NO CHERRY-PICK / NO PROMOTION / NO DEFAULT CHANGE.**
+
+The only branch with small-sounding performance commits was
+`upstream/neil/gemma4-tool-context`, specifically the Gemma4 reasoning/tool guard
+optimizations around `8bfa083`, `2316deb`, and `57a90c7`. Those commits depend
+on the upstream-only `mlx_engine/tool_runtime.py` and new tool-call guard
+semantics that are absent from this branch. Importing them would be a feature
+surface change, not a contained latency patch, and the current M29 retained suite
+does not exercise Gemma4 tool-call reasoning guards as a promotion target.
+
+The VLM image-caching and parity branches are broad architecture branches that
+conflict with the local batched VLM prompt-cache stack. The distributed branches
+are infrastructure lanes outside the retained Mac-local direct benchmark target.
+`upstream/will/lfm-2.5-unified` is test-only on a divergent upstream base and
+does not provide a runtime hypothesis.
+
+No live LM Studio validation was run because no code candidate passed direct
+upstream triage. The next safe performance lane remains local
+low-write-amplification prompt-cache work: reduce materialized cache bytes
+without removing required restore `mx.eval`, or re-run a future upstream scan
+when a branch exposes an isolated runtime patch against this branch's retained
+direct benchmark lane.
