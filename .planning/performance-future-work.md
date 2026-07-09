@@ -6319,3 +6319,43 @@ Decision: **REPORTING TOOL ONLY / NO PROMOTION / RUNTIME UNCHANGED**. The
 current retained LFM2.5-VL samples show KV-delta bytes dominate the restore
 barrier surface; future barrier work should target KV-delta materialization,
 not state-checkpoint bytes or LRU-touch overlap.
+
+### M50 upstream and KV barrier candidate scan (2026-07-09)
+
+Feature `m50-upstream-and-kv-barrier-candidate-scan` refreshed upstream intake
+and checked whether the M49 KV-delta materialization evidence exposes a bounded
+local implementation candidate.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m50-upstream-and-kv-barrier-candidate-scan-20260709.json`
+- **Fetch command:** `git fetch --all --prune` -> passed.
+- **Current upstream main:** `8ae2610 Handle Gemma4 bidirectional visual prefill (#340)`, unchanged from the M43 scan.
+
+Upstream scan decisions:
+
+| ref | head | decision | reason |
+| --- | --- | --- | --- |
+| `upstream/will/lfm-2.5-unified` | `461015c Add test for LFM 2.5 caching` | `DEFER` | Useful real-model LFM2.5 text-only caching test, but the local `model_getter` resolves under `~/.lmstudio/models` and this machine still does not expose LFM2.5 there or through `lms ls --json`; adding it now would create a prompt/download hazard rather than a reliable gate. |
+| `upstream/neil/vlm-parity-ci` | `ea1a6bb Relax VLM concurrency logprob parity` | `ALREADY_PRESENT_LOCALLY` | Local `tests/test_batched_vision_parity.py` already has `_assert_token_trace_matches(...)` and the `0.125` logprob tolerance. |
+| `upstream/neil/img-caching` | `7dfe3cd cleanup` | `NO_CHERRY_PICK` | Branch is based before the current local batched VLM stack; branch-level diff deletes the local prompt-cache implementation. |
+| `upstream/yagil/mlx-dist-non-batched` | `c86c23a Run Qwen VLM prompts on model thread` | `NO_CHERRY_PICK` | Relevant stream-stability theme, but broad model-thread/distributed rewrite is not a small reversible retained-workload candidate. |
+| `upstream/yagil/dist` | `366ebd4 Preserve backpressure in distributed stream bridge` | `NO_CHERRY_PICK` | Distributed path is outside the Mac-local retained LFM2.5 VLM warm-restore benchmark lane. |
+| `upstream/ryan/fix-image-loading` | `1a141d6 Fix image loading` | `NO_CHERRY_PICK` | Stale pre-current vision path; does not target the retained batched VLM prompt-cache path. |
+
+KV barrier candidate check:
+
+- Current retained M45/M46 lane restores `records=2`:
+  `record_count_by_kind={"kv_delta":1,"rotating_delta":0,"state_checkpoint":1}`.
+- Per sample, the restored barrier surface is
+  `eval_target_count_by_kind={"kv_delta":12,"rotating_delta":0,"state_checkpoint":10}`.
+- Per sample, materialized bytes are
+  `materialized_bytes_by_kind={"kv_delta":90599424,"rotating_delta":0,"state_checkpoint":81920}`.
+- The code path for this retained lane restores a single KV-delta record, so
+  multi-chunk KV concat is not the measured bottleneck in M45/M46.
+
+Decision: **SCAN ONLY / NO PROMOTION / RUNTIME UNCHANGED**. KV-delta bytes are
+the right future target, but the current evidence does not justify a small
+deduplication, concat, or async-touch implementation. A real candidate needs a
+representation or scheduling design that preserves cross-thread stream safety,
+has a rollback switch when warranted, and can pass repeated retained-workload
+benchmarks plus quality and live LM Studio validation once the LM Studio model
+registration blocker is cleared.

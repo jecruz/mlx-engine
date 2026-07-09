@@ -1,0 +1,126 @@
+{
+  "milestone": "M50-upstream-and-kv-barrier-candidate-scan",
+  "timestamp_utc": "2026-07-09T01:59:42Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Refresh upstream performance/cache/stream candidate intake and decide whether the M49 KV-delta barrier evidence exposes a safe local implementation candidate.",
+  "workspace_state": {
+    "engine_status_before_artifact": "clean, ahead origin/mlx-vlm-restore-eval-followup by 29",
+    "harness_status_before_artifact": "clean on main"
+  },
+  "upstream_scan": {
+    "fetch_command": "git fetch --all --prune",
+    "fetch_status": "passed",
+    "upstream_main": {
+      "ref": "upstream/main",
+      "commit": "8ae2610",
+      "subject": "Handle Gemma4 bidirectional visual prefill (#340)",
+      "status": "unchanged from M43 scan"
+    },
+    "branches": [
+      {
+        "ref": "upstream/will/lfm-2.5-unified",
+        "commit": "461015c",
+        "ahead_of_upstream_main": 1,
+        "behind_upstream_main": 25,
+        "last_commit_subject": "Add test for LFM 2.5 caching",
+        "diff_scope": "one test file in the source branch, but the full branch is based before the local batched VLM stack",
+        "decision": "DEFER",
+        "reason": "The useful part is a real-model LFM2.5 text-only caching test. The current local test helper resolves models under ~/.lmstudio/models, while this machine only has retained LFM2.5 evidence under the benchmark LM Studio download path and the live LM Studio registry still does not expose LFM2.5. Adding the test now would create a prompt/download hazard instead of a reliable gate."
+      },
+      {
+        "ref": "upstream/neil/vlm-parity-ci",
+        "commit": "ea1a6bb",
+        "ahead_of_upstream_main": 82,
+        "behind_upstream_main": 5,
+        "last_commit_subject": "Relax VLM concurrency logprob parity",
+        "diff_scope": "one parity-test relaxation commit",
+        "decision": "ALREADY_PRESENT_LOCALLY",
+        "reason": "Local tests/test_batched_vision_parity.py already contains _assert_token_trace_matches and the 0.125 logprob tolerance for continuous batching traces."
+      },
+      {
+        "ref": "upstream/neil/img-caching",
+        "commit": "7dfe3cd",
+        "ahead_of_upstream_main": 13,
+        "behind_upstream_main": 39,
+        "last_commit_subject": "cleanup",
+        "diff_scope": "branch-level diff deletes the local batched VLM prompt-cache stack when compared to upstream/main",
+        "decision": "NO_CHERRY_PICK",
+        "reason": "Not a bounded performance/cache/stream patch for the retained Mac-local prompt-cache branch."
+      },
+      {
+        "ref": "upstream/yagil/mlx-dist-non-batched",
+        "commit": "c86c23a",
+        "ahead_of_upstream_main": 35,
+        "behind_upstream_main": 5,
+        "last_commit_subject": "Run Qwen VLM prompts on model thread",
+        "diff_scope": "broad distributed/model-thread rewrite",
+        "decision": "NO_CHERRY_PICK",
+        "reason": "Relevant stream-stability theme, but the branch is too broad for a small reversible retained-workload latency candidate."
+      },
+      {
+        "ref": "upstream/yagil/dist",
+        "commit": "366ebd4",
+        "ahead_of_upstream_main": 29,
+        "behind_upstream_main": 5,
+        "last_commit_subject": "Preserve backpressure in distributed stream bridge",
+        "diff_scope": "distributed stream bridge and scheduler branch",
+        "decision": "NO_CHERRY_PICK",
+        "reason": "Distributed path is outside the current Mac-local retained LFM2.5 VLM warm-restore benchmark lane."
+      },
+      {
+        "ref": "upstream/ryan/fix-image-loading",
+        "commit": "1a141d6",
+        "ahead_of_upstream_main": 0,
+        "behind_upstream_main": 99,
+        "last_commit_subject": "Fix image loading",
+        "diff_scope": "old one-line change against a pre-current vision path",
+        "decision": "NO_CHERRY_PICK",
+        "reason": "Branch is stale and targets mlx_engine/vision/vision_model_wrapper.py, which is not the retained local batched VLM prompt-cache path."
+      }
+    ]
+  },
+  "kv_barrier_candidate_scan": {
+    "m49_summary": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m49-restore-eval-by-kind-summary-20260709.json",
+    "dominant_materialized_kind": "kv_delta",
+    "retained_lane_shape": {
+      "records": 2,
+      "record_count_by_kind": {
+        "kv_delta": 1,
+        "rotating_delta": 0,
+        "state_checkpoint": 1
+      },
+      "eval_target_count_by_kind_per_sample": {
+        "kv_delta": 12,
+        "rotating_delta": 0,
+        "state_checkpoint": 10
+      },
+      "materialized_bytes_by_kind_per_sample": {
+        "kv_delta": 90599424,
+        "rotating_delta": 0,
+        "state_checkpoint": 81920
+      }
+    },
+    "code_surface": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/prompt_cache/records.py::_slice_kv_cache",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/prompt_cache/records.py::_concat_kv_delta_caches",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/prompt_cache/records.py::assemble_prompt_cache_chunks",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/prompt_cache/cache_store.py::_cache_restore_eval_targets"
+    ],
+    "decision": "NO_LOCAL_RUNTIME_CANDIDATE_SELECTED",
+    "reason": [
+      "The current retained LFM2.5 long warm-restore lane restores one KV-delta record and one state checkpoint, so multi-chunk KV concat is not the measured bottleneck in M45/M46.",
+      "KV-delta materialization bytes are the required restored KV state for generation; reducing them would require a representation or scheduling change, not a small deduplication or LRU-touch overlap.",
+      "The full-cache plus explicit-state eval target walk does not show duplicate byte materialization in M49; KV-delta target count matches the expected key/value arrays for the retained layers.",
+      "Do not implement a speculative KV barrier change without a stronger design that preserves cross-thread stream safety and can be benchmarked against repeated retained workloads."
+    ]
+  },
+  "decision": {
+    "status": "SCAN_ONLY",
+    "promotion_status": "NO_PROMOTION",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "not-applicable-no-runtime-candidate",
+    "next_action": "Either design a true KV-delta representation/scheduling candidate with a rollback switch and repeated retained benchmarks, or unblock LM Studio registration so live validation can run against already-retained direct-harness changes."
+  }
+}
