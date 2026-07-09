@@ -6795,3 +6795,34 @@ Decision: **LIVE VALIDATION BLOCKED BY MODEL VISIBILITY / NO PROMOTION /
 RUNTIME UNCHANGED**. Server state is not the blocker. The retained LFM2.5-VL
 model key must appear in `lms ls --json` before any live LM Studio inference
 validation or runtime promotion.
+
+### M60 LM Studio load/import diagnostics (2026-07-09)
+
+Feature `m60-lmstudio-load-import-diagnostics` checks whether supported
+non-loading LM Studio CLI paths can resolve the retained LFM2.5-VL model while
+`lms ls --json` does not expose it. No model was loaded, no import was
+performed, no LM Studio internal file was edited, and no live inference was run.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m60-lmstudio-load-import-diagnostics-20260709.json`
+
+Commands and result:
+
+- `timeout 60 lms load /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --estimate-only --identifier m59-lfm25-vl-estimate -y`
+  -> exit `1`, `Model not found`.
+- `lms import --help` -> import is file-based and supports `--dry-run`.
+- `timeout 60 lms import /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit/model.safetensors --dry-run --copy --user-repo lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit -y`
+  -> exit `1`, warns the file does not look like a model file because normal
+  imports expect `.gguf`, then errors with target file already exists.
+
+Decision: **LIVE VALIDATION BLOCKED BY MODEL INDEX VISIBILITY / NO PROMOTION /
+RUNTIME UNCHANGED**. LM Studio cannot resolve the retained model via
+`lms ls --json`, `lms load --estimate-only <absolute-model-dir>`, or
+`lms import --dry-run <model.safetensors>`. Continue to use only the supported
+`lms get <hf-url> --mlx -y` registration/download path or a future
+LM Studio-supported model registration mechanism.
+
+Validation:
+
+- `python3 -m json.tool .planning/m60-lmstudio-load-import-diagnostics-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
