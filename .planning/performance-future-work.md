@@ -6171,3 +6171,41 @@ Decision: **EVIDENCE ONLY / NO PROMOTION / RUNTIME UNCHANGED**. On this
 retained LFM2.5-VL warm restore sample, restore `eval_ms` is barrier-dominated,
 not target-collection dominated. Do not chase target collection overhead unless
 future repeated samples show a different split.
+
+### M46 restore eval split repeat evidence (2026-07-09)
+
+Feature `m46-restore-eval-split-repeat` repeated M45 with independent persistent
+cache roots to verify whether restore `eval_ms` remains barrier-dominated on the
+retained LFM2.5-VL long-image warm-restore lane.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m46-restore-eval-split-repeat-20260709.json`
+- **Repeat 1 report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014025.811348Z-shared-bench.json`
+- **Repeat 1 quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014025.811348Z-m46-r1-quality-inspect.json`
+- **Repeat 2 report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014047.330686Z-shared-bench.json`
+- **Repeat 2 quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014047.330686Z-m46-r2-quality-inspect.json`
+
+Result:
+
+- Both repeats completed with zero row errors.
+- Both repeats preserved cold/warm output `A toucan.`
+- Both repeats restored warm `cached_tokens=7373`.
+- Both candidate-only quality inspections reported `prompt_quality_status=pass`
+  and `failed_prompts=[]`; overall `status=fail` is expected because the
+  inspect-only promotion gate has no comparison baseline.
+- Cache roots were independent and each measured `87M`:
+  `/tmp/mlx-engine-vlm-cache-m46-split-r1-11fba2b` and
+  `/tmp/mlx-engine-vlm-cache-m46-split-r2-11fba2b`.
+
+Warm restore timing split:
+
+| sample | warm TTFT | eval_collect_ms | eval_barrier_ms | eval_ms | barrier share |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| M45 | `0.032s` | `0.050` | `4.904` | `4.961` | `98.9%` |
+| M46 R1 | `0.036s` | `0.050` | `4.586` | `4.644` | `98.8%` |
+| M46 R2 | `0.037s` | `0.048` | `5.996` | `6.052` | `99.1%` |
+
+Decision: **REPEAT EVIDENCE ONLY / NO PROMOTION / RUNTIME UNCHANGED**. Target
+collection overhead is not a viable latency candidate for the retained
+LFM2.5-VL warm-restore lane. Any future restore-eval optimization must reduce
+or safely restructure the actual materialization barrier while preserving
+cross-thread stream safety and quality.
