@@ -627,8 +627,16 @@ use the supported LM Studio download/registration path instead of copying files
 into `~/.lmstudio/models` or editing LM Studio cache files by hand:
 
 ```bash
-lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y
+.venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py \
+  --output .planning/lmstudio-vlm-download-probe.json \
+  --timeout 300
 ```
+
+The download probe runs the official `lms get
+https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y`
+path with a bounded timeout and records progress, timeout state, exit status,
+and sanitized output tail as JSON. It does not edit LM Studio indexes or cache
+files.
 
 Proceed to backend registration and live `/v1/chat/completions` validation only
 after the preflight reports `ready_for_live_validation=true`.

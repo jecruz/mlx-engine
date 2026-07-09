@@ -4,6 +4,8 @@
 
 ### Added
 
+- Add `scripts/lmstudio_vlm_download_probe.py` to run the supported LM Studio
+  VLM `lms get` registration path with bounded timeout and JSON evidence.
 - Add `scripts/lmstudio_vlm_live_validation_preflight.py` to record whether
   the retained LFM2.5-VL model is visible to `lms load` before live LM Studio
   VLM validation.

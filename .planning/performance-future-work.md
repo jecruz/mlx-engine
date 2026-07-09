@@ -5930,3 +5930,28 @@ INFERENCE / NO PROMOTION / RUNTIME UNCHANGED**. Continue to use only the
 official `lms get` registration path or LM Studio UI path. Do not hand-edit LM
 Studio index/cache files, do not treat a copied directory as loadable, and do
 not force the unsafe `lms import` prompt for `model.safetensors`.
+
+### M40 LM Studio download probe hardening (2026-07-09)
+
+Feature `m40-lmstudio-download-probe` adds a small wrapper around the official
+LM Studio VLM registration command so future retry evidence is captured without
+shell-wrapper ambiguity.
+
+- **Script:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lmstudio_vlm_download_probe.py`
+- **Tests:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_lmstudio_vlm_download_probe.py`
+
+The script runs:
+
+```bash
+lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y
+```
+
+through `subprocess.run(..., timeout=...)`, writes JSON with `success`,
+`timed_out`, `returncode`, resolved artifact text, observed progress
+percentages, `stalled_at_zero`, byte counts, and a sanitized output tail. It
+does not edit LM Studio indexes or cache files.
+
+Decision: **GATE TOOLING ONLY / RUNTIME UNCHANGED / NO PROMOTION**. Use this
+probe for the next official LM Studio registration retry, then rerun
+`scripts/lmstudio_vlm_live_validation_preflight.py`. Live validation remains
+blocked until the preflight reports `ready_for_live_validation=true`.
