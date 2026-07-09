@@ -7053,3 +7053,40 @@ Validation:
 - `python3 -m json.tool .planning/m65-upstream-candidate-scan-diff-20260709.json`
   -> passed.
 - `git diff --check` -> passed.
+
+### M66 upstream candidate history (2026-07-09)
+
+Feature `m66-upstream-candidate-history` renders multiple upstream candidate
+scan JSON reports as a readable history timeline.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m66-upstream-candidate-history-20260709.json`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m66-upstream-candidate-history-20260709.md`
+- **New history tool:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/upstream_candidate_history.py`
+
+History inputs:
+
+- Baseline scan: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m58-upstream-candidate-scan-report-20260709.json`
+- Candidate scan: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-candidate-scan-report-20260709.json`
+
+History summary:
+
+- Baseline head `e5e4b5b`
+- Candidate head `a5f2f74`
+- Candidate branches `6`
+- Branch status counts: `unchanged=6`, `new=0`, `removed=0`, `changed=0`
+
+Decision: **READABLE_SCAN_HISTORY_ONLY / NO_PROMOTION / RUNTIME UNCHANGED**.
+The history report keeps repeat upstream monitoring auditable but does not
+change any runtime gate or promotion condition.
+
+Validation:
+
+- `python3 -m py_compile scripts/upstream_candidate_history.py tests/test_upstream_candidate_history.py`
+  -> passed.
+- `.venv-py312/bin/python -m pytest tests/test_upstream_candidate_history.py tests/test_upstream_candidate_scan_diff.py tests/test_upstream_candidate_report.py -q`
+  -> `7 passed`.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json --output .planning/m66-upstream-candidate-history-20260709.md --title "M66 Upstream Candidate History"`
+  -> passed.
+- `python3 -m json.tool .planning/m66-upstream-candidate-history-20260709.json`
+  -> passed.
+- `git diff --check` -> pending.

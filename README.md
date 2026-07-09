@@ -551,6 +551,20 @@ branches, and changed file / unmatched patch-id counts so repeated upstream
 scans are easy to audit, but it still does not authorize a cherry-pick or
 promotion.
 
+To render a readable history from multiple upstream scan JSON reports, run:
+
+```bash
+python scripts/upstream_candidate_history.py \
+  .planning/upstream-candidate-scan-baseline.json \
+  .planning/upstream-candidate-scan-candidate.json \
+  .planning/upstream-candidate-scan-latest.json \
+  --output .planning/upstream-candidate-scan-history.md
+```
+
+The history report is review-only. It captures scan ordering, branch-change
+counts between scans, and branch-level deltas so repeated monitoring stays
+auditable, but it still does not authorize a cherry-pick or promotion.
+
 Example:
 
 ```bash

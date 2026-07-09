@@ -1,0 +1,70 @@
+{
+  "milestone": "M66-upstream-candidate-history",
+  "timestamp_utc": "2026-07-09T03:35:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Render multiple upstream candidate scans as a readable history so repeat triage stays auditable.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/upstream_candidate_history.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_upstream_candidate_history.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md"
+    ],
+    "details": [
+      "Added a Markdown timeline renderer for multiple upstream candidate scan JSON reports.",
+      "Rendered the retained M58 and M62 scan reports into a concise history showing that branch heads moved while the six candidate branches stayed unchanged.",
+      "Preserved the no-promotion rule because the report is review-only and does not change runtime behavior."
+    ]
+  },
+  "artifacts": {
+    "history_report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m66-upstream-candidate-history-20260709.md",
+    "scan_reports": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m58-upstream-candidate-scan-report-20260709.json",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-candidate-scan-report-20260709.json"
+    ]
+  },
+  "history_summary": {
+    "baseline_head": "e5e4b5b",
+    "candidate_head": "a5f2f74",
+    "candidate_count": 6,
+    "branch_status_counts": {
+      "unchanged": 6,
+      "new": 0,
+      "removed": 0,
+      "changed": 0
+    }
+  },
+  "validation": [
+    {
+      "command": "python3 -m py_compile scripts/upstream_candidate_history.py tests/test_upstream_candidate_history.py",
+      "status": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_upstream_candidate_history.py tests/test_upstream_candidate_scan_diff.py tests/test_upstream_candidate_report.py -q",
+      "status": "passed",
+      "result": "7 passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json --output .planning/m66-upstream-candidate-history-20260709.md --title \"M66 Upstream Candidate History\"",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m66-upstream-candidate-history-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "READABLE_SCAN_HISTORY_ONLY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "still-blocked-before-inference",
+    "next_action": "Use the history report to review repeat upstream scan progression; do not treat it as promotion evidence."
+  }
+}
