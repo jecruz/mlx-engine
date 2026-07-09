@@ -239,6 +239,40 @@ def test_cache_store_terminal_packed_final_kv_is_default(cache_store):
     assert boundary_state.item() == chunks[2].end
 
 
+def test_cache_store_terminal_kv_preserves_exact_boundary_state(cache_store):
+    """Final terminal KV saves should not overwrite exact opaque state."""
+    prompt_input_ids = list(range((3 * C) + 100))
+    chunks = build_prefix_cache_chunks(prompt_input_ids, [])
+
+    for chunk in chunks[:2]:
+        _save_chunk(cache_store, chunk, chunks, _prompt_cache(chunk.end))
+    _save_chunk(
+        cache_store,
+        chunks[2],
+        chunks,
+        _prompt_cache(chunks[2].end),
+    )
+    _save_chunk(
+        cache_store,
+        chunks[2],
+        chunks,
+        _prompt_cache(chunks[2].end + 1),
+        save_state_checkpoint=False,
+        is_final_prompt_boundary=True,
+    )
+
+    restore_plan = cache_store.plan_longest_prefix_restore(prompt_input_ids, [])
+    assert restore_plan is not None
+    loaded = cache_store.load_restore_plan(restore_plan)
+
+    kv_keys, _ = loaded.prompt_cache[0].state
+    boundary_state = loaded.prompt_cache[1][0]
+    mx.eval(kv_keys, boundary_state)
+    assert loaded.cached_prefix_len == chunks[2].end
+    assert kv_keys.shape[2] == chunks[2].end
+    assert boundary_state.item() == chunks[2].end
+
+
 def test_cache_store_terminal_packed_final_kv_can_be_disabled(
     cache_store, monkeypatch
 ):

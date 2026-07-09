@@ -5640,3 +5640,41 @@ low-write-amplification prompt-cache work: reduce materialized cache bytes
 without removing required restore `mx.eval`, or re-run a future upstream scan
 when a branch exposes an isolated runtime patch against this branch's retained
 direct benchmark lane.
+
+### M31 final-boundary state checkpoint fix (2026-07-08)
+
+Feature `m31-final-boundary-state-checkpoint-fix` closes a narrow
+write-amplification and fidelity risk in the retained VLM prompt-cache layout.
+With `MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN` enabled, the aligned prefill step
+saves an exact opaque state checkpoint at the reusable-prefix boundary. The later
+true final prompt-boundary save should still write terminal-packed KV, but it
+must not overwrite that exact state checkpoint with the one-token-ahead final
+prompt state.
+
+- **Evidence artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m31-final-boundary-state-checkpoint-fix-20260708.json`
+- **Code:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/mlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py`
+- **Tests:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_batched_vision_coordinator.py` and `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_batched_vision_cache_store.py`
+- **Direct retained-lane report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709T001037.751737Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709T001037.751737Z-m31-state-boundary-quality-inspect.json`
+
+The coordinator now skips the opaque state checkpoint only when all of these are
+true: the save is the true final prompt boundary, the chunk is the terminal
+chunk in that snapshot, the snapshot length is not the reusable chunk end, and
+`MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN` is enabled. The final save still writes
+terminal-packed KV. Setting `MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN=0` preserves
+the old final-state checkpoint behavior for diagnostics.
+
+Validation:
+
+- `tests/test_batched_vision_coordinator.py tests/test_batched_vision_cache_store.py tests/test_batched_vision_batch_generator.py`: `59 passed`.
+- `tests/test_batched_vision_coordinator.py tests/test_batched_vision_cache_store.py tests/test_batched_vision_batch_generator.py tests/test_batched_vision_model_kit.py tests/test_batched_vision_restore_planner.py`: `77 passed`.
+- `tests/test_batched_vision_*.py tests/test_patched_gemma4.py tests/test_patched_qwen3_5.py`: `165 passed`, `16 skipped`.
+- `py_compile` on the touched coordinator/test files: passed.
+- `git diff --check`: passed.
+- Direct LFM2.5-VL persistent-cache process-restart lane: `2` runs, prompt-quality `pass`, cold output `A toucan.`, warm output `A toucan.`, warm `cached_tokens=7373`, warm TTFT `0.032984s`, warm total `0.051724s`, no row errors, no `RuntimeError` or `Stream(gpu, ...)` text.
+- Warm restore detail: `records=2`, `record_count_by_kind={"kv_delta": 1, "rotating_delta": 0, "state_checkpoint": 1}`, `eval_target_count=22`, `materialized_bytes=90681344`, `eval_ms=4.612`.
+
+Decision: **RETAIN FIX / DIRECT VALIDATED / NO BROADER PERFORMANCE PROMOTION**.
+This is a correctness and duplicate-write avoidance fix in the retained default
+layout. It is not a new latency-promotion claim. Live LM Studio validation is
+still required before packaging or promoting a broader performance change.

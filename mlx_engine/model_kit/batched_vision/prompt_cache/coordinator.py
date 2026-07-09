@@ -1,4 +1,5 @@
 import logging
+import os
 from dataclasses import dataclass
 from threading import Lock
 from time import perf_counter
@@ -27,6 +28,15 @@ from mlx_engine.utils.batched_timing import (
 from mlx_lm.models.cache import can_trim_prompt_cache, trim_prompt_cache
 
 logger = logging.getLogger(__name__)
+
+_VLM_FINAL_CHUNK_STATE_ALIGN_ENV = "MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN"
+
+
+def _final_chunk_state_align_enabled() -> bool:
+    value = os.environ.get(_VLM_FINAL_CHUNK_STATE_ALIGN_ENV, "")
+    if value == "":
+        return True
+    return value.lower() not in {"0", "false", "no", "off"}
 
 
 @dataclass
@@ -307,6 +317,17 @@ class VlmPromptCacheCoordinator:
         for chunk_idx in range(start_chunk_idx, end_chunk_idx):
             chunk = prefix_chunks[chunk_idx]
             is_final_chunk = chunk_idx == end_chunk_idx - 1
+            save_state_checkpoint = is_final_chunk
+            if (
+                is_final_prompt_boundary
+                and is_final_chunk
+                and snapshot_len != chunk.end
+                and _final_chunk_state_align_enabled()
+            ):
+                # The final prompt pass is one token past the reusable prefix.
+                # Keep the exact chunk-boundary state written by the aligned
+                # prefill step; still write terminal-packed KV below.
+                save_state_checkpoint = False
             try:
                 pending_save = self._cache_store.prepare_save(
                     chunk=chunk,
@@ -314,7 +335,7 @@ class VlmPromptCacheCoordinator:
                     prompt_cache=prompt_cache,
                     # Opaque state caches are only exact at the end of this
                     # snapshot, not necessarily at the end of a fixed-size chunk.
-                    save_state_checkpoint=is_final_chunk,
+                    save_state_checkpoint=save_state_checkpoint,
                     is_final_prompt_boundary=(
                         is_final_prompt_boundary and is_final_chunk
                     ),

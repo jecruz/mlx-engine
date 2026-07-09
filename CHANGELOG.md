@@ -22,6 +22,9 @@
 
 ### Fixed
 
+- Keep final-boundary VLM terminal KV saves from overwriting exact
+  reusable-prefix opaque state checkpoints when final-chunk state alignment is
+  enabled.
 - Fail fast when `scripts/lmstudio-register-engine.sh` targets an MLX runtime
   whose `mlx/core.cpython-311-darwin.so` code signature is incompatible with
   the active LM Studio worker process.

@@ -144,6 +144,47 @@ def test_coordinator_marks_only_final_chunk_as_final_prompt_boundary():
     ] == expected_final_flags
 
 
+def test_coordinator_skips_one_token_ahead_final_state_checkpoint():
+    """Final snapshots keep exact state from the reusable-prefix boundary."""
+    cache_store = _FakeCacheStore()
+    coordinator, enqueued_saves = _coordinator(cache_store)
+    prompt = list(range(1600))
+    chunks = build_prefix_cache_chunks(prompt, [])
+
+    coordinator.save_prompt_cache_snapshot(
+        prompt_cache=[_kv_cache(len(prompt))],
+        prefix_chunks=chunks,
+        start_chunk_idx=len(chunks) - 1,
+        end_chunk_idx=len(chunks),
+        snapshot_len=len(prompt),
+        is_final_prompt_boundary=True,
+    )
+
+    assert [save["is_final_prompt_boundary"] for save in enqueued_saves] == [True]
+    assert [save["save_state_checkpoint"] for save in enqueued_saves] == [False]
+
+
+def test_coordinator_final_state_checkpoint_opt_out_keeps_old_alignment(monkeypatch):
+    """Operators can opt out and keep the old final-state checkpoint behavior."""
+    monkeypatch.setenv("MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN", "0")
+    cache_store = _FakeCacheStore()
+    coordinator, enqueued_saves = _coordinator(cache_store)
+    prompt = list(range(1600))
+    chunks = build_prefix_cache_chunks(prompt, [])
+
+    coordinator.save_prompt_cache_snapshot(
+        prompt_cache=[_kv_cache(len(prompt))],
+        prefix_chunks=chunks,
+        start_chunk_idx=len(chunks) - 1,
+        end_chunk_idx=len(chunks),
+        snapshot_len=len(prompt),
+        is_final_prompt_boundary=True,
+    )
+
+    assert [save["is_final_prompt_boundary"] for save in enqueued_saves] == [True]
+    assert [save["save_state_checkpoint"] for save in enqueued_saves] == [True]
+
+
 def test_coordinator_restores_exact_hot_prefix():
     """A completed hot cache serves an immediate follow-up and preserves rope."""
     cache_store = _FakeCacheStore()

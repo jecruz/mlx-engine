@@ -533,6 +533,12 @@ prompt-boundary VLM cache saves. Based on repeated-sample benchmark evidence on
 retained long-VLM profiles plus LM Studio validation of the current worktree,
 this path is now the promoted default for final-boundary saves.
 
+When `MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN` is enabled, final prompt-boundary
+saves still write terminal-packed KV but do not overwrite opaque state
+checkpoints whose exact reusable-prefix boundary was saved by the aligned
+prefill step. Set `MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN=0` only to return to
+the older alignment behavior for diagnostics.
+
 ### Shared Thread-Unsafe Stream
 
 Set `MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM=1` to opt into the
