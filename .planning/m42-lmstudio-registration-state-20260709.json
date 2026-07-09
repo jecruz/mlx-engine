@@ -1,0 +1,85 @@
+{
+  "milestone": "M42-lmstudio-registration-state",
+  "timestamp_utc": "2026-07-09T01:26:13Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Narrow the remaining LM Studio live-validation blocker without editing LM Studio internal cache, index, or download state.",
+  "lm_studio_runtime": {
+    "app_version": "0.4.18+1",
+    "cli_path": "/Users/jeffreycruz/.lmstudio/bin/lms",
+    "cli_commit": "6041ae0",
+    "server_status": "not running",
+    "loaded_models": "none",
+    "process_observation": "LM Studio.app and helper processes are running, but lms server status reports the API server is not running."
+  },
+  "settings": {
+    "path": "/Users/jeffreycruz/.lmstudio/settings.json",
+    "downloadsFolder": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio",
+    "useHFProxy": true,
+    "hfDownloadToken": "",
+    "hfSearchToken": "",
+    "cliInstalled": false,
+    "enableLocalService": true,
+    "developerMode": true
+  },
+  "storage": {
+    "home_available": "88Gi",
+    "downloads_volume_available": "319Gi",
+    "downloads_volume": "/Volumes/StudioStackSSD4TB"
+  },
+  "retained_model_directory": {
+    "path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+    "size": "1.9G",
+    "files": [
+      "chat_template.jinja",
+      "config.json",
+      "generation_config.json",
+      "model.safetensors",
+      "model.safetensors.index.json",
+      "processor_config.json",
+      "tokenizer.json",
+      "tokenizer_config.json"
+    ],
+    "model_safetensors_bytes": 2083497259
+  },
+  "internal_state_exact_slug_counts": {
+    "slug": "lfm2.5-vl-1.6b-mlx-8bit",
+    "download_jobs_info": 0,
+    "single_downloads_info": 0,
+    "model_index_cache": 0,
+    "model_data": 2,
+    "cli_pref": 0
+  },
+  "model_data_match": {
+    "path": "/Users/jeffreycruz/.lmstudio/.internal/model-data.json",
+    "match": "json[138][1].source.repo",
+    "value": "LFM2.5-VL-1.6B-MLX-8bit"
+  },
+  "server_log_evidence": {
+    "path": "/Users/jeffreycruz/.lmstudio/server-logs/2026-07/2026-07-08.1.log",
+    "exact_create_download_plan_count": 7,
+    "repo": "LFM2.5-VL-1.6B-MLX-8bit",
+    "note": "The log records createDownloadPlan calls for the exact repo, but there is no matching exact-slug download job, single download, or model-index entry."
+  },
+  "lms_ls_json": {
+    "visible_model_keys": [
+      "text-embedding-nomic-embed-text-v1.5"
+    ],
+    "retained_vlm_visible": false
+  },
+  "preflight_after_diagnostic": {
+    "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m42.json",
+    "ready_for_live_validation": false,
+    "model_visible_to_lms": false,
+    "model_dir_complete": true,
+    "next_supported_command": "lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y"
+  },
+  "decision": {
+    "status": "REGISTRATION_STATE_STILL_INCOMPLETE",
+    "runtime_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "live_lm_studio_validation": "blocked-before-inference",
+    "next_action": "Use only LM Studio UI or a successful official lms get path that creates exact LFM2.5-VL entries in download-jobs-info, single-downloads-info, and model-index-cache, then rerun scripts/lmstudio_vlm_live_validation_preflight.py."
+  }
+}

@@ -5995,3 +5995,46 @@ Validation:
 Decision: **SUPPORTED DOWNLOAD STILL STALLED / LIVE VALIDATION BLOCKED BEFORE
 INFERENCE / PROBE HARDENED / NO PROMOTION / RUNTIME UNCHANGED**. Continue only
 through the official LM Studio registration path or UI, then rerun preflight.
+
+### M42 LM Studio registration state diagnostic (2026-07-09)
+
+Feature `m42-lmstudio-registration-state` narrowed the remaining live-validation
+blocker without editing LM Studio internal cache, index, or download state.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m42-lmstudio-registration-state-20260709.json`
+- **Post-diagnostic preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m42.json`
+- **LM Studio app:** `0.4.18+1`
+- **LM Studio CLI:** `/Users/jeffreycruz/.lmstudio/bin/lms`, commit `6041ae0`
+
+Result:
+
+- `lms ls --json` still exposes only
+  `text-embedding-nomic-embed-text-v1.5`; the retained VLM remains invisible.
+- LM Studio.app and helper processes are running, but `lms server status`
+  reports the API server is not running and `lms ps` reports no loaded models.
+- `~/.lmstudio/settings.json` sets `downloadsFolder` to
+  `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio`, `useHFProxy=true`,
+  empty HF token fields, `enableLocalService=true`, `developerMode=true`, and
+  `cliInstalled=false`.
+- Disk space is not the immediate blocker: `/System/Volumes/Data` has `88Gi`
+  available and `/Volumes/StudioStackSSD4TB` has `319Gi` available.
+- The retained model directory under the configured downloads folder is
+  complete and totals `1.9G`, including `model.safetensors`
+  (`2083497259` bytes), `model.safetensors.index.json`, tokenizer files,
+  config files, processor config, generation config, and chat template.
+- Exact slug count for `lfm2.5-vl-1.6b-mlx-8bit` is `0` in
+  `download-jobs-info.json`, `single-downloads-info.json`, and
+  `model-index-cache.json`; it is `2` in `model-data.json`.
+- The exact `model-data.json` match is
+  `json[138][1].source.repo = LFM2.5-VL-1.6B-MLX-8bit`.
+- The current LM Studio server log contains 7 exact `createDownloadPlan` calls
+  for `LFM2.5-VL-1.6B-MLX-8bit`, but no exact-slug download job, single
+  download, or model-index entry was created.
+- Post-diagnostic preflight still reports `ready_for_live_validation=false`,
+  `model_visible_to_lms=false`, and `model_dir_complete=true`.
+
+Decision: **REGISTRATION STATE STILL INCOMPLETE / LIVE VALIDATION BLOCKED
+BEFORE INFERENCE / NO PROMOTION / RUNTIME UNCHANGED**. Continue only through LM
+Studio UI or a successful official `lms get` path that creates exact
+LFM2.5-VL entries in LM Studio's download-job, single-download, and model-index
+state, then rerun `scripts/lmstudio_vlm_live_validation_preflight.py`.
