@@ -7,6 +7,9 @@
 - Add `scripts/vlm_restore_eval_split_report.py` to summarize
   `vlm_cache_restore_detail` split timing across repeated `shared_bench.py`
   reports with row-error/cache/output evidence.
+- Include by-kind eval-target, materialized-byte, and record-byte aggregates in
+  `scripts/vlm_restore_eval_split_report.py` output so restore barrier
+  investigations can identify the dominant materialization surface.
 - Add `eval_collect_ms` and `eval_barrier_ms` to VLM
   `vlm_cache_restore_detail` / `vlm_cache_restore_cost_model` timing events so
   restore-eval investigations can separate target discovery from the mandatory

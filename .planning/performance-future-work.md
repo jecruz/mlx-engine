@@ -6279,3 +6279,43 @@ branch in the cross-thread restore handoff path. Future candidates should target
 the barrier itself: reduce materialization cost, reduce materialized bytes, or
 move the unavoidable barrier outside the user-visible warm restore path while
 preserving quality and stream safety.
+
+### M49 restore eval by-kind reporting (2026-07-09)
+
+Feature `m49-restore-eval-by-kind-reporting` extends
+`scripts/vlm_restore_eval_split_report.py` so repeated restore eval summaries
+preserve by-kind materialization data from `vlm_cache_restore_detail`.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m49-restore-eval-by-kind-reporting-20260709.json`
+- **Generated summary:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m49-restore-eval-by-kind-summary-20260709.json`
+- **Script:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/vlm_restore_eval_split_report.py`
+- **Tests:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_vlm_restore_eval_split_report.py`
+
+The report now carries `record_bytes_by_kind`, `eval_target_count_by_kind`, and
+`materialized_bytes_by_kind` in each sample, aggregates those maps across
+reports, and reports `dominant_materialized_kind`.
+
+M45/M46 by-kind summary:
+
+- `sample_count=3`
+- `row_errors=0`
+- `barrier_dominated=true`
+- `dominant_materialized_kind=kv_delta`
+- `eval_target_count_by_kind={"kv_delta":36,"rotating_delta":0,"state_checkpoint":30}`
+- `materialized_bytes_by_kind={"kv_delta":271798272,"rotating_delta":0,"state_checkpoint":245760}`
+- `record_bytes_by_kind={"kv_delta":271801653,"rotating_delta":0,"state_checkpoint":248820}`
+- `eval_barrier_ms`: min `4.586`, max `5.996`, avg `5.162`
+
+Validation:
+
+- `.venv-py312/bin/python -m pytest tests/test_vlm_restore_eval_split_report.py -q`
+  -> `3 passed`.
+- `python3 -m py_compile scripts/vlm_restore_eval_split_report.py` -> passed.
+- `python3 -m json.tool .planning/m49-restore-eval-by-kind-summary-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
+
+Decision: **REPORTING TOOL ONLY / NO PROMOTION / RUNTIME UNCHANGED**. The
+current retained LFM2.5-VL samples show KV-delta bytes dominate the restore
+barrier surface; future barrier work should target KV-delta materialization,
+not state-checkpoint bytes or LRU-touch overlap.

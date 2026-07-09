@@ -443,7 +443,8 @@ python scripts/vlm_restore_eval_split_report.py reports/run-a.json reports/run-b
 ```
 
 The report extracts `vlm_cache_restore_detail` events from runner stderr,
-computes `eval_barrier_ms / eval_ms`, and preserves row-error/cache/output
+computes `eval_barrier_ms / eval_ms`, preserves by-kind eval-target,
+materialized-byte, and record-byte counters, and keeps row-error/cache/output
 evidence so repeated-sample barrier decisions are auditable.
 
 Example:

@@ -1,0 +1,81 @@
+{
+  "milestone": "M49-restore-eval-by-kind-reporting",
+  "timestamp_utc": "2026-07-09T01:55:01Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Extend restore eval split reporting so future barrier candidates can identify the dominant materialization surface without manually parsing runner stderr.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/vlm_restore_eval_split_report.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_vlm_restore_eval_split_report.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m49-restore-eval-by-kind-summary-20260709.json"
+    ],
+    "details": [
+      "Preserve record_bytes_by_kind, eval_target_count_by_kind, and materialized_bytes_by_kind in each restore eval split sample.",
+      "Aggregate by-kind eval target counts, materialized bytes, and record bytes across repeated reports.",
+      "Report dominant_materialized_kind to make barrier-candidate selection explicit.",
+      "Keep existing eval timing, barrier-share, row-error, cached-token, and output-preview fields unchanged."
+    ]
+  },
+  "generated_summary": {
+    "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m49-restore-eval-by-kind-summary-20260709.json",
+    "command": "python3 scripts/vlm_restore_eval_split_report.py /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m45-restore-eval-split/20260709T013633.520360Z-shared-bench.json /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014025.811348Z-shared-bench.json /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014047.330686Z-shared-bench.json --output .planning/m49-restore-eval-by-kind-summary-20260709.json",
+    "sample_count": 3,
+    "barrier_dominated": true,
+    "missing_timing_reports": [],
+    "row_errors": 0,
+    "dominant_materialized_kind": "kv_delta",
+    "aggregate": {
+      "eval_target_count_by_kind": {
+        "kv_delta": 36,
+        "rotating_delta": 0,
+        "state_checkpoint": 30
+      },
+      "materialized_bytes_by_kind": {
+        "kv_delta": 271798272,
+        "rotating_delta": 0,
+        "state_checkpoint": 245760
+      },
+      "record_bytes_by_kind": {
+        "kv_delta": 271801653,
+        "rotating_delta": 0,
+        "state_checkpoint": 248820
+      },
+      "eval_barrier_ms": {
+        "min": 4.586,
+        "max": 5.996,
+        "avg": 5.162
+      }
+    }
+  },
+  "validation": [
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_vlm_restore_eval_split_report.py -q",
+      "status": "passed",
+      "result": "3 passed in 0.03s"
+    },
+    {
+      "command": "python3 -m py_compile scripts/vlm_restore_eval_split_report.py",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m49-restore-eval-by-kind-summary-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "REPORTING_TOOL_ONLY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "not-applicable-no-runtime-candidate",
+    "next_action": "Use by-kind summaries to prioritize future barrier work against KV-delta materialization bytes, not state-checkpoint bytes or LRU touch overhead."
+  }
+}

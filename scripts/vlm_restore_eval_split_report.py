@@ -93,6 +93,7 @@ def _summarize_sample(
         "cached_tokens": event.get("cached_tokens"),
         "records": event.get("records"),
         "record_count_by_kind": event.get("record_count_by_kind"),
+        "record_bytes_by_kind": event.get("record_bytes_by_kind"),
         "load_chunks_ms": event.get("load_chunks_ms"),
         "assemble_ms": event.get("assemble_ms"),
         "eval_collect_ms": event.get("eval_collect_ms"),
@@ -101,7 +102,9 @@ def _summarize_sample(
         "touch_ms": event.get("touch_ms"),
         "duration_ms": event.get("duration_ms"),
         "eval_target_count": event.get("eval_target_count"),
+        "eval_target_count_by_kind": event.get("eval_target_count_by_kind"),
         "materialized_bytes": event.get("materialized_bytes"),
+        "materialized_bytes_by_kind": event.get("materialized_bytes_by_kind"),
         "barrier_share_of_eval_ms": barrier_share,
         "row_audit": _row_audit_summary(report),
     }
@@ -129,6 +132,27 @@ def _range_summary(samples: list[dict[str, Any]], key: str) -> dict[str, float |
     }
 
 
+def _sum_numeric_maps(samples: list[dict[str, Any]], key: str) -> dict[str, int | float]:
+    """Return summed numeric values for dict-like sample fields."""
+    totals: dict[str, int | float] = {}
+    for sample in samples:
+        values = sample.get(key)
+        if not isinstance(values, dict):
+            continue
+        for value_key, value in values.items():
+            if not isinstance(value, int | float):
+                continue
+            totals[value_key] = totals.get(value_key, 0) + value
+    return totals
+
+
+def _dominant_numeric_map_key(values: dict[str, int | float]) -> str | None:
+    """Return the key with the largest numeric value, if available."""
+    if not values:
+        return None
+    return max(values, key=values.__getitem__)
+
+
 def build_report(
     report_paths: list[Path],
     *,
@@ -149,6 +173,7 @@ def build_report(
         )
 
     barrier_shares = _numeric_values(samples, "barrier_share_of_eval_ms")
+    materialized_bytes_by_kind = _sum_numeric_maps(samples, "materialized_bytes_by_kind")
     return {
         "reports": [str(path) for path in report_paths],
         "sample_count": len(samples),
@@ -163,6 +188,15 @@ def build_report(
             "barrier_share_of_eval_ms": _range_summary(
                 samples,
                 "barrier_share_of_eval_ms",
+            ),
+            "eval_target_count_by_kind": _sum_numeric_maps(
+                samples,
+                "eval_target_count_by_kind",
+            ),
+            "materialized_bytes_by_kind": materialized_bytes_by_kind,
+            "record_bytes_by_kind": _sum_numeric_maps(samples, "record_bytes_by_kind"),
+            "dominant_materialized_kind": _dominant_numeric_map_key(
+                materialized_bytes_by_kind,
             ),
             "row_errors": sum(
                 sample["row_audit"]["row_errors"] for sample in samples

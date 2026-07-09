@@ -38,6 +38,11 @@ def _write_shared_bench_report(path: Path, *, eval_barrier_ms: float, eval_ms: f
             "rotating_delta": 0,
             "state_checkpoint": 1,
         },
+        "record_bytes_by_kind": {
+            "kv_delta": 90600551,
+            "rotating_delta": 0,
+            "state_checkpoint": 82940,
+        },
         "load_chunks_ms": 0.5,
         "assemble_ms": 0.01,
         "eval_collect_ms": 0.05,
@@ -46,7 +51,17 @@ def _write_shared_bench_report(path: Path, *, eval_barrier_ms: float, eval_ms: f
         "touch_ms": 0.1,
         "duration_ms": 5.5,
         "eval_target_count": 22,
+        "eval_target_count_by_kind": {
+            "kv_delta": 12,
+            "rotating_delta": 0,
+            "state_checkpoint": 10,
+        },
         "materialized_bytes": 90681344,
+        "materialized_bytes_by_kind": {
+            "kv_delta": 90599424,
+            "rotating_delta": 0,
+            "state_checkpoint": 81920,
+        },
     }
     payload = {
         "results": [
@@ -95,8 +110,26 @@ def test_build_report_extracts_restore_eval_split(tmp_path):
     assert payload["aggregate"]["row_errors"] == 0
     assert payload["aggregate"]["eval_collect_ms"]["min"] == 0.05
     assert payload["aggregate"]["eval_barrier_ms"]["max"] == 4.9
+    assert payload["aggregate"]["dominant_materialized_kind"] == "kv_delta"
+    assert payload["aggregate"]["eval_target_count_by_kind"] == {
+        "kv_delta": 12,
+        "rotating_delta": 0,
+        "state_checkpoint": 10,
+    }
+    assert payload["aggregate"]["materialized_bytes_by_kind"] == {
+        "kv_delta": 90599424,
+        "rotating_delta": 0,
+        "state_checkpoint": 81920,
+    }
+    assert payload["aggregate"]["record_bytes_by_kind"] == {
+        "kv_delta": 90600551,
+        "rotating_delta": 0,
+        "state_checkpoint": 82940,
+    }
     sample = payload["samples"][0]
     assert sample["barrier_share_of_eval_ms"] == 0.9800000000000001
+    assert sample["eval_target_count_by_kind"]["kv_delta"] == 12
+    assert sample["materialized_bytes_by_kind"]["kv_delta"] == 90599424
     assert sample["row_audit"]["cached_tokens"] == [0, 7373]
     assert sample["row_audit"]["output_previews"] == ["A toucan.", "A toucan."]
 
