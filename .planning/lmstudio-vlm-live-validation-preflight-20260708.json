@@ -21,6 +21,22 @@
     },
     "complete": true
   },
+  "lmstudio_store_model_dir": {
+    "path": "/Users/jeffreycruz/.lmstudio/models/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+    "exists": false,
+    "is_dir": false,
+    "required_files": {
+      "config.json": false,
+      "model.safetensors": false,
+      "model.safetensors.index.json": false,
+      "processor_config.json": false,
+      "tokenizer.json": false,
+      "tokenizer_config.json": false
+    },
+    "complete": false,
+    "store_dir": "/Users/jeffreycruz/.lmstudio/models",
+    "note": "Informational only. A complete directory in this store is not enough; `lms ls --json` must expose the model key before live validation."
+  },
   "model_data": {
     "path": "/Users/jeffreycruz/.lmstudio/.internal/model-data.json",
     "exists": true,
@@ -88,6 +104,7 @@
   ],
   "notes": [
     "Do not hand-edit LM Studio model-index cache files.",
+    "Do not treat a copied `~/.lmstudio/models/...` directory as loadable unless `lms ls --json` also exposes the model key.",
     "Do not force `lms import` for MLX model.safetensors files; the CLI treats that as a non-model file and prompts interactively.",
     "Proceed to backend registration and live /v1/chat/completions validation only after this report says ready_for_live_validation=true."
   ]

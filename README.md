@@ -615,12 +615,13 @@ that LM Studio can actually load the retained model key:
 
 The preflight is read-only. It checks `lms runtime ls`, `lms server status`,
 `lms ps`, `lms ls --json`, the retained local LFM2.5-VL directory, and
-`~/.lmstudio/.internal/model-data.json`. It exits non-zero until the retained
-model appears in `lms ls --json`.
+`~/.lmstudio/.internal/model-data.json`. It also reports whether a complete
+copy exists under `~/.lmstudio/models`, but that is diagnostic only. It exits
+non-zero until the retained model appears in `lms ls --json`.
 
 If the model directory exists but `lms ls --json` does not expose the model key,
-use the supported LM Studio download/registration path instead of editing LM
-Studio cache files by hand:
+use the supported LM Studio download/registration path instead of copying files
+into `~/.lmstudio/models` or editing LM Studio cache files by hand:
 
 ```bash
 lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y

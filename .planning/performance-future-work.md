@@ -5733,3 +5733,37 @@ The next supported path is to rerun the Hugging Face URL `lms get` command when
 network/download progress is available, then rerun the preflight and proceed to
 custom-backend live `/v1/chat/completions` validation only after it reports
 `ready_for_live_validation=true`.
+
+### M34 LM Studio local-copy registry blocker (2026-07-08)
+
+Feature `m34-lmstudio-local-copy-registry-blocker` tested whether a complete
+local copy of the retained LFM2.5-VL MLX directory under LM Studio's user model
+store could unblock live validation without editing LM Studio internal cache
+files.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m34-lmstudio-local-copy-registry-blocker-20260708.json`
+- **Updated preflight report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260708.json`
+- **Script update:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lmstudio_vlm_live_validation_preflight.py`
+
+Result:
+
+- The source model directory remained complete.
+- A 1.9G copy under
+  `/Users/jeffreycruz/.lmstudio/models/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`
+  was complete before cleanup.
+- `lms ls --json` still exposed only
+  `text-embedding-nomic-embed-text-v1.5`.
+- `lms load` failed with `Model not found` for the copied directory path, the
+  copied `model.safetensors` path, and the model key
+  `lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`.
+
+The preflight now reports `lmstudio_store_model_dir` as diagnostic evidence, but
+the readiness gate remains `lms ls --json` visibility. A copied
+`~/.lmstudio/models/...` directory is not a supported live-validation readiness
+signal by itself.
+
+Decision: **COPY-BASED REGISTRATION REJECTED / FAIL-CLOSED / LIVE VALIDATION
+STILL BLOCKED**. Remove ineffective local copies created during testing and use
+the supported `lms get
+https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y`
+path before attempting live `/v1/chat/completions` validation again.

@@ -16,6 +16,10 @@
 
 ### Changed
 
+- Report copied `~/.lmstudio/models` VLM directories in
+  `scripts/lmstudio_vlm_live_validation_preflight.py` as diagnostic-only
+  evidence while keeping `lms ls --json` visibility as the live-validation
+  readiness gate.
 - Reject non-semver backend versions in
   `scripts/lmstudio-register-engine.sh` and harden registry writes with backup
   and entry-count validation.

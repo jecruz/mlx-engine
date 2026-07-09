@@ -22,6 +22,7 @@ DEFAULT_MODEL_DIR = Path(
     "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/"
     "lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit"
 )
+DEFAULT_LMSTUDIO_MODEL_STORE = Path.home() / ".lmstudio/models"
 DEFAULT_HF_URL = "https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit"
 DEFAULT_OUTPUT = Path(".planning/lmstudio-vlm-live-validation-preflight.json")
 
@@ -38,6 +39,15 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_MODEL_DIR,
         help=f"Existing local MLX model directory ({DEFAULT_MODEL_DIR})",
+    )
+    parser.add_argument(
+        "--lmstudio-model-store",
+        type=Path,
+        default=DEFAULT_LMSTUDIO_MODEL_STORE,
+        help=(
+            "LM Studio user model store to inspect for an already-copied model "
+            f"({DEFAULT_LMSTUDIO_MODEL_STORE})"
+        ),
     )
     parser.add_argument(
         "--hf-url",
@@ -138,6 +148,17 @@ def _model_dir_status(model_dir: Path) -> dict[str, Any]:
     }
 
 
+def _lmstudio_store_status(store_dir: Path, model_key: str) -> dict[str, Any]:
+    model_dir = store_dir / model_key
+    status = _model_dir_status(model_dir)
+    status["store_dir"] = str(store_dir)
+    status["note"] = (
+        "Informational only. A complete directory in this store is not enough; "
+        "`lms ls --json` must expose the model key before live validation."
+    )
+    return status
+
+
 def _model_visible_in_lms(lms_ls_json: Any, model_key: str) -> dict[str, Any]:
     if not isinstance(lms_ls_json, list):
         return {
@@ -169,6 +190,10 @@ def main() -> int:
     lms_ls_json = _json_or_none(commands["lms_ls_json"]["stdout"])
     visibility = _model_visible_in_lms(lms_ls_json, args.model_key)
     model_dir = _model_dir_status(args.model_dir)
+    lmstudio_store_model_dir = _lmstudio_store_status(
+        args.lmstudio_model_store,
+        args.model_key,
+    )
     model_data = _load_model_data(args.model_key)
     ready = (
         commands["lms_ls_json"]["returncode"] == 0
@@ -182,6 +207,7 @@ def main() -> int:
         "ready_for_live_validation": ready,
         "model_visible_to_lms": visibility,
         "model_dir": model_dir,
+        "lmstudio_store_model_dir": lmstudio_store_model_dir,
         "model_data": model_data,
         "commands": commands,
         "next_supported_commands": [
@@ -191,6 +217,8 @@ def main() -> int:
         ],
         "notes": [
             "Do not hand-edit LM Studio model-index cache files.",
+            "Do not treat a copied `~/.lmstudio/models/...` directory as loadable "
+            "unless `lms ls --json` also exposes the model key.",
             "Do not force `lms import` for MLX model.safetensors files; "
             "the CLI treats that as a non-model file and prompts interactively.",
             "Proceed to backend registration and live /v1/chat/completions "

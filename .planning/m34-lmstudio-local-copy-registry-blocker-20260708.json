@@ -1,0 +1,55 @@
+{
+  "milestone": "M34-lmstudio-local-copy-registry-blocker",
+  "date": "2026-07-08",
+  "redmine_issue": 1190,
+  "objective": "Determine whether placing the retained LFM2.5-VL MLX model files in LM Studio's user model store is sufficient to unblock live LM Studio validation.",
+  "decision": "blocked-fail-closed",
+  "summary": "A complete copy under ~/.lmstudio/models did not make the retained VLM visible to `lms ls --json`, and bounded `lms load` attempts by model key, copied directory path, and copied model.safetensors path all failed with `Model not found`. Live LM Studio validation remains blocked before inference.",
+  "source_model_dir": {
+    "path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+    "required_file_count": 8,
+    "complete": true
+  },
+  "copied_lmstudio_model_dir": {
+    "path": "/Users/jeffreycruz/.lmstudio/models/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+    "copied_size": "1.9G",
+    "complete_before_cleanup": true,
+    "effective": false,
+    "cleanup_required": true
+  },
+  "observations": {
+    "lms_ls_json": "Only text-embedding-nomic-embed-text-v1.5 was listed; lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit was absent.",
+    "model_data_json": "Contains lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit as a Hugging Face source entry, but that metadata alone does not make the model loadable.",
+    "model_index_cache": "The current cache listed the bundled embedding model only; no badModels or direct LFM2.5-VL entry explained a loadable model.",
+    "hub_layout": "~/.lmstudio/hub/models contains virtual model metadata directories, not a concrete downloaded LFM2.5-VL MLX weight directory."
+  },
+  "bounded_load_attempts": [
+    {
+      "command": "timeout 180 lms load /Users/jeffreycruz/.lmstudio/models/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --identifier m31-lfm25-vl --ttl 300 -y",
+      "exit_code": 1,
+      "result": "Model not found"
+    },
+    {
+      "command": "timeout 60 lms load /Users/jeffreycruz/.lmstudio/models/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit/model.safetensors --identifier m31-lfm25-vl --ttl 300 -y",
+      "exit_code": 1,
+      "result": "Model not found"
+    },
+    {
+      "command": "timeout 60 lms load lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --identifier m31-lfm25-vl --ttl 300 -y",
+      "exit_code": 1,
+      "result": "Model not found"
+    }
+  ],
+  "repo_changes": [
+    "Updated scripts/lmstudio_vlm_live_validation_preflight.py to report the LM Studio user model-store directory as informational diagnostics.",
+    "Updated README.md to state that copying files into ~/.lmstudio/models is not a supported readiness signal unless `lms ls --json` exposes the key.",
+    "Regenerated .planning/lmstudio-vlm-live-validation-preflight-20260708.json after the script change."
+  ],
+  "final_runtime_state_expected": {
+    "server": "not running",
+    "loaded_models": "none",
+    "selected_mlx_runtime": "mlx-llm-mac-arm64-apple-metal-advsimd-cheetara-mlx-thread-unsafe-runtime@2026.6.2303",
+    "copied_model_dir": "removed after this artifact is written"
+  },
+  "next_supported_action": "Rerun `lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y` when the LM Studio download path can make progress, then rerun the preflight. Do not hand-edit LM Studio model-index cache files."
+}
