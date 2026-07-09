@@ -7132,3 +7132,45 @@ Validation:
   -> passed.
 - `python3 -m json.tool .planning/m67-upstream-candidate-refresh-20260710.json`
   -> passed.
+
+### M68 upstream candidate refresh (2026-07-10)
+
+Feature `m68-upstream-candidate-refresh` refreshes upstream scan evidence after the
+branch-head movement to `42e272b`.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m68-upstream-candidate-refresh-20260710.json`
+- **Candidate scan:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m68-upstream-candidate-scan-report-20260710.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m68-upstream-candidate-scan-diff-20260710.md`
+- **History report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m68-upstream-candidate-history-20260710.md`
+- **New inputs:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m67-upstream-candidate-scan-report-20260710.json`
+
+Compared scans:
+
+- Baseline: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m67-upstream-candidate-scan-report-20260710.json`
+- Candidate: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m68-upstream-candidate-scan-report-20260710.json`
+
+Summary:
+
+- Baseline head `a1a9dea`
+- Candidate head `42e272b`
+- Candidate branches scanned `6`
+- Branch status counts: `unchanged=6`, `new=0`, `removed=0`, `changed=0`
+- Head-vs-upstream/main `+1`
+- Head-vs-origin `+1`
+
+Decision: **READABLE_SCAN_REFRESH_ONLY / NO PROMOTION / RUNTIME UNCHANGED**.
+The additional scan fetch moved local HEAD without changing candidate branch payloads or
+runtime state.
+
+Validation:
+
+- `.venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m68-upstream-candidate-scan-report-20260710.json`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json --output .planning/m68-upstream-candidate-scan-diff-20260710.md --title "M68 Upstream Candidate Scan Diff"`
+  -> passed.
+- `.venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json --output .planning/m68-upstream-candidate-history-20260710.md --title "M68 Upstream Candidate History"`
+  -> passed.
+- `python3 -m json.tool .planning/m68-upstream-candidate-scan-report-20260710.json`
+  -> passed.
+- `python3 -m json.tool .planning/m68-upstream-candidate-refresh-20260710.json`
+  -> passed.

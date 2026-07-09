@@ -10,6 +10,10 @@
   "active_goal": "Advance the Mac-local MLX inference stack only with changes that measurably improve retained prompt-processing or generation latency, preserve response quality, and do not increase runtime instability.",
   "latest_commits": [
     {
+      "sha": "42e272b",
+      "message": "[#1190] add upstream candidate refresh evidence"
+    },
+    {
       "sha": "a1a9dea",
       "message": "[#1190] add upstream candidate history report"
     },
@@ -95,6 +99,13 @@
       "status": "done-no-promotion",
       "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m67-upstream-candidate-refresh-20260710.json",
       "summary": "Refreshed local-head upstream scan evidence (`a1a9dea`), with unchanged six-branch payload status."
+    },
+    {
+      "id": "M68",
+      "name": "Upstream candidate refresh",
+      "status": "done-no-promotion",
+      "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m68-upstream-candidate-refresh-20260710.json",
+      "summary": "Refreshed upstream scan evidence after HEAD advanced to `42e272b`; payloads remained unchanged."
     }
   ],
   "blockers": [
@@ -125,6 +136,22 @@
     "If no LM Studio progress is possible, continue only with isolated local hypotheses that preserve the no-promotion rule until live validation is available."
   ],
   "validation": [
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m68-upstream-candidate-scan-report-20260710.json",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json --output .planning/m68-upstream-candidate-scan-diff-20260710.md --title \"M68 Upstream Candidate Scan Diff\"",
+      "result": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json --output .planning/m68-upstream-candidate-history-20260710.md --title \"M68 Upstream Candidate History\"",
+      "result": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m68-upstream-candidate-refresh-20260710.json",
+      "result": "passed"
+    },
     {
       "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m67-upstream-candidate-scan-report-20260710.json",
       "result": "passed"
