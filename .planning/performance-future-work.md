@@ -6912,3 +6912,46 @@ Validation:
 - `python3 -m json.tool .planning/m62-upstream-readable-scan-20260709.json`
   -> passed.
 - `git diff --check` -> passed.
+
+### M63 LFM2.5 text-cache readable report (2026-07-09)
+
+Feature `m63-lfm25-text-cache-readable-report` adds a Markdown renderer for
+retained LFM2.5-VL text-cache benchmark and comparison JSON evidence.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m63-lfm25-text-cache-readable-report-20260709.json`
+- **Readable report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m63-lfm25-text-cache-evidence-report-20260709.md`
+- **New reporter:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lfm25_text_cache_report.py`
+
+Generated report source:
+
+- Benchmark: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m53-lfm25-text-cache-ratio-bench-20260709.json`
+- Comparison: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json`
+
+Report evidence:
+
+- M53 retained benchmark samples: `3`.
+- Row errors: `0`.
+- All followups cached: `true`.
+- All followups small prefill: `true`.
+- All outputs preserve name: `true`.
+- Follow-up cache reuse ratio avg: `0.95929203539823`.
+- Follow-up prefill ratio avg: `0.04070796460176991`.
+- M54 comparison status: `pass`.
+- Follow-up TTFT delta vs M52: `-2.3176152815160216%`.
+- Follow-up total latency delta vs M52: `-2.3601998805210855%`.
+
+Decision: **READABLE REPORT TOOLING ONLY / NO PROMOTION / RUNTIME UNCHANGED**.
+This improves evidence review for future retained LFM2.5 text-cache candidates,
+but live LM Studio validation remains blocked before inference.
+
+Validation:
+
+- `python3 -m py_compile scripts/lfm25_text_cache_report.py tests/test_lfm25_text_cache_report.py scripts/lfm25_text_cache_bench.py scripts/lfm25_text_cache_compare.py`
+  -> passed.
+- `.venv-py312/bin/python -m pytest tests/test_lfm25_text_cache_report.py tests/test_lfm25_text_cache_bench.py tests/test_lfm25_text_cache_compare.py -q`
+  -> `8 passed`.
+- `.venv-py312/bin/python scripts/lfm25_text_cache_report.py --benchmark .planning/m53-lfm25-text-cache-ratio-bench-20260709.json --comparison .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json --output .planning/m63-lfm25-text-cache-evidence-report-20260709.md --title "M63 LFM2.5 Text-Cache Evidence"`
+  -> passed.
+- `git diff --check` -> passed.
+- `python3 -m json.tool .planning/m63-lfm25-text-cache-readable-report-20260709.json`
+  -> passed.

@@ -18,6 +18,9 @@
 - Add `scripts/lfm25_text_cache_compare.py` to compare retained LFM2.5-VL
   text-cache reports and fail candidates with cache, prefill, row-error, or
   name-fidelity regressions.
+- Add `scripts/lfm25_text_cache_report.py` to render retained LFM2.5-VL
+  text-cache benchmark and comparison JSON as a readable Markdown evidence
+  report.
 - Add `scripts/upstream_candidate_scan.py` to produce factual JSON evidence for
   repeat upstream branch triage before any cherry-pick or runtime candidate.
 - Add `scripts/upstream_candidate_report.py` to render upstream scan JSON as a

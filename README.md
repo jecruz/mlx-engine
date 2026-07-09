@@ -477,6 +477,21 @@ reuse, missing `Silas` fidelity, cache-reuse ratio regression, or prefill ratio
 regression. It computes ratio fields from older reports when the benchmark
 report only contains token counts.
 
+To render benchmark and comparison JSON as a readable Markdown evidence report,
+run:
+
+```bash
+python scripts/lfm25_text_cache_report.py \
+  --benchmark .planning/lfm25-text-cache-candidate.json \
+  --comparison .planning/lfm25-text-cache-compare.json \
+  --output .planning/lfm25-text-cache-evidence.md
+```
+
+The Markdown report preserves row-error, cache-reuse, prefill, latency,
+candidate-vs-baseline, and name-fidelity evidence for review. It is reporting
+only; runtime promotion still requires retained wins, quality gates, and live
+LM Studio validation.
+
 To produce a factual JSON snapshot of upstream branches before considering any
 new cherry-pick, run:
 
