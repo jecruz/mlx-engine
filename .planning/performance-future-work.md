@@ -6115,3 +6115,59 @@ Decision: **DIAGNOSTICS ONLY / NO PROMOTION / RUNTIME BEHAVIOR UNCHANGED**.
 Use the split fields in the next retained VLM timing run to decide whether the
 observed restore `eval_ms` is dominated by target collection or by the actual
 `mx.eval(...)` barrier before attempting another restore-materialization change.
+
+### M45 restore eval split direct evidence (2026-07-09)
+
+Feature `m45-restore-eval-split-direct-evidence` captured real retained-workload
+evidence for the M44 split fields without making a promotion claim.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m45-restore-eval-split-direct-evidence-20260709.json`
+- **Bench report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m45-restore-eval-split/20260709T013633.520360Z-shared-bench.json`
+- **Quality inspect:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m45-restore-eval-split/20260709T013633.520360Z-m45-quality-inspect.json`
+- **Cache root:** `/tmp/mlx-engine-vlm-cache-m45-split-384ec3e` (`87M`)
+
+Command:
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+python3 shared_bench.py --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit \
+  --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  --mlx-engine-vlm-prompt-cache-root /tmp/mlx-engine-vlm-cache-m45-split-384ec3e \
+  --mlx-engine-vlm-prompt-cache-namespace m45-restore-eval-split-384ec3e \
+  --mlx-engine-process-restart \
+  --prompt-suite-json prompt_suites/vlm_image_long_quality.json \
+  --runs 2 --max-tokens 32 --temperature 0.0 --top-p 1.0 \
+  --include-output-text --mlx-engine-batched-timing --timeout 1200 \
+  --out-dir reports/20260709-m45-restore-eval-split
+```
+
+Result:
+
+- Two rows completed with zero row errors.
+- Cold row: `cached_tokens=0`, output `A toucan.`
+- Warm row: `cached_tokens=7373`, output `A toucan.`
+- Summary: avg prompt tokens `7307.0`, avg cached tokens `3686.5`, avg TTFT
+  `0.692s`, cold TTFT `1.351s`, warm TTFT `0.032s`, avg decode TPS
+  `347.096`, avg total `0.706s`.
+- Candidate-only quality inspect reported `prompt_quality_status=pass`,
+  `failed_prompts=[]`, and overall `status=fail` only because the promotion
+  gate has no comparison baseline in inspect-only mode.
+
+Warm restore timing split:
+
+- `load_chunks_ms=0.496`
+- `assemble_ms=0.015`
+- `eval_collect_ms=0.050`
+- `eval_barrier_ms=4.904`
+- `eval_ms=4.961`
+- `touch_ms=0.093`
+- `duration_ms=5.576`
+- `eval_target_count=22`
+- `materialized_bytes=90681344`
+- `record_count_by_kind={"kv_delta": 1, "rotating_delta": 0, "state_checkpoint": 1}`
+
+Decision: **EVIDENCE ONLY / NO PROMOTION / RUNTIME UNCHANGED**. On this
+retained LFM2.5-VL warm restore sample, restore `eval_ms` is barrier-dominated,
+not target-collection dominated. Do not chase target collection overhead unless
+future repeated samples show a different split.

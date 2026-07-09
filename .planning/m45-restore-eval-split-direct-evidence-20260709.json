@@ -1,0 +1,107 @@
+{
+  "milestone": "M45-restore-eval-split-direct-evidence",
+  "timestamp_utc": "2026-07-09T01:38:20Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "head": "384ec3e",
+  "objective": "Capture real retained-workload evidence for the M44 restore eval timing split without making a promotion claim.",
+  "benchmark": {
+    "workdir": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness",
+    "command": "python3 shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --mlx-engine-vlm-prompt-cache-root /tmp/mlx-engine-vlm-cache-m45-split-384ec3e --mlx-engine-vlm-prompt-cache-namespace m45-restore-eval-split-384ec3e --mlx-engine-process-restart --prompt-suite-json prompt_suites/vlm_image_long_quality.json --runs 2 --max-tokens 32 --temperature 0.0 --top-p 1.0 --include-output-text --mlx-engine-batched-timing --timeout 1200 --out-dir reports/20260709-m45-restore-eval-split",
+    "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m45-restore-eval-split/20260709T013633.520360Z-shared-bench.json",
+    "quality_inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m45-restore-eval-split/20260709T013633.520360Z-m45-quality-inspect.json",
+    "cache_root": "/tmp/mlx-engine-vlm-cache-m45-split-384ec3e",
+    "cache_root_size": "87M"
+  },
+  "result": {
+    "row_errors": 0,
+    "row_audit": [
+      {
+        "run_index": 1,
+        "cached_tokens": 0,
+        "completion_tokens": 5,
+        "output_preview": "A toucan.",
+        "error": null
+      },
+      {
+        "run_index": 2,
+        "cached_tokens": 7373,
+        "completion_tokens": 5,
+        "output_preview": "A toucan.",
+        "error": null
+      }
+    ],
+    "summary": {
+      "avg_prompt_tokens": 7307.0,
+      "avg_cached_tokens": 3686.5,
+      "avg_ttft_s": 0.692,
+      "cold_ttft_s": 1.351,
+      "warm_ttft_s": 0.032,
+      "avg_decode_tps": 347.096,
+      "avg_total_s": 0.706
+    },
+    "quality_inspect": {
+      "status": "fail",
+      "prompt_quality_status": "pass",
+      "promotion_gate_status": "fail",
+      "failed_prompts": [],
+      "note": "Candidate-only inspect marks the promotion gate failed because there is no comparison baseline; prompt quality passed."
+    }
+  },
+  "restore_timing": {
+    "event": "vlm_cache_restore_detail",
+    "cached_tokens": 7373,
+    "chunks": 8,
+    "records": 2,
+    "record_count_by_kind": {
+      "kv_delta": 1,
+      "rotating_delta": 0,
+      "state_checkpoint": 1
+    },
+    "record_bytes": 90683491,
+    "record_bytes_by_kind": {
+      "kv_delta": 90600551,
+      "rotating_delta": 0,
+      "state_checkpoint": 82940
+    },
+    "eval_target_count": 22,
+    "eval_target_count_by_kind": {
+      "kv_delta": 12,
+      "rotating_delta": 0,
+      "state_checkpoint": 10
+    },
+    "materialized_bytes": 90681344,
+    "materialized_bytes_by_kind": {
+      "kv_delta": 90599424,
+      "rotating_delta": 0,
+      "state_checkpoint": 81920
+    },
+    "load_chunks_ms": 0.496,
+    "assemble_ms": 0.015,
+    "eval_collect_ms": 0.05,
+    "eval_barrier_ms": 4.904,
+    "eval_ms": 4.961,
+    "touch_ms": 0.093,
+    "duration_ms": 5.576
+  },
+  "cost_model": {
+    "event": "vlm_cache_restore_cost_model",
+    "rotating_record_count": 0,
+    "rotating_record_bytes": 0,
+    "rotating_eval_target_count": 0,
+    "rotating_materialized_bytes": 0,
+    "rotating_reducible_overhead": false,
+    "rotating_reducible_overhead_decision": "no-go",
+    "eval_collect_ms": 0.05,
+    "eval_barrier_ms": 4.904,
+    "eval_ms": 4.961
+  },
+  "decision": {
+    "status": "EVIDENCE_ONLY",
+    "runtime_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "live_lm_studio_validation": "not-run-lmstudio-model-still-not-visible",
+    "next_action": "Treat restore eval work as barrier-dominated on this retained LFM2.5-VL warm restore sample; do not chase target collection overhead unless future repeated samples show a different split."
+  }
+}
