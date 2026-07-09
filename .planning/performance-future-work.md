@@ -5678,3 +5678,21 @@ Decision: **RETAIN FIX / DIRECT VALIDATED / NO BROADER PERFORMANCE PROMOTION**.
 This is a correctness and duplicate-write avoidance fix in the retained default
 layout. It is not a new latency-promotion claim. Live LM Studio validation is
 still required before packaging or promoting a broader performance change.
+
+### M32 live LM Studio validation attempt (2026-07-08)
+
+The live LM Studio validation milestone for M31 was attempted but blocked before
+inference by LM Studio's model registry, not by the engine code.
+
+- **Evidence artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m32-lmstudio-live-validation-blocker-20260708.json`
+- **Initial LM Studio state:** app running, API server not running, no loaded models.
+- **Prior selected MLX runtime:** `mlx-llm-mac-arm64-apple-metal-advsimd-cheetara-mlx-thread-unsafe-runtime@2026.6.2303`.
+- **Temporary validation backend:** `mlx-llm-mac-arm64-apple-metal-advsimd-m31-state-boundary@2026.7.8` registered against isolated runtime `app-mlx-generate-mac14-arm64@32` and `cpython3.11-mac-arm64@10`.
+- **Server:** started successfully on `127.0.0.1:4521`.
+- **Blocker:** `lms load` could not load `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit` by absolute path or by `lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`; `lms ls` only exposed the existing embedding model. A symlink under `~/.lmstudio/models/lmstudio-community/` did not make the VLM visible. `lms import --dry-run` on `model.safetensors` reported that the file did not look like an importable model and opened an interactive confirmation prompt, so the import was cancelled instead of forcing an unsupported registration.
+- **Cleanup completed:** cancelled the blocked import process, removed the ineffective model symlink, removed the temporary validation backend directory, restored `internal-engine-index.json` from the script backup, removed the temporary backend preference, reselected the prior custom MLX runtime, stopped the API server, and confirmed no models were loaded.
+
+Decision: **LIVE VALIDATION BLOCKED / NO LIVE LM STUDIO PROMOTION**. The M31
+direct validation remains retained. Before live promotion, first make the
+retained LFM2.5-VL MLX directory visible to LM Studio through a supported
+non-copy registration/download path so `lms ls` exposes a loadable model key.
