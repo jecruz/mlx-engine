@@ -1,0 +1,110 @@
+{
+  "milestone": "M43-upstream-and-lmstudio-gate-refresh",
+  "timestamp_utc": "2026-07-09T01:31:13Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "head": "13a69a7",
+  "objective": "Refresh upstream candidate triage and the live LM Studio promotion gate before considering any new latency or stability intake.",
+  "commands": [
+    "git fetch --all --prune",
+    "git log --oneline 8ae2610..upstream/main",
+    "git for-each-ref --format='%(refname:short)|%(objectname:short)|%(committerdate:iso8601)|%(subject)' refs/remotes/upstream",
+    "git log --oneline upstream/main..upstream/neil/gemma4-tool-context",
+    "git diff --stat upstream/main..upstream/neil/gemma4-tool-context",
+    "git diff --name-status upstream/main..upstream/neil/gemma4-tool-context",
+    "git log --oneline upstream/main..upstream/yagil/dist",
+    "git diff --stat upstream/main..upstream/yagil/dist",
+    "git log --oneline upstream/main..upstream/yagil/mlx-dist-non-batched",
+    "git diff --stat upstream/main..upstream/yagil/mlx-dist-non-batched",
+    "lms ls --json",
+    "python3 scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m43.json --timeout 30"
+  ],
+  "upstream_main": {
+    "ref": "upstream/main",
+    "head": "8ae2610",
+    "subject": "Handle Gemma4 bidirectional visual prefill (#340)",
+    "new_commits_since_m37_baseline": 0,
+    "head_to_upstream_main_counts": {
+      "local_only": 217,
+      "upstream_only": 1
+    },
+    "decision": "No mainline upstream change beyond the already-audited Gemma4 #340 commit."
+  },
+  "candidate_branches": [
+    {
+      "branch": "upstream/neil/gemma4-tool-context",
+      "head": "9aa3db2",
+      "committer_date": "2026-07-08 18:36:49 -0400",
+      "ahead_of_upstream_main": 17,
+      "behind_upstream_main": 0,
+      "recent_commits": [
+        "9aa3db2 Rename Gemma4 grammar edge case test",
+        "864eeaf Trim Gemma4 tool runtime comments",
+        "05d1d64 Relax Gemma4 tool grammar edge cases",
+        "91fe8bd Simplify Gemma4 tool runtime assumptions",
+        "3035148 Move llguidance imports to module scope"
+      ],
+      "diffstat": "7 files changed, 868 insertions(+)",
+      "files": [
+        "mlx_engine/generate.py",
+        "mlx_engine/model_kit/batched_vision/batch_generator.py",
+        "mlx_engine/tool_protocols.py",
+        "mlx_engine/tool_runtime.py",
+        "tests/test_batched_vision_batch_generator.py",
+        "tests/test_tool_runtime_detection.py",
+        "tests/test_tool_runtime_reasoning_guard.py"
+      ],
+      "decision": "DEFER",
+      "reason": "The branch is a Gemma4 tool-runtime and grammar/reasoning guard feature. It is not a bounded retained-workload prompt-processing or generation-latency patch, depends on a new tool_runtime surface absent from the current branch, and lacks a retained benchmark target for Redmine #1190."
+    },
+    {
+      "branch": "upstream/yagil/dist",
+      "head": "366ebd4",
+      "ahead_of_upstream_main": 29,
+      "behind_upstream_main": 5,
+      "recent_commits": [
+        "366ebd4 Preserve backpressure in distributed stream bridge",
+        "4b6b826 Stop distributed stream when caller exits",
+        "5cbeb1b Add distributed model thread diagnostics",
+        "d6656f1 Run sequential distributed MLX on model thread",
+        "bbf51db Align distributed load stream and add stream logs"
+      ],
+      "decision": "DEFER",
+      "reason": "The branch remains a broad distributed architecture rewrite with large deletes and new distributed model-kit surfaces. The stability-looking commits are not cleanly separable from the distributed runtime stack and are outside the Mac-local retained direct benchmark lane."
+    },
+    {
+      "branch": "upstream/yagil/mlx-dist-non-batched",
+      "head": "c86c23a",
+      "ahead_of_upstream_main": 35,
+      "behind_upstream_main": 5,
+      "recent_commits": [
+        "c86c23a Run Qwen VLM prompts on model thread",
+        "3e41fdf Run MLX VLM generation on model thread",
+        "b7019fc Handle early distributed cancel requests",
+        "958ffb8 Run Gemma 4 MLX generation on model thread",
+        "e5a6faf Run distributed MLX scheduler on model thread"
+      ],
+      "decision": "DEFER",
+      "reason": "Despite model-thread stability themes, the branch is built on the same distributed/vision_add_ons rewrite and would remove or replace major local prompt-cache surfaces. It is not a small reversible candidate."
+    }
+  ],
+  "lm_studio_gate": {
+    "lms_ls_visible_model_keys": [
+      "text-embedding-nomic-embed-text-v1.5"
+    ],
+    "retained_vlm_visible": false,
+    "preflight_artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m43.json",
+    "ready_for_live_validation": false,
+    "model_visible_to_lms": false,
+    "model_dir_complete": true,
+    "next_supported_command": "lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y"
+  },
+  "decision": {
+    "status": "NO_CHERRY_PICK",
+    "runtime_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "live_lm_studio_validation": "blocked-before-inference",
+    "next_action": "Keep the current runtime unchanged. Continue with only a new isolated local hypothesis or retry official LM Studio registration; do not run live validation until preflight reports ready_for_live_validation=true."
+  }
+}

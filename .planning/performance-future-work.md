@@ -6038,3 +6038,42 @@ BEFORE INFERENCE / NO PROMOTION / RUNTIME UNCHANGED**. Continue only through LM
 Studio UI or a successful official `lms get` path that creates exact
 LFM2.5-VL entries in LM Studio's download-job, single-download, and model-index
 state, then rerun `scripts/lmstudio_vlm_live_validation_preflight.py`.
+
+### M43 upstream and LM Studio gate refresh (2026-07-09)
+
+Feature `m43-upstream-and-lmstudio-gate-refresh` refreshed upstream candidate
+triage and the live LM Studio promotion gate before considering any new latency
+or stability intake.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m43-upstream-and-lmstudio-gate-refresh-20260709.json`
+- **Post-refresh preflight:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m43.json`
+
+Result:
+
+- `git fetch --all --prune` succeeded.
+- `upstream/main` remains at `8ae2610 Handle Gemma4 bidirectional visual
+  prefill (#340)`. There are no new `upstream/main` commits beyond the M37
+  scan baseline.
+- Current `HEAD` is `13a69a7`; `HEAD...upstream/main` reports `217` local-only
+  commits and `1` upstream-only commit.
+- `upstream/neil/gemma4-tool-context` is the only visibly fresh upstream branch
+  (`9aa3db2`, 2026-07-08). It is 17 commits ahead of `upstream/main` and adds
+  a Gemma4 tool-runtime / grammar / reasoning guard surface across 7 files and
+  868 insertions. It is deferred because it is not a bounded retained-workload
+  prompt-processing or generation-latency patch and lacks a Redmine #1190
+  benchmark target.
+- `upstream/yagil/dist` and `upstream/yagil/mlx-dist-non-batched` still contain
+  relevant-looking model-thread/backpressure stability commits, but both remain
+  broad distributed/`vision_add_ons` rewrites that would remove or replace major
+  local prompt-cache surfaces. They are not small reversible cherry-picks.
+- `lms ls --json` still exposes only
+  `text-embedding-nomic-embed-text-v1.5`.
+- Post-refresh LM Studio preflight still reports
+  `ready_for_live_validation=false`, `model_visible_to_lms=false`, and
+  `model_dir_complete=true`.
+
+Decision: **NO_CHERRY_PICK / LIVE VALIDATION BLOCKED BEFORE INFERENCE / NO
+PROMOTION / RUNTIME UNCHANGED**. Keep the current runtime unchanged. Continue
+only with a new isolated local hypothesis or retry official LM Studio
+registration; do not run live validation until preflight reports
+`ready_for_live_validation=true`.
