@@ -5794,3 +5794,35 @@ STILL BLOCKED BEFORE INFERENCE**. The next step is not an engine-code change:
 resolve the LM Studio download stall, rerun the same supported `lms get`
 command, and require `lms ls --json` visibility before attempting live
 `/v1/chat/completions` validation.
+
+### M36 LM Studio download-path diagnostics (2026-07-09)
+
+Feature `m36-lmstudio-download-path-diagnostics` narrowed the M35 blocker.
+Direct Hugging Face access and LM Studio's HF proxy are reachable; the remaining
+failure sits in LM Studio's download/import/index orchestration.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m36-lmstudio-download-path-diagnostics-20260709.json`
+
+Evidence:
+
+- `hf models info lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --format json`
+  succeeded.
+- `hf download lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --dry-run --format
+  json` listed the expected repository files, including the 2.1G
+  `model.safetensors`.
+- Direct Hugging Face `config.json` fetch returned HTTP 200.
+- LM Studio HF proxy `config.json` fetch returned HTTP 200.
+- LM Studio HF proxy `model.safetensors` range read returned HTTP 206 with
+  `Content-Range: bytes 0-1048575/2083497259` and yielded bytes.
+- The retained local directory under
+  `/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit`
+  still contains all eight expected files.
+- LM Studio download-job, single-download, temp-download, and model-index-cache
+  files still contain no LFM2.5-VL model entry.
+- `lms import ... --user-repo ... --hard-link --dry-run` still prompts that
+  `model.safetensors` does not look like a model file and is not safe to force.
+
+Decision: **NETWORK/HF/PROXY NOT THE BLOCKER / LM STUDIO REGISTRATION
+ORCHESTRATION STILL BLOCKED**. Continue only through an official LM Studio UI or
+CLI path that creates a completed download job and model-index entry. Do not
+hand-edit index caches or force the unsafe import prompt.
