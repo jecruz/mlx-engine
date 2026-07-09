@@ -6399,3 +6399,51 @@ Decision: **TEST GATE ONLY / NO PROMOTION / RUNTIME UNCHANGED**. This closes the
 M50 upstream-test deferral with a local, non-prompting, real-model gate for
 future prompt-cache or text-only VLM caching changes. It does not itself promote
 a latency candidate.
+
+### M52 LFM2.5 text-only generated-token cache benchmark (2026-07-09)
+
+Feature `m52-lfm25-text-cache-benchmark` turns the M51 gate into a reusable
+JSON benchmark for repeated measured evidence on the retained LFM2.5-VL
+text-only generated-token cache workload.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m52-lfm25-text-cache-benchmark-20260709.json`
+- **Benchmark report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m52-lfm25-text-cache-bench-20260709.json`
+- **Script:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lfm25_text_cache_bench.py`
+- **Tests:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_lfm25_text_cache_bench.py`
+
+Benchmark command:
+
+```bash
+.venv-py312/bin/python scripts/lfm25_text_cache_bench.py \
+  --samples 2 \
+  --output .planning/m52-lfm25-text-cache-bench-20260709.json
+```
+
+Result:
+
+- `sample_count=2`
+- `row_errors=0`
+- `all_followups_cached=true`
+- `all_followups_small_prefill=true`
+- `all_outputs_preserve_name=true`
+- `followup_cached_tokens`: min `542`, max `542`, avg `542`
+- `followup_total_prompt_tokens`: min `565`, max `565`, avg `565`
+- `followup_prefill_tokens_processed`: min `23`, max `23`, avg `23`
+- `followup_ttft_s`: min `0.018607`, max `0.018873`, avg `0.018740`
+- `followup_total_s`: min `0.027445`, max `0.028210`, avg `0.027828`
+
+Validation:
+
+- `python3 -m py_compile scripts/lfm25_text_cache_bench.py tests/test_lfm25_text_cache_bench.py`
+  -> passed.
+- `.venv-py312/bin/python -m pytest tests/test_lfm25_text_cache_bench.py -q`
+  -> `2 passed`.
+- `python3 -m json.tool .planning/m52-lfm25-text-cache-bench-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
+
+Decision: **BENCHMARK TOOL AND BASELINE ONLY / NO PROMOTION / RUNTIME
+UNCHANGED**. This establishes repeated retained-workload baseline evidence for
+future LFM2.5 text-only VLM generated-token cache candidates. A future runtime
+candidate still needs candidate-vs-baseline deltas, quality gates, and live LM
+Studio validation before promotion.

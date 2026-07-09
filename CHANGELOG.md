@@ -10,6 +10,8 @@
 - Include by-kind eval-target, materialized-byte, and record-byte aggregates in
   `scripts/vlm_restore_eval_split_report.py` output so restore barrier
   investigations can identify the dominant materialization surface.
+- Add `scripts/lfm25_text_cache_bench.py` to produce repeated JSON evidence
+  for the retained LFM2.5-VL text-only generated-token cache workload.
 - Add `eval_collect_ms` and `eval_barrier_ms` to VLM
   `vlm_cache_restore_detail` / `vlm_cache_restore_cost_model` timing events so
   restore-eval investigations can separate target discovery from the mandatory

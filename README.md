@@ -447,6 +447,19 @@ computes `eval_barrier_ms / eval_ms`, preserves by-kind eval-target,
 materialized-byte, and record-byte counters, and keeps row-error/cache/output
 evidence so repeated-sample barrier decisions are auditable.
 
+To collect repeated evidence for LFM2.5-VL text-only generated-token cache
+reuse, run:
+
+```bash
+python scripts/lfm25_text_cache_bench.py \
+  --samples 2 \
+  --output .planning/lfm25-text-cache-bench.json
+```
+
+The script never prompts for downloads. Pass `--model /path/to/model` or set
+`MLX_ENGINE_LFM25_VL_MODEL_PATH` when the retained local model path is not
+available.
+
 Example:
 
 ```bash
