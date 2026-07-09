@@ -1,0 +1,23 @@
+{
+  "milestone": "M35-lmstudio-supported-download-timeout",
+  "date": "2026-07-08",
+  "redmine_issue": 1190,
+  "objective": "Retry the supported LM Studio Hugging Face URL registration path after rejecting copy-based registration.",
+  "decision": "blocked-external-download-timeout",
+  "command": "timeout 300 lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y",
+  "exit_code": 124,
+  "observed_behavior": [
+    "LM Studio resolved the concrete model and download plan.",
+    "The CLI selected LFM2.5 VL 1.6B 8BIT [MLX] as a 2.09 GB download.",
+    "The transfer remained at 0.00% for the full 300 second timeout window."
+  ],
+  "post_attempt_state": {
+    "lms_ls_json": "Only text-embedding-nomic-embed-text-v1.5 is listed.",
+    "server": "not running",
+    "loaded_models": "none",
+    "partial_lfm_model_files_found": false,
+    "search_scope": "/Users/jeffreycruz/.lmstudio maxdepth 6 for names matching LFM2.5/lfm2.5/lfm"
+  },
+  "live_validation_status": "blocked before inference",
+  "next_supported_action": "Resolve why LM Studio's model download remains at 0.00%, then rerun the same `lms get` command and require `lms ls --json` to expose lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit before live validation."
+}

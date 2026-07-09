@@ -5767,3 +5767,30 @@ STILL BLOCKED**. Remove ineffective local copies created during testing and use
 the supported `lms get
 https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y`
 path before attempting live `/v1/chat/completions` validation again.
+
+### M35 LM Studio supported download timeout (2026-07-08)
+
+Feature `m35-lmstudio-supported-download-timeout` retried the supported LM
+Studio Hugging Face URL registration path after M34 rejected copy-based
+registration.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m35-lmstudio-supported-download-timeout-20260708.json`
+- **Command:** `timeout 300 lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y`
+
+Result:
+
+- LM Studio resolved the concrete model and selected `LFM2.5 VL 1.6B 8BIT
+  [MLX]` as a 2.09 GB download.
+- The transfer remained at `0.00%` for the full 300 second timeout window.
+- The command exited `124`.
+- Post-attempt `lms ls --json` still exposed only
+  `text-embedding-nomic-embed-text-v1.5`.
+- LM Studio server was not running and no models were loaded.
+- No partial LFM2.5-VL model files were found under `~/.lmstudio` outside the
+  existing patched source-code copies.
+
+Decision: **SUPPORTED REGISTRATION BLOCKED BY DOWNLOAD STALL / LIVE VALIDATION
+STILL BLOCKED BEFORE INFERENCE**. The next step is not an engine-code change:
+resolve the LM Studio download stall, rerun the same supported `lms get`
+command, and require `lms ls --json` visibility before attempting live
+`/v1/chat/completions` validation.
