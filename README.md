@@ -462,6 +462,21 @@ available. The JSON report includes follow-up TTFT/total latency, cached-token
 counts, prompt-token counts, follow-up prefill-token counts, cache-reuse ratio,
 and prefill ratio.
 
+To compare two retained-workload text-cache reports before considering a
+runtime candidate for promotion, run:
+
+```bash
+python scripts/lfm25_text_cache_compare.py \
+  --baseline .planning/lfm25-text-cache-baseline.json \
+  --candidate .planning/lfm25-text-cache-candidate.json \
+  --output .planning/lfm25-text-cache-compare.json
+```
+
+The comparison gate fails candidates with row errors, missing follow-up cache
+reuse, missing `Silas` fidelity, cache-reuse ratio regression, or prefill ratio
+regression. It computes ratio fields from older reports when the benchmark
+report only contains token counts.
+
 Example:
 
 ```bash

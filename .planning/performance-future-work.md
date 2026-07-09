@@ -6497,3 +6497,64 @@ UNCHANGED**. Use the M53 three-sample ratio report as the stronger retained
 baseline for future LFM2.5 text-only VLM cache candidates. Runtime promotion
 still requires candidate-vs-baseline deltas, quality gates, and live LM Studio
 validation.
+
+### M54 LFM2.5 text-cache comparison gate (2026-07-09)
+
+Feature `m54-lfm25-text-cache-compare-gate` adds a reusable JSON comparison
+gate for retained LFM2.5-VL text-only generated-token cache benchmark reports.
+This is a tooling milestone only; it does not change runtime behavior.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m54-lfm25-text-cache-compare-gate-20260709.json`
+- **Comparison report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json`
+- **Baseline report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m52-lfm25-text-cache-bench-20260709.json`
+- **Candidate-format report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m53-lfm25-text-cache-ratio-bench-20260709.json`
+- **Script:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lfm25_text_cache_compare.py`
+- **Tests:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_lfm25_text_cache_compare.py`
+
+Comparison command:
+
+```bash
+.venv-py312/bin/python scripts/lfm25_text_cache_compare.py \
+  --baseline .planning/m52-lfm25-text-cache-bench-20260709.json \
+  --candidate .planning/m53-lfm25-text-cache-ratio-bench-20260709.json \
+  --output .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json
+```
+
+Result:
+
+- `status=pass`
+- `candidate_row_errors=0`
+- `candidate_followups_cached=true`
+- `candidate_followups_small_prefill=true`
+- `candidate_outputs_preserve_name=true`
+- `cache_reuse_ratio_regression=0.0` with threshold `0.01`
+- `prefill_ratio_regression=0.0` with threshold `0.01`
+- `followup_cache_reuse_ratio_avg`: baseline `0.959292`, candidate
+  `0.959292`, delta `0.0`
+- `followup_prefill_ratio_avg`: baseline `0.040708`, candidate `0.040708`,
+  delta `0.0`
+- `followup_ttft_s_avg`: baseline `0.018740`, candidate `0.018306`, delta
+  `-0.000434`
+- `followup_total_s_avg`: baseline `0.027828`, candidate `0.027171`, delta
+  `-0.000657`
+
+Validation:
+
+- `python3 -m py_compile scripts/lfm25_text_cache_compare.py tests/test_lfm25_text_cache_compare.py`
+  -> passed.
+- `.venv-py312/bin/python -m pytest tests/test_lfm25_text_cache_compare.py -q`
+  -> `3 passed`.
+- `.venv-py312/bin/python scripts/lfm25_text_cache_compare.py --baseline .planning/m52-lfm25-text-cache-bench-20260709.json --candidate .planning/m53-lfm25-text-cache-ratio-bench-20260709.json --output .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json`
+  -> `status=pass`.
+- `python3 -m json.tool .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json`
+  -> passed.
+- `python3 -m json.tool .planning/m54-lfm25-text-cache-compare-gate-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
+
+Decision: **COMPARE TOOL ONLY / NO PROMOTION / RUNTIME UNCHANGED**. The
+comparison uses M52 as an old-style baseline and M53 as the current
+ratio-reporting format to prove backward compatibility and stable retained
+cache behavior. Future runtime candidates still need candidate-vs-baseline
+deltas from repeated retained workloads, quality gates, and live LM Studio
+validation before promotion.

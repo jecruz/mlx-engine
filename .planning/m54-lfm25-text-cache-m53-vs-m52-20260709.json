@@ -1,0 +1,79 @@
+{
+  "status": "pass",
+  "thresholds": {
+    "max_cache_ratio_regression": 0.01,
+    "max_prefill_ratio_regression": 0.01,
+    "max_ttft_regression_pct": null,
+    "max_total_regression_pct": null
+  },
+  "checks": [
+    {
+      "name": "candidate_row_errors",
+      "status": "pass",
+      "value": 0,
+      "threshold": 0
+    },
+    {
+      "name": "candidate_followups_cached",
+      "status": "pass",
+      "value": true,
+      "threshold": true
+    },
+    {
+      "name": "candidate_followups_small_prefill",
+      "status": "pass",
+      "value": true,
+      "threshold": true
+    },
+    {
+      "name": "candidate_outputs_preserve_name",
+      "status": "pass",
+      "value": true,
+      "threshold": true
+    },
+    {
+      "name": "cache_reuse_ratio_regression",
+      "status": "pass",
+      "value": 0.0,
+      "threshold": 0.01
+    },
+    {
+      "name": "prefill_ratio_regression",
+      "status": "pass",
+      "value": 0.0,
+      "threshold": 0.01
+    }
+  ],
+  "metrics": {
+    "sample_count": {
+      "baseline": 2,
+      "candidate": 3
+    },
+    "followup_cache_reuse_ratio_avg": {
+      "baseline": 0.95929203539823,
+      "candidate": 0.95929203539823,
+      "delta": 0.0,
+      "delta_pct": 0.0
+    },
+    "followup_prefill_ratio_avg": {
+      "baseline": 0.04070796460176991,
+      "candidate": 0.04070796460176991,
+      "delta": 0.0,
+      "delta_pct": 0.0
+    },
+    "followup_ttft_s_avg": {
+      "baseline": 0.018739916500635445,
+      "candidate": 0.018305597332073376,
+      "delta": -0.00043431916856206954,
+      "delta_pct": -2.3176152815160216
+    },
+    "followup_total_s_avg": {
+      "baseline": 0.02782779150584247,
+      "candidate": 0.02717100000396992,
+      "delta": -0.0006567915018725508,
+      "delta_pct": -2.3601998805210855
+    }
+  },
+  "baseline": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m52-lfm25-text-cache-bench-20260709.json",
+  "candidate": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m53-lfm25-text-cache-ratio-bench-20260709.json"
+}

@@ -15,6 +15,9 @@
 - Report follow-up cache-reuse and prefill ratios from
   `scripts/lfm25_text_cache_bench.py` so future candidate comparisons do not
   need to recompute them from token counts.
+- Add `scripts/lfm25_text_cache_compare.py` to compare retained LFM2.5-VL
+  text-cache reports and fail candidates with cache, prefill, row-error, or
+  name-fidelity regressions.
 - Add `eval_collect_ms` and `eval_barrier_ms` to VLM
   `vlm_cache_restore_detail` / `vlm_cache_restore_cost_model` timing events so
   restore-eval investigations can separate target discovery from the mandatory
