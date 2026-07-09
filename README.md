@@ -458,7 +458,9 @@ python scripts/lfm25_text_cache_bench.py \
 
 The script never prompts for downloads. Pass `--model /path/to/model` or set
 `MLX_ENGINE_LFM25_VL_MODEL_PATH` when the retained local model path is not
-available.
+available. The JSON report includes follow-up TTFT/total latency, cached-token
+counts, prompt-token counts, follow-up prefill-token counts, cache-reuse ratio,
+and prefill ratio.
 
 Example:
 

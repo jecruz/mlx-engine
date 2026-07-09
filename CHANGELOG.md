@@ -12,6 +12,9 @@
   investigations can identify the dominant materialization surface.
 - Add `scripts/lfm25_text_cache_bench.py` to produce repeated JSON evidence
   for the retained LFM2.5-VL text-only generated-token cache workload.
+- Report follow-up cache-reuse and prefill ratios from
+  `scripts/lfm25_text_cache_bench.py` so future candidate comparisons do not
+  need to recompute them from token counts.
 - Add `eval_collect_ms` and `eval_barrier_ms` to VLM
   `vlm_cache_restore_detail` / `vlm_cache_restore_cost_model` timing events so
   restore-eval investigations can separate target discovery from the mandatory

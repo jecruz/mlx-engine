@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 SCRIPT_PATH = (
     Path(__file__).resolve().parent.parent / "scripts" / "lfm25_text_cache_bench.py"
 )
@@ -64,6 +66,11 @@ def test_summarize_samples_reports_followup_cache_reuse():
     assert payload["followup_cached_tokens"]["min"] == 540.0
     assert payload["followup_cached_tokens"]["max"] == 542.0
     assert payload["followup_prefill_tokens_processed"]["avg"] == 23.0
+    assert payload["followup_cache_reuse_ratio"]["min"] == 540.0 / 563.0
+    assert payload["followup_cache_reuse_ratio"]["max"] == 542.0 / 565.0
+    assert payload["followup_prefill_ratio"]["avg"] == pytest.approx(
+        ((23.0 / 565.0) + (23.0 / 563.0)) / 2.0
+    )
 
 
 def test_summarize_samples_flags_missing_followup_cache():
@@ -88,3 +95,5 @@ def test_summarize_samples_flags_missing_followup_cache():
     assert payload["sample_count"] == 1
     assert payload["all_followups_cached"] is False
     assert payload["all_followups_small_prefill"] is False
+    assert payload["followup_cache_reuse_ratio"]["avg"] == 0.0
+    assert payload["followup_prefill_ratio"]["avg"] == 1.0

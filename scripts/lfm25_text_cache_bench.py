@@ -154,6 +154,19 @@ def numeric_summary(values: list[float]) -> dict[str, float | None]:
     return {"min": min(values), "max": max(values), "avg": mean(values)}
 
 
+def ratio_summary(
+    numerators: list[float],
+    denominators: list[float],
+) -> dict[str, float | None]:
+    """Return min/max/avg for paired numerator/denominator ratios."""
+    ratios = [
+        numerator / denominator
+        for numerator, denominator in zip(numerators, denominators, strict=False)
+        if denominator > 0
+    ]
+    return numeric_summary(ratios)
+
+
 def summarize_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
     """Summarize repeated two-turn cache benchmark samples."""
     followups = [sample["followup"] for sample in samples]
@@ -201,6 +214,14 @@ def summarize_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "followup_cached_tokens": numeric_summary(followup_cached),
         "followup_total_prompt_tokens": numeric_summary(followup_total),
         "followup_prefill_tokens_processed": numeric_summary(followup_prefill),
+        "followup_cache_reuse_ratio": ratio_summary(
+            followup_cached,
+            followup_total,
+        ),
+        "followup_prefill_ratio": ratio_summary(
+            followup_prefill,
+            followup_total,
+        ),
     }
 
 

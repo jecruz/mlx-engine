@@ -6447,3 +6447,53 @@ UNCHANGED**. This establishes repeated retained-workload baseline evidence for
 future LFM2.5 text-only VLM generated-token cache candidates. A future runtime
 candidate still needs candidate-vs-baseline deltas, quality gates, and live LM
 Studio validation before promotion.
+
+### M53 LFM2.5 text-cache ratio reporting (2026-07-09)
+
+Feature `m53-lfm25-text-cache-ratio-reporting` strengthens the M52 benchmark
+report by adding normalized follow-up cache-reuse and prefill ratios, then
+captures a three-sample retained-workload baseline.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m53-lfm25-text-cache-ratio-reporting-20260709.json`
+- **Benchmark report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m53-lfm25-text-cache-ratio-bench-20260709.json`
+- **Script:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lfm25_text_cache_bench.py`
+- **Tests:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_lfm25_text_cache_bench.py`
+
+Benchmark command:
+
+```bash
+.venv-py312/bin/python scripts/lfm25_text_cache_bench.py \
+  --samples 3 \
+  --output .planning/m53-lfm25-text-cache-ratio-bench-20260709.json
+```
+
+Result:
+
+- `sample_count=3`
+- `row_errors=0`
+- `all_followups_cached=true`
+- `all_followups_small_prefill=true`
+- `all_outputs_preserve_name=true`
+- `followup_cached_tokens`: min `542`, max `542`, avg `542`
+- `followup_total_prompt_tokens`: min `565`, max `565`, avg `565`
+- `followup_prefill_tokens_processed`: min `23`, max `23`, avg `23`
+- `followup_cache_reuse_ratio`: min `0.959292`, max `0.959292`, avg `0.959292`
+- `followup_prefill_ratio`: min `0.040708`, max `0.040708`, avg `0.040708`
+- `followup_ttft_s`: min `0.017965`, max `0.018492`, avg `0.018306`
+- `followup_total_s`: min `0.026455`, max `0.028064`, avg `0.027171`
+
+Validation:
+
+- `python3 -m py_compile scripts/lfm25_text_cache_bench.py tests/test_lfm25_text_cache_bench.py`
+  -> passed.
+- `.venv-py312/bin/python -m pytest tests/test_lfm25_text_cache_bench.py -q`
+  -> `2 passed`.
+- `python3 -m json.tool .planning/m53-lfm25-text-cache-ratio-bench-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
+
+Decision: **BENCHMARK REPORTING AND BASELINE ONLY / NO PROMOTION / RUNTIME
+UNCHANGED**. Use the M53 three-sample ratio report as the stronger retained
+baseline for future LFM2.5 text-only VLM cache candidates. Runtime promotion
+still requires candidate-vs-baseline deltas, quality gates, and live LM Studio
+validation.
