@@ -5863,3 +5863,32 @@ bounded upstream code candidate worth importing before LM Studio live validation
 Continue with a new isolated local hypothesis, or rerun LM Studio live
 validation only after the official LM Studio UI/CLI path registers LFM2.5-VL and
 `lms ls --json` exposes the model.
+
+### M38 documentation promotion-gate refresh (2026-07-09)
+
+Feature `m38-doc-promotion-gate-refresh` corrected public documentation so the
+promotion claim matches current evidence.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m38-doc-promotion-gate-refresh-20260709.json`
+- **Docs:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md`
+- **Changelog:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md`
+
+Result:
+
+- The README no longer says terminal-packed final KV is backed by LM Studio
+  validation of the current worktree.
+- The terminal-packed final KV section now says the default layout is backed by
+  repeated-sample direct retained-workload evidence, while broader LM Studio
+  packaging or promotion still requires
+  `scripts/lmstudio_vlm_live_validation_preflight.py` and live
+  `/v1/chat/completions` validation.
+- Runtime capability was rechecked for the shared thread-unsafe stream
+  experiment: `.venv-py312` still has
+  `hasattr(mx, "new_thread_unsafe_stream") == False`, while
+  `hasattr(mx, "new_thread_local_stream") == True`; `/tmp/mlx-engine-thread-unsafe-stream`
+  is absent. The M3 no-op/no-promotion decision remains current.
+
+Decision: **DOC CORRECTION ONLY / NO NEW PROMOTION / RUNTIME UNCHANGED**. The
+goal state is stricter after this slice because public docs no longer imply a
+live LM Studio validation gate that has not passed on the current retained VLM
+follow-up work.

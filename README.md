@@ -529,9 +529,12 @@ MLX_ENGINE_VLM_TERMINAL_PACKED_FINAL_KV=0 python demo.py --model /path/to/vlm-mo
 State: `default`.
 
 The switch now acts as an explicit rollback toggle. It only affects true final
-prompt-boundary VLM cache saves. Based on repeated-sample benchmark evidence on
-retained long-VLM profiles plus LM Studio validation of the current worktree,
-this path is now the promoted default for final-boundary saves.
+prompt-boundary VLM cache saves. Based on repeated-sample direct benchmark
+evidence on retained long-VLM profiles, this path is the default
+final-boundary save layout. Broader LM Studio packaging or promotion still
+requires the retained VLM model to pass
+`scripts/lmstudio_vlm_live_validation_preflight.py` and then live LM Studio
+`/v1/chat/completions` validation.
 
 When `MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN` is enabled, final prompt-boundary
 saves still write terminal-packed KV but do not overwrite opaque state
