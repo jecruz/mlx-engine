@@ -28,6 +28,8 @@
   repeat upstream branch triage before any cherry-pick or runtime candidate.
 - Add `scripts/upstream_candidate_report.py` to render upstream scan JSON as a
   readable Markdown review report without making a promotion decision.
+- Add `scripts/upstream_candidate_scan_diff.py` to compare two upstream scan
+  JSON reports and render readable branch-level deltas for repeat triage.
 - Add `eval_collect_ms` and `eval_barrier_ms` to VLM
   `vlm_cache_restore_detail` / `vlm_cache_restore_cost_model` timing events so
   restore-eval investigations can separate target discovery from the mandatory

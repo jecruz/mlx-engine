@@ -536,6 +536,21 @@ The Markdown report keeps the scan factual, summarizes branch heads and change
 surface labels, and lists changed files plus unmatched patch-id commits per
 branch. It does not make a cherry-pick or promotion decision.
 
+To compare two upstream scan JSON reports and highlight what changed between
+them, run:
+
+```bash
+python scripts/upstream_candidate_scan_diff.py \
+  .planning/upstream-candidate-scan-baseline.json \
+  .planning/upstream-candidate-scan-candidate.json \
+  --output .planning/upstream-candidate-scan-diff.md
+```
+
+The diff report is review-only. It summarizes head deltas, new/removed
+branches, and changed file / unmatched patch-id counts so repeated upstream
+scans are easy to audit, but it still does not authorize a cherry-pick or
+promotion.
+
 Example:
 
 ```bash

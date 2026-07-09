@@ -7012,3 +7012,44 @@ Validation:
 - `python3 -m json.tool .planning/m64-lfm25-text-cache-promotion-gate-milestone-20260709.json`
   -> passed.
 - `git diff --check` -> passed.
+
+### M65 upstream candidate scan diff (2026-07-09)
+
+Feature `m65-upstream-candidate-scan-diff` adds a readable Markdown diff for
+two upstream candidate scan JSON reports.
+
+- **Milestone artifact:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m65-upstream-candidate-scan-diff-20260709.json`
+- **Diff report:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m65-upstream-candidate-scan-diff-20260709.md`
+- **New diff tool:** `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/upstream_candidate_scan_diff.py`
+
+Compared scans:
+
+- Baseline: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m58-upstream-candidate-scan-report-20260709.json`
+- Candidate: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-candidate-scan-report-20260709.json`
+
+Diff summary:
+
+- Baseline head `e5e4b5b`
+- Candidate head `a5f2f74`
+- Upstream/main stayed at `8ae2610`
+- Origin tracking stayed at `8f0fa26`
+- Candidate branches scanned: `6`
+- Branch status counts: `unchanged=6`, `new=0`, `removed=0`, `changed=0`
+- Head delta vs upstream/main: `+4`
+- Head delta vs origin branch: `+4`
+
+Decision: **READABLE_SCAN_DIFF_ONLY / NO_PROMOTION / RUNTIME UNCHANGED**.
+The diff improves repeat upstream triage but does not change any runtime gate
+or candidate promotion status.
+
+Validation:
+
+- `python3 -m py_compile scripts/upstream_candidate_scan_diff.py tests/test_upstream_candidate_scan_diff.py scripts/upstream_candidate_scan.py tests/test_upstream_candidate_scan.py`
+  -> passed.
+- `.venv-py312/bin/python -m pytest tests/test_upstream_candidate_scan_diff.py tests/test_upstream_candidate_scan.py tests/test_upstream_candidate_report.py -q`
+  -> `8 passed`.
+- `.venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json --output .planning/m65-upstream-candidate-scan-diff-20260709.md --title "M65 Upstream Candidate Scan Diff"`
+  -> passed.
+- `python3 -m json.tool .planning/m65-upstream-candidate-scan-diff-20260709.json`
+  -> passed.
+- `git diff --check` -> passed.
