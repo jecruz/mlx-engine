@@ -359,6 +359,40 @@ The final M29 decision is **data-only / no-default-change / no promotion**:
   decision lives in `.planning/performance-future-work.md` under the M29
   heading. User-testing passed VAL-M29-001 through VAL-M29-006.
 
+## Fresh 2026-07-10 rerun
+
+A fresh short-VLM rerun was collected with the same `prompt_suites/vlm_image_quality.json`
+suite, `--runs 3`, `--max-tokens 96`, `--temperature 0.0`, and `--top-p 1.0`.
+All three runs completed with zero row errors.
+
+Artifacts:
+
+- Gemma4 12B:
+  `reports/20260710T045748.986785Z-shared-bench.json`
+- Qwen3.6 27B 4-bit:
+  `reports/20260710T045849.381011Z-shared-bench.json`
+- Qwen3.6 27B 8-bit:
+  `reports/20260710T045927.257035Z-shared-bench.json`
+
+| Model | Avg TTFT s | Avg Decode TPS | Avg Total s |
+| --- | ---: | ---: | ---: |
+| Gemma4 12B | 0.605247 | 44.211 | 2.664380 |
+| Qwen3.6 27B 4-bit | 0.747214 | 38.784 | 3.107226 |
+| Qwen3.6 27B 8-bit | 1.320195 | 22.784 | 5.533787 |
+
+Fresh compare artifacts were also generated:
+
+- Gemma4 compare:
+  `reports/20260710T045748.986785Z-gemma4-vs-retained-quality-compare.json`
+- Qwen3.6 27B 4-bit compare:
+  `reports/20260710T045849.381011Z-qwen36-4bit-vs-retained-quality-compare.json`
+
+Those compare runs show `prompt_quality_status=pass` but
+`promotion_gate_status=fail`. The fail is a contract issue, not a row-quality
+issue: the retained baselines do not yet carry the current
+`comparison_manifest`, and the fresh reruns are classified as
+`non-promotion-reference` routes.
+
 ## Development Setup
 
 ### Pre-commit Hooks

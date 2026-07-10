@@ -80,6 +80,33 @@ Average across prompts:
 - All three runs completed with zero row errors, so the numbers above are from
   clean benchmark rows rather than partial failures.
 
+## Compare Artifacts
+
+Like-for-like compare artifacts were generated for the two candidate reruns
+that can be checked against retained baselines:
+
+- Gemma4 compare:
+  `reports/20260710T045748.986785Z-gemma4-vs-retained-quality-compare.json`
+- Qwen3.6 27B 4-bit compare:
+  `reports/20260710T045849.381011Z-qwen36-4bit-vs-retained-quality-compare.json`
+
+Both compare runs report:
+
+- `prompt_quality_status=pass`
+- `promotion_gate_status=fail`
+- `failed_prompts=[]`
+
+The compare gate fails for contract reasons, not because the fresh rows are
+bad:
+
+- The retained baseline reports predate the current `comparison_manifest`
+  contract, so the compare tool records `baseline missing comparison_manifest`.
+- The fresh reruns are classified as `route_type=non-promotion-reference`, so
+  they are not promotion-eligible evidence.
+
+This means the fresh runs are clean benchmark evidence and clean prompt-quality
+evidence, but they are still reference runs rather than promotion candidates.
+
 ## Interpretation
 
 - For this machine and this prompt suite, Gemma4 12B is the better latency and
@@ -87,3 +114,5 @@ Average across prompts:
 - If the Qwen3.6 family is required, the 4-bit checkpoint is the safer
   performance pick over 8-bit because it preserves the same row-level quality
   and cuts latency substantially.
+- The fresh compare artifacts are useful as contract checks, but they do not
+  change the promotion status of either run.
