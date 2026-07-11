@@ -77,6 +77,9 @@
 
 ### Fixed
 
+- Preserve home-owned staged models when updating the internal runtime so
+  `rsync --delete` cannot remove the model selected by the launchd service.
+
 - Keep final-boundary VLM terminal KV saves from overwriting exact
   reusable-prefix opaque state checkpoints when final-chunk state alignment is
   enabled.

@@ -47,7 +47,7 @@ fi
 
 rsync -a --delete \
   --exclude '.git' --exclude '.venv*' --exclude '.planning' --exclude '__pycache__' \
-  --exclude 'reports' --exclude 'releases' "$SOURCE_DIR/" "$RUNTIME_DIR/"
+  --exclude 'models' --exclude 'reports' --exclude 'releases' "$SOURCE_DIR/" "$RUNTIME_DIR/"
 git -C "$SOURCE_DIR" rev-parse HEAD > "$RUNTIME_DIR/REVISION"
 
 python3.11 -m venv "$RUNTIME_DIR/.venv"
