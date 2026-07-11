@@ -12,6 +12,8 @@ from mlx_engine.model_kit.batched_model_kit import BatchedModelKit
 from mlx_engine.model_kit.batched_vision.model_kit import BatchedVisionModelKit
 import mlx_engine.model_kit.batched_model_kit as model_kit_module
 
+pytestmark = pytest.mark.model
+
 
 MODEL_PATH = Path(
     "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.5-9B-MLX-8bit"

@@ -98,7 +98,22 @@ class CancellingReporter(RecordingReporter):
 def model_getter(model_name: str):
     """Return a local model path without prompting during automated tests."""
 
-    with open(Path("~/.lmstudio-home-pointer").expanduser().resolve(), "r") as f:
+    is_pytest = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    require_models = os.environ.get("MLX_ENGINE_TEST_REQUIRE_MODELS") == "1"
+    download_models = os.environ.get("MLX_ENGINE_TEST_DOWNLOAD_MODELS") == "1"
+    if is_pytest and not require_models and not download_models:
+        import pytest
+
+        pytest.skip(f"model-backed test requires explicit model mode: {model_name}")
+
+    home_pointer = Path("~/.lmstudio-home-pointer").expanduser().resolve()
+    if not home_pointer.exists():
+        if is_pytest and require_models:
+            import pytest
+
+            pytest.fail(f"required LM Studio home pointer is missing: {home_pointer}")
+        raise FileNotFoundError(f"LM Studio home pointer is missing: {home_pointer}")
+    with open(home_pointer, "r") as f:
         lmstudio_home = Path(f.read().strip())
     model_path = lmstudio_home / "models" / model_name
 
@@ -106,21 +121,21 @@ def model_getter(model_name: str):
     if not model_path.exists():
         print(f"\nModel {model_name} not found at {model_path}")
 
-        if os.environ.get("PYTEST_CURRENT_TEST"):
+        if is_pytest:
             import pytest
 
-            if os.environ.get("MLX_ENGINE_TEST_REQUIRE_MODELS") == "1":
+            if require_models:
                 pytest.fail(
                     f"required model fixture is missing: {model_name} at {model_path}",
                     pytrace=False,
                 )
-            if os.environ.get("MLX_ENGINE_TEST_DOWNLOAD_MODELS") != "1":
+            if not download_models:
                 pytest.skip(f"model fixture is not installed: {model_name}")
 
         def greenify(text):
             return f"\033[92m{text}\033[0m"
 
-        if os.environ.get("MLX_ENGINE_TEST_DOWNLOAD_MODELS") == "1":
+        if download_models:
             response = "y"
         elif sys.stdin.isatty():
             response = input(

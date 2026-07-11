@@ -38,6 +38,8 @@ from __future__ import annotations
 
 import json
 import unittest
+
+import pytest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Iterable
@@ -460,6 +462,7 @@ class _ForceRejectionKit:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.model
 class TestRealPairCappedSmokeTelemetryInvariants(unittest.TestCase):
     """Validate the real-pair telemetry evidence proves the invariants.
 

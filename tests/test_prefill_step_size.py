@@ -251,6 +251,7 @@ def batched_vision_model_kit_custom_prefill():
     unload(kit)
 
 
+@pytest.mark.model
 def test_batched_prefill_step_size(batched_model_kit_custom_prefill):
     """Verify that batched generation honours a custom prefill_step_size."""
     model_kit = batched_model_kit_custom_prefill
@@ -291,6 +292,7 @@ def test_batched_prefill_step_size(batched_model_kit_custom_prefill):
     )
 
 
+@pytest.mark.model
 def test_sequential_prefill_step_size(sequential_model_kit_custom_prefill):
     """Verify that sequential generation honours a custom prefill_step_size."""
     model_kit = sequential_model_kit_custom_prefill
@@ -331,6 +333,7 @@ def test_sequential_prefill_step_size(sequential_model_kit_custom_prefill):
     )
 
 
+@pytest.mark.model
 def test_batched_vision_text_only_prefill_step_size(
     batched_vision_model_kit_custom_prefill,
 ):

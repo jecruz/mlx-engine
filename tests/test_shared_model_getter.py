@@ -28,7 +28,7 @@ def test_model_getter_skips_missing_fixture_by_default(
     _configure_missing_model(monkeypatch, tmp_path)
     monkeypatch.delenv("MLX_ENGINE_TEST_REQUIRE_MODELS", raising=False)
 
-    with pytest.raises(pytest.skip.Exception, match="model fixture is not installed"):
+    with pytest.raises(pytest.skip.Exception, match="requires explicit model mode"):
         model_getter("example/model")
 
 

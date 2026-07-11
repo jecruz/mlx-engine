@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import mlx.core as mx
+import pytest
 
 from mlx_engine.utils.generation_result import GenerationResult
 
@@ -676,6 +677,7 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
         )
 
 
+@pytest.mark.model
 class TestDFlashRealPairPreflight(unittest.TestCase):
     def test_real_pair_preflight_accepts_target_and_drafter_metadata(self):
         boundary = _dflash_boundary()
@@ -1652,6 +1654,7 @@ class TestDFlashLLMDYNAMIXListenerClassification(unittest.TestCase):
         self.assertEqual(report.blockers, ())
         self.assertEqual(report.listener_evidence, (fake_evidence,))
 
+    @pytest.mark.model
     def test_real_pair_preflight_passes_with_cloud_only_listener_evidence(self):
         boundary = _dflash_boundary()
         fake_evidence = boundary.ListenerEvidence(

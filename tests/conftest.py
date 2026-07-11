@@ -40,12 +40,16 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Skip heavy tests unless --heavy option is provided."""
-    if config.getoption("--heavy"):
-        # --heavy given in cli: do not skip heavy tests
-        return
-
+    """Skip heavy and model-backed tests unless explicitly enabled."""
     skip_heavy = pytest.mark.skip(reason="need --heavy option to run")
+    skip_model = pytest.mark.skip(
+        reason="need --require-models or --download-models to run model-backed tests"
+    )
+    model_mode = config.getoption("--require-models") or config.getoption(
+        "--download-models"
+    )
     for item in items:
-        if "heavy" in item.keywords:
+        if "heavy" in item.keywords and not config.getoption("--heavy"):
             item.add_marker(skip_heavy)
+        if "model" in item.keywords and not model_mode:
+            item.add_marker(skip_model)
