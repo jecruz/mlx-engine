@@ -1,0 +1,79 @@
+{
+  "aggregate": {
+    "failed_runs": 0,
+    "mean_score": 1.0,
+    "status": "pass",
+    "successful_runs": 1,
+    "total_runs": 1
+  },
+  "candidate": {
+    "config": {
+      "max_tokens": 64,
+      "runs": 1,
+      "temperature": 0.0,
+      "top_p": 1.0
+    },
+    "model": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit",
+    "started_at": "20260701T235000Z"
+  },
+  "failed_prompts": [],
+  "harness": "mlx-bench-harness-quality-score",
+  "judge": {
+    "authoritative": "deterministic",
+    "command": "pi --provider ollama --model 'glm-5.2:cloud' --print --no-tools --no-session --thinking off",
+    "flags": [
+      "perfect-score-single-prompt"
+    ],
+    "model": "glm-5.2:cloud",
+    "parse_status": "ok",
+    "provider": "ollama",
+    "rationale": "Perfect pass with mean_score=1.000 and pass_rate=1.000 for image_toucan; results are internally consistent and warrant high confidence, though a flawless score on a single prompt warrants mild scrutiny for rubric calibration.",
+    "raw_output": "{\"score\": 0.95, \"rationale\": \"Perfect pass with mean_score=1.000 and pass_rate=1.000 for image_toucan; results are internally consistent and warrant high confidence, though a flawless score on a single prompt warrants mild scrutiny for rubric calibration.\", \"flags\": [\"perfect-score-single-prompt\"]}",
+    "score": 0.95,
+    "score_kind": "secondary"
+  },
+  "limitations": [
+    "Consumes existing shared_bench.py JSON reports; does not change the benchmark route.",
+    "Reference overlap uses token-based F1-style keyword/phrase coverage, not semantic similarity.",
+    "Judge score (when present) is recorded as secondary evidence only."
+  ],
+  "prompt_checks": [
+    {
+      "failed_runs": 0,
+      "findings": [],
+      "mean_score": 1.0,
+      "pass_rate": 1.0,
+      "prompt_id": "image_toucan",
+      "row_scores": [
+        {
+          "completion_tokens": 14,
+          "engine": "mlx-engine",
+          "expected_keywords": [
+            "toucan"
+          ],
+          "findings": [],
+          "finish_reason": "stop",
+          "keyword_hits": {
+            "toucan": true
+          },
+          "prompt_id": "image_toucan",
+          "reference_score": 0.675,
+          "run_index": 1,
+          "score": 1.0,
+          "status": "pass",
+          "text_chars": 67,
+          "text_source": "output_text"
+        }
+      ],
+      "status": "pass",
+      "successful_runs": 1,
+      "total_runs": 1
+    }
+  ],
+  "scope": "deterministic reference/rubric scoring",
+  "status": "pass",
+  "thresholds": {
+    "max_repeated_ngram": 3,
+    "min_completion_tokens": 4
+  }
+}

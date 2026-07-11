@@ -39,6 +39,7 @@ class PreparedInsert:
     request: GenerationRequest
     prepared_prompt: PreparedPrompt
     restored: RestoredPromptCache | None
+    prepared_at: float | None = None
 
 
 @dataclass
@@ -56,6 +57,11 @@ class ActiveRequest:
     image_spans: list[PromptImageSpan]
     cached_tokens: int
     prompt_progress_finished: bool = False
+    prompt_tokens: int = 0
+    rest_tokens: int = 0
+    prepared_at: float | None = None
+    inserted_at: float | None = None
+    first_token_logged: bool = False
 
 
 @dataclass

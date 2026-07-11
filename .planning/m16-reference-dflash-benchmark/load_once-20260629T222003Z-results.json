@@ -1,0 +1,80 @@
+[
+  {
+    "wall_time_s": 4.93201754198526,
+    "prompt_tokens": 19,
+    "generation_tokens": 2,
+    "generation_tps": 42.19283150294725,
+    "peak_memory_gb": 38.284152956,
+    "output_text": "ok",
+    "draft_stats": null,
+    "finish_reason": "stop",
+    "mode": "baseline",
+    "prompt_id": 1,
+    "prompt": "Reply with the single word ok."
+  },
+  {
+    "wall_time_s": 0.7266092089994345,
+    "prompt_tokens": 19,
+    "generation_tokens": 2,
+    "generation_tps": 5.953969846866729,
+    "peak_memory_gb": 42.566401084,
+    "output_text": "ok",
+    "draft_stats": "2.00 accepted tokens/round (1.00 accepted drafts/round after bonus, 28.6% acceptance, avg draft 7.00) over 1 rounds",
+    "finish_reason": "stop",
+    "mode": "dflash",
+    "prompt_id": 1,
+    "prompt": "Reply with the single word ok."
+  },
+  {
+    "wall_time_s": 0.2661761660128832,
+    "prompt_tokens": 26,
+    "generation_tokens": 2,
+    "generation_tps": 27.587966817355145,
+    "peak_memory_gb": 42.566401084,
+    "output_text": "4",
+    "draft_stats": null,
+    "finish_reason": "stop",
+    "mode": "baseline",
+    "prompt_id": 2,
+    "prompt": "What is 2 + 2? Reply with a single digit."
+  },
+  {
+    "wall_time_s": 0.4344887920015026,
+    "prompt_tokens": 26,
+    "generation_tokens": 2,
+    "generation_tps": 7.57238132648028,
+    "peak_memory_gb": 43.645389776,
+    "output_text": "4",
+    "draft_stats": "2.00 accepted tokens/round (1.00 accepted drafts/round after bonus, 28.6% acceptance, avg draft 7.00) over 1 rounds",
+    "finish_reason": "stop",
+    "mode": "dflash",
+    "prompt_id": 2,
+    "prompt": "What is 2 + 2? Reply with a single digit."
+  },
+  {
+    "wall_time_s": 0.8311386670102365,
+    "prompt_tokens": 23,
+    "generation_tokens": 15,
+    "generation_tps": 23.504369637576414,
+    "peak_memory_gb": 43.645389776,
+    "output_text": "2, 3, 5, 7, 11",
+    "draft_stats": null,
+    "finish_reason": "stop",
+    "mode": "baseline",
+    "prompt_id": 3,
+    "prompt": "List the first 5 prime numbers separated by commas."
+  },
+  {
+    "wall_time_s": 0.49052741698687896,
+    "prompt_tokens": 23,
+    "generation_tokens": 15,
+    "generation_tps": 46.12316828707926,
+    "peak_memory_gb": 43.645389776,
+    "output_text": "2, 3, 5, 7, 11",
+    "draft_stats": "7.00 accepted tokens/round (6.00 accepted drafts/round after bonus, 100.0% acceptance, avg draft 7.00) over 2 rounds",
+    "finish_reason": "stop",
+    "mode": "dflash",
+    "prompt_id": 3,
+    "prompt": "List the first 5 prime numbers separated by commas."
+  }
+]

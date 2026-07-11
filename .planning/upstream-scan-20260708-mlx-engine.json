@@ -1,0 +1,105 @@
+{
+  "milestone": "M30-upstream-scan",
+  "date": "2026-07-08",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "remote_checked": "upstream",
+  "command_summary": [
+    "git fetch upstream --prune",
+    "git branch -r | sed -n '/upstream\\//p'",
+    "git log --oneline upstream/main -12",
+    "git log --oneline upstream/main..upstream/neil/gemma4-tool-context",
+    "git diff --stat upstream/main..upstream/neil/gemma4-tool-context",
+    "git show --stat --name-only --oneline 8bfa083 2316deb 57a90c7",
+    "git log --oneline upstream/main..upstream/neil/img-caching",
+    "git diff --stat upstream/main..upstream/neil/img-caching",
+    "git log --oneline upstream/main..upstream/will/lfm-2.5-unified",
+    "git diff --stat upstream/main..upstream/will/lfm-2.5-unified",
+    "git log --oneline upstream/main..upstream/yagil/dist",
+    "git diff --stat upstream/main..upstream/yagil/dist"
+  ],
+  "upstream_main_recent_commits": [
+    {
+      "commit": "8ae2610",
+      "subject": "Handle Gemma4 bidirectional visual prefill (#340)",
+      "decision": "watch-only",
+      "reason": "Local branch already carries equivalent Gemma4 bidirectional visual prefill handling in #1190/#340-adjacent patches; not a new isolated performance candidate."
+    },
+    {
+      "commit": "ae24add",
+      "subject": "Disable Qwen ragged attention kernel (#338)",
+      "decision": "watch-only",
+      "reason": "Correctness/stability patch for Qwen ragged attention, not a new latency candidate for the retained M29 direct benchmark lane."
+    },
+    {
+      "commit": "e47768b",
+      "subject": "Clear Qwen text rope state before VLM prefill (#333)",
+      "decision": "watch-only",
+      "reason": "Correctness patch on a path already represented by local Qwen VLM work; no narrow measurable follow-up selected."
+    },
+    {
+      "commit": "e2f0e89",
+      "subject": "Add disk-based caching and continuous batching for VLMs (#326)",
+      "decision": "already-subsumed-by-local-branch",
+      "reason": "This branch has an extended local batched VLM prompt-cache stack and follow-up benchmark evidence; cherry-picking the mainline base would conflict with local design."
+    },
+    {
+      "commit": "ef77245",
+      "subject": "Add prompt caching checkpoints for sequential generation (#308)",
+      "decision": "already-subsumed-by-local-branch",
+      "reason": "Sequential checkpointing is covered by the local prompt-cache lineage and later #1190 evidence."
+    }
+  ],
+  "branch_triage": [
+    {
+      "branch": "upstream/neil/gemma4-tool-context",
+      "scope": "17 commits, 868 insertions, new mlx_engine/tool_runtime.py, tool protocol support, reasoning/tool guard tests",
+      "interesting_commits": [
+        "8bfa083 Optimize Gemma4 reasoning guard token tracking",
+        "2316deb Optimize Gemma4 guard no-mask path",
+        "57a90c7 Avoid Gemma4 guard token sync"
+      ],
+      "decision": "no-cherry-pick",
+      "reason": "The apparent optimization commits depend on an upstream-only Gemma4 tool/runtime guard surface absent from this branch. Importing them would introduce feature semantics, not a contained prompt-processing or decode-latency patch. It also lacks a retained-suite benchmark target in the current #1190 lane."
+    },
+    {
+      "branch": "upstream/neil/img-caching",
+      "scope": "13 commits, architecture rewrite relative to this branch; diff removes much of local batched VLM prompt-cache stack and introduces vision_add_ons/vision_model_kit paths",
+      "decision": "no-cherry-pick",
+      "reason": "Not compatible as a narrow patch. The diff is a broad parallel architecture and would invalidate current #1190 prompt-cache evidence before producing an isolated measurable hypothesis."
+    },
+    {
+      "branch": "upstream/neil/vlm-parity-ci",
+      "scope": "large VLM parity/CI branch with overlapping batched VLM prompt-cache work",
+      "decision": "no-cherry-pick",
+      "reason": "Broad branch rather than a small candidate. Local branch already contains a deeper #1190 VLM prompt-cache stack and repeated benchmark evidence."
+    },
+    {
+      "branch": "upstream/will/lfm-2.5-unified",
+      "scope": "single test commit on an upstream architecture base that is divergent from this branch",
+      "decision": "no-cherry-pick",
+      "reason": "Test-only upstream coverage; no runtime change and no direct latency hypothesis."
+    },
+    {
+      "branch": "upstream/yagil/dist",
+      "scope": "28 commits, distributed coordinator/rank/server/runtime work plus broad model-kit changes",
+      "decision": "no-cherry-pick",
+      "reason": "Distributed serving is broad infrastructure work and outside the current retained Mac-local direct benchmark promotion lane."
+    },
+    {
+      "branch": "upstream/yagil/mlx-dist-non-batched",
+      "scope": "distributed non-batched branch with large runtime changes",
+      "decision": "no-cherry-pick",
+      "reason": "Broad distributed runtime lane, not a contained local latency improvement."
+    }
+  ],
+  "decision": {
+    "status": "NO_CHERRY_PICK",
+    "promotion_status": "NO_PROMOTION",
+    "default_change": false,
+    "live_lm_studio_validation": "not-run",
+    "live_lm_studio_reason": "No direct-code candidate passed upstream triage, so no promoted candidate exists to validate live.",
+    "next_action": "Continue with local low-write-amplification prompt-cache hypotheses or a future upstream scan when a branch exposes an isolated runtime patch against the retained direct benchmark lane."
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "milestone": "M80-upstream-and-lmstudio-check-refresh",
+  "timestamp_utc": "2026-07-09T04:19:23Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Refresh upstream scan evidence and LM Studio visibility checks while blocked, without changing runtime behavior.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      ".planning/m80-upstream-candidate-scan-report-20260709.json",
+      ".planning/m80-upstream-candidate-scan-diff-20260709.md",
+      ".planning/m80-upstream-candidate-history-20260709.md",
+      ".planning/lmstudio-vlm-download-probe-20260709-m80.json",
+      ".planning/lmstudio-vlm-live-validation-preflight-20260709-m80.json"
+    ],
+    "details": [
+      "Refreshed upstream candidate evidence at head `7c28d6e` (unchanged versus M79 baseline).",
+      "Computed diff versus the M79 scan and extended history evidence to include the new record.",
+      "Re-ran the supported LM Studio download probe with a bounded timeout control window.",
+      "Re-ran LM Studio VLM preflight with a fresh output file and confirmed unchanged blocked state."
+    ]
+  },
+  "artifacts": {
+    "scan_report": ".planning/m80-upstream-candidate-scan-report-20260709.json",
+    "scan_diff": ".planning/m80-upstream-candidate-scan-diff-20260709.md",
+    "scan_history": ".planning/m80-upstream-candidate-history-20260709.md",
+    "lmstudio_probe": ".planning/lmstudio-vlm-download-probe-20260709-m80.json",
+    "lmstudio_preflight": ".planning/lmstudio-vlm-live-validation-preflight-20260709-m80.json"
+  },
+  "commands": [
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m80-upstream-candidate-scan-report-20260709.json",
+      "status": "passed",
+      "finding": "Fetched and wrote candidate evidence for head `7c28d6e`; branch count remains `6`."
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m79-upstream-candidate-scan-report-20260709.json .planning/m80-upstream-candidate-scan-report-20260709.json --output .planning/m80-upstream-candidate-scan-diff-20260709.md --title \"M80 Upstream Candidate Scan Diff\"",
+      "status": "passed",
+      "finding": "No candidate branch payload changes and no metric deltas versus M79."
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json .planning/m68-upstream-candidate-scan-report-20260710.json .planning/m69-upstream-candidate-scan-report-20260710.json .planning/m70-upstream-candidate-scan-report-20260710.json .planning/m72-upstream-candidate-scan-report-20260708.json .planning/m73-upstream-candidate-scan-report-20260708.json .planning/m74-upstream-candidate-scan-report-20260708.json .planning/m75-upstream-candidate-scan-report-20260710.json .planning/m76-upstream-candidate-scan-report-20260709.json .planning/m77-upstream-candidate-scan-report-20260709.json .planning/m78-upstream-candidate-scan-report-20260709.json .planning/m79-upstream-candidate-scan-report-20260709.json --output .planning/m80-upstream-candidate-history-20260709.md --title \"M80 Upstream Candidate History\"",
+      "status": "passed",
+      "finding": "Extended history with another record for unchanged head `7c28d6e`."
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m80.json --timeout 30",
+      "status": "failed-expected",
+      "finding": "Probe still stalled at `0.00%` and timed out after 30s; resolved artifact is `LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB`."
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m80.json --timeout 30",
+      "status": "failed-expected",
+      "finding": "Preflight remains `ready_for_live_validation=false` because `lms ls --json` still does not expose the model key."
+    }
+  ],
+  "validation": [
+    {
+      "command": "python3 -m json.tool .planning/m80-upstream-candidate-scan-report-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "cat .planning/m80-upstream-candidate-scan-diff-20260709.md | head -n 40",
+      "status": "passed"
+    },
+    {
+      "command": "cat .planning/m80-upstream-candidate-history-20260709.md | head -n 40",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m80.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m80.json",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "blocked-before-inference",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "blocked-before-inference",
+    "blocker": "LM Studio model-index visibility remains blocked (`ready_for_live_validation=false`) and `lms get` still stalls at `0.00%` after timeout.",
+    "next_action": "Keep upstream-scanning cadence and rerun LM Studio checks only when supported registration/state path changes outside this repo."
+  },
+  "summary": "Re-ran upstream scan and LM Studio probe/preflight at head `7c28d6e`; scan remains unchanged and `ready_for_live_validation` is still false.",
+  "artifact": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m80-upstream-and-lmstudio-check-refresh-20260709.json",
+  "project": "MLX-engine prompt/inference performance"
+}

@@ -4,9 +4,12 @@ from mlx_engine.model_kit.batched_vision import prompt_inputs as prompt_inputs_m
 from mlx_engine.model_kit.batched_vision.prompt_cache.types import PromptImageSpan
 from mlx_engine.model_kit.batched_vision.prompt_inputs import (
     PreparedPrompt,
+    build_prepared_prompt_request_key,
     build_cached_prompt_kwargs,
     build_prompt_kwargs,
     drop_prompt_kwargs_prefix,
+    metadata_from_prepared_prompt,
+    prepared_prompt_from_metadata,
     prepare_prompt_inputs,
     slice_prompt_kwargs,
 )
@@ -55,6 +58,7 @@ class _FakeVisionConfig:
 
 
 class _FakeConfig:
+    model_type = "fake"
     image_token_id = 20
     vision_config = _FakeVisionConfig()
 
@@ -165,6 +169,34 @@ def test_prepare_prompt_inputs_cache_key_uses_prepared_image_identity(monkeypatc
     assert first.image_spans[0].image_hash == second.image_spans[0].image_hash
 
 
+def test_prepared_prompt_metadata_round_trips_exact_image_prompt():
+    """Exact prepared prompt metadata can rebuild minimal image prompt inputs."""
+    request_key = build_prepared_prompt_request_key([1, 2], ["image-a"])
+    assert request_key == build_prepared_prompt_request_key([1, 2], ["image-a"])
+    assert request_key != build_prepared_prompt_request_key([1, 2], ["image-b"])
+    prepared_prompt = PreparedPrompt(
+        prompt_input_ids=[1, 20, 20, 2, 3],
+        raw_inputs={
+            "input_ids": mx.array([[1, 20, 20, 2, 3]], dtype=mx.int32),
+            "image_grid_thw": mx.array([[1, 1, 2]], dtype=mx.int32),
+            "pixel_values": mx.array([1], dtype=mx.float32),
+        },
+        image_spans=[PromptImageSpan(1, 3, "image")],
+        vision_cache_key="prepared-images:image",
+    )
+
+    metadata = metadata_from_prepared_prompt(request_key, prepared_prompt)
+    restored = prepared_prompt_from_metadata(metadata)
+
+    assert metadata.image_grid_thw == [[1, 1, 2]]
+    assert restored.prompt_input_ids == prepared_prompt.prompt_input_ids
+    assert restored.image_spans == prepared_prompt.image_spans
+    assert restored.vision_cache_key == "prepared-images:image"
+    assert restored.raw_inputs["input_ids"].tolist() == [[1, 20, 20, 2, 3]]
+    assert restored.raw_inputs["image_grid_thw"].tolist() == [[1, 1, 2]]
+    assert "pixel_values" not in restored.raw_inputs
+
+
 def test_prepare_prompt_inputs_falls_back_to_whole_prompt_on_image_span_mismatch(
     monkeypatch,
 ):
@@ -273,6 +305,145 @@ def test_build_cached_prompt_kwargs_text_clears_qwen3_5_rope_state():
     assert "rope_deltas" not in prompt_kwargs
     assert model.language_model._position_ids is None
     assert model.language_model._rope_deltas is None
+
+
+def test_build_cached_prompt_kwargs_fast_paths_qwen_text_suffix():
+    """Image restores can embed only a text suffix after all images are cached."""
+    inputs_embeds = mx.arange(4, dtype=mx.float32).reshape(1, 2, 2)
+    model = _FakeModel(inputs_embeds=inputs_embeds)
+    model.language_model.model_type = "qwen3_5_vl"
+    prepared_prompt = PreparedPrompt(
+        prompt_input_ids=[1, 20, 20, 2, 3, 4],
+        raw_inputs={
+            "input_ids": mx.array([[1, 20, 20, 2, 3, 4]], dtype=mx.int32),
+            "image_grid_thw": mx.array([[1, 1, 2]], dtype=mx.int32),
+            "pixel_values": mx.array([1], dtype=mx.float32),
+        },
+        image_spans=[PromptImageSpan(1, 3, "image")],
+    )
+
+    prompt_kwargs = build_cached_prompt_kwargs(
+        model,
+        prepared_prompt,
+        cached_prefix_len=4,
+        rope_deltas=None,
+    )
+
+    assert len(model.calls) == 1
+    assert model.calls[0][0][0].tolist() == [[3, 4]]
+    assert model.calls[0][1] == {}
+    assert prompt_kwargs["inputs_embeds"].tolist() == inputs_embeds.tolist()
+    assert prompt_kwargs["position_ids"].tolist() == [
+        [[4, 5]],
+        [[4, 5]],
+        [[4, 5]],
+    ]
+    assert prompt_kwargs["rope_deltas"].tolist() == [[0]]
+    assert model.language_model._position_ids is prompt_kwargs["position_ids"]
+    assert model.language_model._rope_deltas is prompt_kwargs["rope_deltas"]
+
+
+def test_build_cached_prompt_kwargs_fast_paths_lfm2_text_suffix():
+    """LFM2-VL restores can embed only a text suffix after cached images."""
+    inputs_embeds = mx.arange(4, dtype=mx.float32).reshape(1, 2, 2)
+    model = _FakeModel(inputs_embeds=inputs_embeds)
+    model.config.model_type = "lfm2_vl"
+    prepared_prompt = PreparedPrompt(
+        prompt_input_ids=[1, 20, 20, 2, 3, 4],
+        raw_inputs={
+            "input_ids": mx.array([[1, 20, 20, 2, 3, 4]], dtype=mx.int32),
+            "pixel_values": mx.array([1], dtype=mx.float32),
+        },
+        image_spans=[PromptImageSpan(1, 3, "image")],
+    )
+
+    prompt_kwargs = build_cached_prompt_kwargs(
+        model,
+        prepared_prompt,
+        cached_prefix_len=4,
+        rope_deltas=None,
+    )
+
+    assert len(model.calls) == 1
+    assert model.calls[0][0][0].tolist() == [[3, 4]]
+    assert model.calls[0][1] == {}
+    assert prompt_kwargs == {"inputs_embeds": inputs_embeds}
+
+
+def test_build_cached_prompt_kwargs_lfm2_falls_back_for_image_suffix(monkeypatch):
+    """LFM2-VL suffixes containing image tokens need full multimodal embeds."""
+    inputs_embeds = mx.arange(12, dtype=mx.float32).reshape(1, 6, 2)
+    calls = []
+
+    def build_prompt_kwargs(_model, _prepared_prompt):
+        calls.append("full")
+        return {"inputs_embeds": inputs_embeds}
+
+    monkeypatch.setattr(
+        prompt_inputs_module,
+        "build_prompt_kwargs",
+        build_prompt_kwargs,
+    )
+    model = _FakeModel()
+    model.config.model_type = "lfm2_vl"
+
+    prompt_kwargs = build_cached_prompt_kwargs(
+        model,
+        PreparedPrompt(
+            prompt_input_ids=[1, 2, 20, 20, 3, 4],
+            raw_inputs={
+                "input_ids": mx.array([[1, 2, 20, 20, 3, 4]], dtype=mx.int32),
+                "pixel_values": mx.array([1], dtype=mx.float32),
+            },
+            image_spans=[PromptImageSpan(2, 4, "image")],
+        ),
+        cached_prefix_len=2,
+        rope_deltas=None,
+    )
+
+    assert calls == ["full"]
+    assert prompt_kwargs["inputs_embeds"].tolist() == inputs_embeds[:, 2:].tolist()
+
+
+def test_build_cached_prompt_kwargs_falls_back_when_suffix_contains_image(monkeypatch):
+    """Image suffixes still need the full multimodal embedding path."""
+    inputs_embeds = mx.arange(12, dtype=mx.float32).reshape(1, 6, 2)
+    full_prompt_kwargs = {
+        "inputs_embeds": inputs_embeds,
+        "position_ids": mx.arange(18, dtype=mx.int32).reshape(3, 1, 6),
+        "rope_deltas": mx.array([[0]], dtype=mx.int32),
+    }
+    calls = []
+
+    def build_prompt_kwargs(_model, _prepared_prompt):
+        calls.append("full")
+        return full_prompt_kwargs
+
+    monkeypatch.setattr(
+        prompt_inputs_module,
+        "build_prompt_kwargs",
+        build_prompt_kwargs,
+    )
+    model = _FakeModel()
+    model.language_model.model_type = "qwen3_5_vl"
+
+    prompt_kwargs = build_cached_prompt_kwargs(
+        model,
+        PreparedPrompt(
+            prompt_input_ids=[1, 2, 20, 20, 3, 4],
+            raw_inputs={
+                "input_ids": mx.array([[1, 2, 20, 20, 3, 4]], dtype=mx.int32),
+                "image_grid_thw": mx.array([[1, 1, 2]], dtype=mx.int32),
+                "pixel_values": mx.array([1], dtype=mx.float32),
+            },
+            image_spans=[PromptImageSpan(2, 4, "image")],
+        ),
+        cached_prefix_len=2,
+        rope_deltas=None,
+    )
+
+    assert calls == ["full"]
+    assert prompt_kwargs["inputs_embeds"].tolist() == inputs_embeds[:, 2:].tolist()
 
 
 def test_build_prompt_kwargs_drops_gemma3_attention_mask_4d():

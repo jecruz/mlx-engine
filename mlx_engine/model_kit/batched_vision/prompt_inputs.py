@@ -6,9 +6,13 @@ import mlx.core as mx
 import mlx_vlm
 from mlx.utils import tree_flatten
 
-from mlx_engine.model_kit.batched_vision.prompt_cache.types import PromptImageSpan
+from mlx_engine.model_kit.batched_vision.prompt_cache.types import (
+    PreparedPromptMetadata,
+    PromptImageSpan,
+)
 from mlx_engine.model_kit.batched_vision.qwen_mrope import (
     apply_qwen_image_mrope_state,
+    build_qwen_image_mrope_state,
 )
 from mlx_engine.model_kit.batched_vision.vision_feature_memoizer import (
     VisionFeatureMemoizer,
@@ -24,6 +28,67 @@ class PreparedPrompt:
     raw_inputs: dict[str, Any] | None
     image_spans: list[PromptImageSpan]
     vision_cache_key: str | None = None
+
+
+def build_prepared_prompt_request_key(
+    prompt_tokens: list[int],
+    images_b64: list[str] | None,
+) -> str | None:
+    """Return an exact request key for image-bearing prompt preparation."""
+    if not images_b64:
+        return None
+    digest = hashlib.sha256()
+    digest.update(b"mlx-engine-vlm-prepared-prompt-v1\0")
+    for token in prompt_tokens:
+        digest.update(int(token).to_bytes(8, "little", signed=True))
+    digest.update(b"\0images\0")
+    for image_b64 in images_b64:
+        image_digest = hashlib.sha256(image_b64.encode("utf-8")).digest()
+        digest.update(len(image_b64).to_bytes(8, "little"))
+        digest.update(image_digest)
+    return digest.hexdigest()
+
+
+def metadata_from_prepared_prompt(
+    request_key: str,
+    prepared_prompt: PreparedPrompt,
+) -> PreparedPromptMetadata:
+    """Build persistent metadata for an exact prepared VLM prompt."""
+    image_grid_thw = None
+    if prepared_prompt.raw_inputs is not None:
+        raw_grid = prepared_prompt.raw_inputs.get("image_grid_thw")
+        if raw_grid is not None:
+            image_grid_thw = raw_grid.tolist()
+    return PreparedPromptMetadata(
+        request_key=request_key,
+        prompt_input_ids=list(prepared_prompt.prompt_input_ids),
+        image_spans=list(prepared_prompt.image_spans),
+        vision_cache_key=prepared_prompt.vision_cache_key,
+        image_grid_thw=image_grid_thw,
+    )
+
+
+def prepared_prompt_from_metadata(metadata: PreparedPromptMetadata) -> PreparedPrompt:
+    """Rebuild minimal prompt inputs from exact persistent metadata."""
+    raw_inputs: dict[str, Any] | None = None
+    if metadata.image_spans:
+        raw_inputs = {
+            "input_ids": mx.array(
+                [metadata.prompt_input_ids],
+                dtype=mx.int32,
+            ),
+        }
+        if metadata.image_grid_thw is not None:
+            raw_inputs["image_grid_thw"] = mx.array(
+                metadata.image_grid_thw,
+                dtype=mx.int32,
+            )
+    return PreparedPrompt(
+        prompt_input_ids=list(metadata.prompt_input_ids),
+        raw_inputs=raw_inputs,
+        image_spans=list(metadata.image_spans),
+        vision_cache_key=metadata.vision_cache_key,
+    )
 
 
 def prepare_prompt_inputs(
@@ -148,6 +213,19 @@ def build_cached_prompt_kwargs(
     """Build model kwargs for the uncached suffix after a prefix restore."""
     prompt_input_ids = prepared_prompt.prompt_input_ids[cached_prefix_len:]
     if prepared_prompt.raw_inputs is not None:
+        fast_kwargs = _build_qwen_cached_text_suffix_prompt_kwargs(
+            model,
+            prepared_prompt,
+            cached_prefix_len,
+        )
+        if fast_kwargs is None:
+            fast_kwargs = _build_lfm2_cached_text_suffix_prompt_kwargs(
+                model,
+                prepared_prompt,
+                cached_prefix_len,
+            )
+        if fast_kwargs is not None:
+            return fast_kwargs
         if vision_feature_memoizer is None:
             prompt_kwargs = build_prompt_kwargs(model, prepared_prompt)
         else:
@@ -186,6 +264,88 @@ def build_cached_prompt_kwargs(
     if rope_deltas is not None and prompt_kwargs.get("rope_deltas") is None:
         prompt_kwargs["rope_deltas"] = rope_deltas
 
+    return prompt_kwargs
+
+
+def _build_lfm2_cached_text_suffix_prompt_kwargs(
+    model,
+    prepared_prompt: PreparedPrompt,
+    cached_prefix_len: int,
+) -> dict | None:
+    """Build an LFM2-VL text suffix without recomputing image features."""
+    raw_inputs = prepared_prompt.raw_inputs
+    config = getattr(model, "config", None)
+    if raw_inputs is None or str(getattr(config, "model_type", "")) != "lfm2_vl":
+        return None
+
+    image_token_id = getattr(config, "image_token_index", None)
+    if image_token_id is None:
+        image_token_id = getattr(config, "image_token_id", None)
+    if image_token_id is None:
+        return None
+
+    suffix_ids = prepared_prompt.prompt_input_ids[cached_prefix_len:]
+    if not suffix_ids or image_token_id in suffix_ids:
+        return None
+
+    input_ids = raw_inputs.get("input_ids")
+    dtype = input_ids.dtype if input_ids is not None else mx.int32
+    suffix_input_ids = mx.array(suffix_ids, dtype=dtype)[None, :]
+    embedding_output = model.get_input_embeddings(suffix_input_ids)
+    return {
+        key: value
+        for key, value in embedding_output.to_dict().items()
+        if value is not None
+    }
+
+
+def _build_qwen_cached_text_suffix_prompt_kwargs(
+    model,
+    prepared_prompt: PreparedPrompt,
+    cached_prefix_len: int,
+) -> dict | None:
+    """Build a Qwen image-restore suffix without recomputing vision embeddings."""
+    raw_inputs = prepared_prompt.raw_inputs
+    if raw_inputs is None:
+        return None
+
+    input_ids = raw_inputs.get("input_ids")
+    image_grid_thw = raw_inputs.get("image_grid_thw")
+    if input_ids is None or image_grid_thw is None:
+        return None
+
+    config = getattr(model, "config", None)
+    image_token_id = getattr(config, "image_token_id", None)
+    vision_config = getattr(config, "vision_config", None)
+    spatial_merge_size = getattr(vision_config, "spatial_merge_size", None)
+    if image_token_id is None or spatial_merge_size is None:
+        return None
+
+    suffix_ids = prepared_prompt.prompt_input_ids[cached_prefix_len:]
+    if not suffix_ids or image_token_id in suffix_ids:
+        return None
+
+    mrope_state = build_qwen_image_mrope_state(
+        input_ids=input_ids,
+        image_grid_thw=image_grid_thw,
+        image_token_id=image_token_id,
+        spatial_merge_size=spatial_merge_size,
+    )
+    suffix_input_ids = mx.array(suffix_ids, dtype=input_ids.dtype)[None, :]
+    _clear_qwen3_5_text_rope_state(model)
+    embedding_output = model.get_input_embeddings(suffix_input_ids)
+    _clear_qwen3_5_text_rope_state(model)
+    prompt_kwargs = {
+        key: value
+        for key, value in embedding_output.to_dict().items()
+        if value is not None
+    }
+    prompt_kwargs["position_ids"] = mrope_state.position_ids[:, :, cached_prefix_len:]
+    prompt_kwargs["rope_deltas"] = mrope_state.rope_deltas
+    language_model = getattr(model, "language_model", None)
+    if language_model is not None:
+        language_model._position_ids = prompt_kwargs["position_ids"]
+        language_model._rope_deltas = prompt_kwargs["rope_deltas"]
     return prompt_kwargs
 
 

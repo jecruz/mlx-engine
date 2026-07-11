@@ -34,7 +34,9 @@ def assert_not_source_checkout_runtime() -> None:
 
 
 def init_distributed_with_retry(timeout_seconds: float):
-    started_at = float(os.environ.get(distributed_init_started_at_env, time.monotonic()))
+    started_at = float(
+        os.environ.get(distributed_init_started_at_env, time.monotonic())
+    )
     os.environ[distributed_init_started_at_env] = str(started_at)
 
     try:
@@ -163,7 +165,9 @@ def optional_string_list(value: Any, label: str) -> Optional[list[str]]:
 def validate_sampling(value: Any) -> dict[str, Any]:
     sampling = require_object(value, "sampling")
     return {
-        "temperature": optional_number(sampling.get("temperature"), "sampling.temperature"),
+        "temperature": optional_number(
+            sampling.get("temperature"), "sampling.temperature"
+        ),
         "topP": optional_number(sampling.get("topP"), "sampling.topP"),
         "topK": optional_int(sampling.get("topK"), "sampling.topK"),
         "minP": optional_number(sampling.get("minP"), "sampling.minP"),
@@ -202,7 +206,9 @@ def validate_predict_concurrent_command(value: Any) -> dict[str, Any]:
 
     raw_requests = command.get("requests")
     if not isinstance(raw_requests, list) or len(raw_requests) < 2:
-        raise ValueError("predict-concurrent requests must contain at least two requests")
+        raise ValueError(
+            "predict-concurrent requests must contain at least two requests"
+        )
 
     return {
         "type": "predict-concurrent",
@@ -306,7 +312,9 @@ def handle_predict_command(rank: int, model_kit, command: dict[str, Any]) -> Non
     )
 
 
-def handle_predict_concurrent_command(rank: int, model_kit, command: dict[str, Any]) -> None:
+def handle_predict_concurrent_command(
+    rank: int, model_kit, command: dict[str, Any]
+) -> None:
     requests = command["requests"]
     timeout_seconds = command["timeoutSeconds"]
     errors: list[Exception] = []
@@ -426,8 +434,14 @@ def main() -> None:
         raise RuntimeError("Packaged distributed coordinator must run as rank 0.")
     if args.init_smoke_only:
         run_collective_smoke(rank, size)
-        logger.info("Packaged distributed coordinator init smoke completed rank %s/%s", rank, size)
-        write_protocol_message({"type": "init-smoke-complete", "rank": rank, "size": size})
+        logger.info(
+            "Packaged distributed coordinator init smoke completed rank %s/%s",
+            rank,
+            size,
+        )
+        write_protocol_message(
+            {"type": "init-smoke-complete", "rank": rank, "size": size}
+        )
         return
 
     from mlx_engine import load_model, unload
@@ -440,7 +454,9 @@ def main() -> None:
         args.max_kv_size,
         args.prefill_step_size,
     )
-    logger.info("Coordinator rank %s calling mlx_engine.load_model(distributed=True)", rank)
+    logger.info(
+        "Coordinator rank %s calling mlx_engine.load_model(distributed=True)", rank
+    )
     model_kit = load_model(
         args.model,
         max_kv_size=args.max_kv_size,
@@ -457,7 +473,7 @@ def main() -> None:
         run_command_loop(rank, model_kit)
     finally:
         logger.info("Coordinator rank %s unloading model kit", rank)
-        unload(model_kit)
+        unload(model_kit, force=True)
 
 
 if __name__ == "__main__":

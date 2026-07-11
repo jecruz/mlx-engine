@@ -4,8 +4,13 @@ from typing import Any, Final, Literal, TypeAlias
 
 # LMCache defaults to 256-token external chunks, and MLX KV caches allocate in
 # 256-token steps. This is a cache store chunk size, not vLLM's KV page size.
-DEFAULT_PREFIX_CHUNK_SIZE = 256
-RecordKind: TypeAlias = Literal["kv_delta", "rotating_delta", "state_checkpoint"]
+DEFAULT_PREFIX_CHUNK_SIZE = 512
+NON_ROTATING_PREFIX_CHUNK_SIZE = 1024
+RecordKind: TypeAlias = Literal[
+    "kv_delta",
+    "rotating_delta",
+    "state_checkpoint",
+]
 RECORD_KIND_KV_DELTA: Final[RecordKind] = "kv_delta"
 RECORD_KIND_ROTATING_DELTA: Final[RecordKind] = "rotating_delta"
 RECORD_KIND_STATE_CHECKPOINT: Final[RecordKind] = "state_checkpoint"
@@ -66,11 +71,23 @@ class PromptCacheRecordMetadata:
 
     A record stores one record kind for one chunk, usually covering one or more
     cache layers.
+
+    `chunk_span` is optional and preserved for compatibility with newer/older
+    index formats:
+    - [chunk_start, chunk_end] when a record covers exactly one chunk.
+    - [span_start, span_end] when the record was pre-concatenated across
+      multiple contiguous chunks during save.
+
+    `is_terminal_packed` marks the one allowed overwide KV record shape: a
+    true final-prompt-boundary save that intentionally packs the full prefix
+    into the terminal chunk's KV record.
     """
 
     chunk_key: str
     record_kind: RecordKind
     layer_indices: list[int]
+    chunk_span: list[int] | None = None
+    is_terminal_packed: bool = False
 
 
 @dataclass
@@ -82,12 +99,24 @@ class PreparedPromptRecord:
 
 
 @dataclass
+class PreparedPromptMetadata:
+    """Persistent exact-request metadata for skipping repeated VLM processing."""
+
+    request_key: str
+    prompt_input_ids: list[int]
+    image_spans: list[PromptImageSpan]
+    vision_cache_key: str | None
+    image_grid_thw: list[list[int]] | None = None
+
+
+@dataclass
 class PendingPromptCacheSave:
     """Prepared cache-boundary save awaiting cache-I/O-thread commit/discard."""
 
     prefix_chunks: list[PromptPrefixChunk]
     cache_layout: PromptCacheLayout
     records: list[PreparedPromptRecord]
+    is_final_prompt_boundary: bool = False
 
 
 @dataclass
@@ -104,6 +133,10 @@ class PromptCacheStoreStats:
     hit_tokens: int
     miss_tokens: int
     evictions: int
+    restore_count: int
+    restore_latency_ms: float
+    save_count: int
+    save_latency_ms: float
     record_sizes: list[int]
     record_sizes_by_key: dict[str, int]
     chunk_sizes_by_key: dict[str, int]

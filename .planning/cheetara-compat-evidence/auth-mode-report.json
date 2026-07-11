@@ -1,0 +1,38 @@
+{
+  "auth_mode": "bearer-auth",
+  "base_url": "http://127.0.0.1:3182",
+  "model": "cheetara-m7-auth",
+  "modes_requested": [
+    "auth"
+  ],
+  "results": {
+    "auth": {
+      "details": {
+        "auth_mode": "bearer-auth",
+        "credential_gating": "verified",
+        "elapsed_s": 0.0994,
+        "evidence_note": "bearer-auth active: missing/wrong tokens returned 401, correct token returned 200",
+        "probes": [
+          {
+            "http_status": 401,
+            "name": "no_header"
+          },
+          {
+            "http_status": 401,
+            "name": "wrong_token"
+          },
+          {
+            "http_status": 200,
+            "name": "correct_token"
+          }
+        ]
+      },
+      "status": "pass"
+    }
+  },
+  "summary": {
+    "failed": 0,
+    "passed": 1,
+    "total": 1
+  }
+}

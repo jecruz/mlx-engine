@@ -1,0 +1,72 @@
+{
+  "milestone": "M67-upstream-candidate-refresh",
+  "timestamp_utc": "2026-07-10T00:00:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Keep upstream candidate triage auditable by refreshing scans and diffs after local branch head changes.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m67-upstream-candidate-scan-report-20260710.json",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m67-upstream-candidate-scan-diff-20260710.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m67-upstream-candidate-history-20260710.md"
+    ],
+    "details": [
+      "Captured a fresh upstream candidate scan after the local HEAD moved to a1a9dea.",
+      "Compared the retained M62 scan against the new M67 scan to confirm no candidate-branch head movement.",
+      "Generated a 3-scan history timeline to make the local-head movement explicit while preserving no-promotion status."
+    ]
+  },
+  "artifacts": {
+    "baseline_scan": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-candidate-scan-report-20260709.json",
+    "candidate_scan": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m67-upstream-candidate-scan-report-20260710.json",
+    "scan_diff_report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m67-upstream-candidate-scan-diff-20260710.md",
+    "history_report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m67-upstream-candidate-history-20260710.md"
+  },
+  "scan_summary": {
+    "baseline_head": "a5f2f74",
+    "candidate_head": "a1a9dea",
+    "baseline_upstream_main_head": "8ae2610",
+    "candidate_upstream_main_head": "8ae2610",
+    "baseline_origin_branch_head": "8f0fa26",
+    "candidate_origin_branch_head": "8f0fa26",
+    "candidate_count": 6,
+    "branch_status_counts": {
+      "unchanged": 6,
+      "new": 0,
+      "removed": 0,
+      "changed": 0
+    }
+  },
+  "validation": [
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m67-upstream-candidate-scan-report-20260710.json",
+      "status": "passed",
+      "result": "head=a1a9dea, upstream_main_head=8ae2610, candidate_branch_count=6"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json --output .planning/m67-upstream-candidate-scan-diff-20260710.md --title \"M67 Upstream Candidate Scan Diff\"",
+      "status": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_history.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json .planning/m67-upstream-candidate-scan-report-20260710.json --output .planning/m67-upstream-candidate-history-20260710.md --title \"M67 Upstream Candidate Scan History\"",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m67-upstream-candidate-scan-report-20260710.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m67-upstream-candidate-refresh-20260710.json",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "READABLE_SCAN_REFRESH_ONLY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "still-blocked-before-inference",
+    "next_action": "Keep upstream scan history fresh for triage; do not promote runtime candidates until live LM Studio visibility opens."
+  }
+}

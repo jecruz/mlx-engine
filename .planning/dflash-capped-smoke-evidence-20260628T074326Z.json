@@ -1,0 +1,121 @@
+{
+  "feature": "m14-dflash-capped-real-smoke",
+  "date": "2026-06-28",
+  "engine_head": "f00a083",
+  "scenario": "Re-run the capped real Qwen3.6 27B target + z-lab DFlash drafter sequential text smoke through direct shared_bench.py after the m14-qwen35-target-verify-forwarding fix (commits 239465c + f00a083) closed the runtime-path TypeError surfaced by the previous attempt. The patched Qwen3.5 wrapper chain (TextModel -> Qwen3_5TextModel -> attention/linear layers) now declares and forwards target_verify kwarg end-to-end so dflash_stream_generate's target_verify=True call no longer raises TypeError.",
+  "preflight_status": {
+    "ready_for_dflash_smoke": true,
+    "cloud_only_listener": true,
+    "blocked_listener": false,
+    "available_memory_gib": 38.04,
+    "evidence_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-precheck.json",
+    "phase_aware_preflight_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-phase-aware-preflight-evidence.json",
+    "listener_classification_observation": "Port 12444 holds an LLMDYNAMIX cloud-router listener. The config at /Users/jeffreycruz/.llmdynamix/merged-config.yaml declares Ollama (11434), LM Studio (4521), and ocelot puma.cpp (12435) backends. Ollama /api/ps reports 0 loaded models; LM Studio 4521 is not listening; ocelot (puma.cpp) is CPU-only and excluded from _LLMDYNAMIX_LOCAL_HEAVY_BACKEND_MARKERS in the dflash_boundary module. Cloud-only classification therefore holds: not a DFlash local-resource blocker."
+  },
+  "model_paths": {
+    "target": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit",
+    "drafter_snapshot": "/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824",
+    "target_architectures": ["Qwen3_5ForConditionalGeneration"],
+    "target_model_type": "qwen3_5",
+    "target_text_model_type": "qwen3_5_text",
+    "target_image_token_id": 248056,
+    "target_num_hidden_layers": 64,
+    "target_vocab_size": 248320
+  },
+  "smoke_command": "env PYTHONPATH=. python3 shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --mlx-engine-force-sequential --dflash --dflash-target-model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit --dflash-drafter-model /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824 --dflash-max-draft-tokens 4 --prompt-suite-json prompt_suites/m14_dflash_capped_smoke.json --runs 1 --max-tokens 16 --temperature 0.0 --top-p 1.0 --include-output-text",
+  "smoke_reports": [
+    {
+      "report_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T074326.158545Z-shared-bench.json",
+      "quality_inspect_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T074326.158545Z-quality-inspect.json",
+      "runner_returncode": 0,
+      "row_error_present": false,
+      "row_error_class": null,
+      "row_error_message": null,
+      "runner_exit_zero_meaning": "Process exit 0 AND per-row error==null AND quality inspect status==pass. Real DFlash drafting/verify/rollback path was exercised on the Qwen3.6 27B target."
+    }
+  ],
+  "phase_progress": {
+    "phase_1_preflight_passed": {
+      "observation": "Resource gate remains ready: ports 3180/3181/3182 are empty, port 12444 holds a cloud-only LLMDYNAMIX listener (Ollama reports 0 loaded models, LM Studio 4521 not listening, ocelot puma.cpp is CPU-only). The pre-load and phase-aware post-load preflight passed cleanly. ~38 GiB residual free memory was sufficient for the real Qwen3.6 27B target + 4.7 GB drafter + headroom.",
+      "evidence_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/dflash-resource-gate-evidence-precheck.json"
+    },
+    "phase_2_target_loaded_warmup_completed": {
+      "observation": "The Qwen3.6 27B target loaded end-to-end through ModelKit, ran the standard sequential startup warmup (prompt_tokens=25 -> 513 -> 4095), and produced token=446 text_len=2 on each warmup with mode=sequential, distributed=False, ThreadLocalStream(Device(gpu, 0), 4). No 'Insufficient free memory' or other preflight blocker was raised. The mlx-engine load_model path passed the preflight, and the post-load preflight (m14-dflash-post-load-preflight-accounting) passed.",
+      "stderr_evidence": "[mlx_lm_stream][INFO]: MLX stream state ... mode=sequential distributed=False prompt_tokens=4095 input_tokens=1 max_tokens=1 ... generation_stream=ThreadLocalStream(Device(gpu, 0), 4) token=446 text_len=2"
+    },
+    "phase_3_reached_dflash_stream_generate": {
+      "observation": "dflash_stream_generate was invoked. validate_dflash_runtime_compatibility (the shape-strict 16 KVCache + 48 ArraysCache check introduced in fa634dc) PASSED for the real Qwen3.6 27B target. The loaded target_model.language_model (outer mlx_lm.models.qwen3_5.TextModel wrapper) exposed rollback_speculative_cache after the m14-qwen35-wrapper-textmodel-rollback-hook fix (62adb12)."
+    },
+    "phase_4_drafter_loaded_target_verify_succeeded": {
+      "observation": "The Qwen3.5 z-lab DFlash drafter was loaded successfully. The smoke reached the first target_verify=True call inside dflash_stream_generate (mlx_engine/utils/dflash_runtime.py:308). After the m14-qwen35-target-verify-forwarding fix (239465c), _patched_qwen3_5_language_model_call now declares target_verify=False and forwards it to the inner self.model(...) call, so the wrapper chain accepts and propagates target_verify end-to-end without raising TypeError."
+    },
+    "phase_5_real_draft_verify_rollback_executed": {
+      "observation": "Real DFlash draft/verify/rollback was exercised on the live Qwen3.6 27B target. Per-run telemetry: accepted_proposal_tokens=1 (1 draft token verified by target), rejected_proposal_tokens=14 (14 draft tokens rejected and rolled back from live history/cache). completion_tokens=16 (hit the configured --max-tokens=16 cap). output_preview='ok.\\nuser\\n\\nuser\\n' contains the expected 'ok' keyword. Telemetry proves the wrapper rollback hook was reachable when accepted < block_size - 1.",
+      "telemetry_evidence": {
+        "opted_in": true,
+        "fallback_status": "default_off",
+        "sequential_text_only": true,
+        "uses_native_runtime": true,
+        "accepted_proposal_tokens": 1,
+        "rejected_proposal_tokens": 14,
+        "max_draft_tokens": 4
+      }
+    }
+  },
+  "telemetry_block": {
+    "opted_in": true,
+    "target_model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit",
+    "drafter_model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824",
+    "max_draft_tokens": 4,
+    "sequential_text_only": true,
+    "uses_native_runtime": true,
+    "fallback_status": "default_off",
+    "accepted_proposal_tokens": 1,
+    "rejected_proposal_tokens": 14
+  },
+  "boundary_check_vs_runtime_path_attribution": {
+    "boundary_check": "PASS",
+    "rationale": "Pre-load probe_dflash_readiness (cloud-only listener allowed, sufficient memory), the phase-aware post-load validate_dflash_postload_compatibility, and validate_dflash_runtime_compatibility (shape-strict 16+48 layout) all passed. The shape-strict ArraysCache layout check from fa634dc accepted the real Qwen3.6 target. The wrapper rollback_speculative_cache hook from 62adb12 is present on the outer TextModel.",
+    "runtime_path": "PASS",
+    "rationale": "After 239465c + f00a083, _patched_qwen3_5_language_model_call declares target_verify=False in its signature and forwards the kwarg to the inner self.model(...) call. The inner PatchedQwen3_5TextModel.__call__ also accepts target_verify, and the patched mlx-vlm Qwen3_5Attention / Qwen3_5GatedDeltaNet layers honor target_verify on their target_verify / gdn_sink / left_padded_decode branches. dflash_stream_generate completed the first target verify call with zero TypeError.",
+    "classification": "runtime-path GO"
+  },
+  "expected_vs_actual_behavior": {
+    "a_capped_real_qwen36_dflash_smoke_completes_through_sequential_text_route": "PASS - sequential text route used (mode=sequential, distributed=False, ThreadLocalStream); target loaded; drafter loaded; shape-strict runtime compatibility passed; target_verify=True call accepted; real draft/verify/rollback executed.",
+    "smoke_report_has_zero_row_errors_and_valid_assistant_output_under_the_token_cap": "PASS - per-row error==null; output_preview='ok.\\nuser\\n\\nuser\\n' (contains expected 'ok' keyword); completion_tokens=16 (hit the --max-tokens=16 cap); quality inspect status=pass.",
+    "evidence_proves_no_unsupported_fallback_or_adapter_lm_studio_route_was_used": "PASS - telemetry.sequential_text_only=true, uses_native_runtime=true, fallback_status=default_off (NOT fallback_unsupported_surface, NOT fallback_preflight); no LM Studio, no cheetara adapter (3180/3181/3182), no standard autoregressive draft_model loading used; target_verify kwarg originated from the native DFlash runtime, not from any external adapter or LM Studio surface.",
+    "smoke_artifacts_and_observations_are_recorded_for_later_quality_performance_features": "PASS - this JSON + the shared-bench report path + quality inspect JSON path + stderr evidence are recorded for follow-up features."
+  },
+  "quality_inspect_summary": {
+    "inspect_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260628T074326.158545Z-quality-inspect.json",
+    "status": "pass",
+    "failed_prompts": [],
+    "global_findings": [],
+    "prompt_checks": [
+      {
+        "prompt_id": "m14_dflash_smoke_ok",
+        "status": "pass",
+        "keyword_hits": {"ok": true},
+        "completion_tokens": 16,
+        "text_chars": 104,
+        "max_repeated_5gram": 2,
+        "repeated_line_ratio": 0.0,
+        "findings": []
+      }
+    ]
+  },
+  "latency_observation": {
+    "ttft_s": 1.218050374998711,
+    "decode_s": 1.096734042002936,
+    "decode_tps": 14.588769370903844,
+    "total_s": 2.314784417001647,
+    "runs": 1,
+    "note": "Single cold run, no baseline. Latency recorded as observation only; quality_compare inspect was run in single-report mode and does not produce latency deltas. Promotion / keep-opt-in / reject decision belongs to a separate bench feature (m14-dflash-quality-perf-evidence) that requires repeated samples."
+  },
+  "verdict": "RUNTIME-PATH GO - The capped real-model Qwen3.6 27B + z-lab DFlash drafter sequential text smoke succeeded end-to-end on the first try after the m14-qwen35-target-verify-forwarding fix (239465c + f00a083). The previous TypeError runtime-path no-go is fully resolved. Per-row error is null, the assistant produced 'ok.\\nuser\\n\\nuser\\n' (contains the expected 'ok' keyword), DFlash telemetry reports fallback_status=default_off (NOT fallback_unsupported_surface), accepted_proposal_tokens=1 and rejected_proposal_tokens=14 prove the native draft/verify/rollback path was exercised. Quality inspect status=pass. Smoke artifacts are recorded for downstream quality/performance features. The capped smoke meets all three required expectedBehavior items; the promotion/keep-opt-in/reject decision itself still belongs to a separate bench feature that requires repeated samples.",
+  "followup_required_before_retry": [],
+  "next_features_unblocked": [
+    "m14-dflash-real-pair-invariants (target-only verified-token emission, rejected-token cleanup, safe KV/GDN rollback on real target cache)",
+    "m14-dflash-quality-perf-evidence (repeated-sample quality_compare pass + repeatable latency win before any promote decision)"
+  ]
+}

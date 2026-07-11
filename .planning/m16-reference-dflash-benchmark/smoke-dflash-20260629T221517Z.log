@@ -1,0 +1,18 @@
+Loading drafter (dflash): /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824
+==========
+Files: [] 
+
+Prompt: <|im_start|>user
+Reply with the single word ok.<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+ok
+==========
+Prompt: 19 tokens, 3.456 tokens-per-sec
+Generation: 2 tokens, 8.117 tokens-per-sec
+Peak memory: 38.255 GB
+Speculative decoding: 3.00 accepted tokens/round (2.00 accepted drafts/round, 28.6% of drafted, avg draft 7.00) over 1 rounds

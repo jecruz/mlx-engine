@@ -1,0 +1,41 @@
+{
+  "harness": "mlx-bench-harness",
+  "started_at": "20260701T235000Z",
+  "model": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit",
+  "config": {"runs": 1, "max_tokens": 64, "temperature": 0.0, "top_p": 1.0},
+  "prompts": [
+    {
+      "id": "image_toucan",
+      "source": "inline",
+      "expected_keywords": ["toucan"],
+      "quality_checks": {},
+      "image_files": [],
+      "image_count": 1,
+      "max_tokens": null,
+      "chat_template_kwargs": {}
+    }
+  ],
+  "results": [
+    {
+      "engine": "mlx-engine",
+      "model": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/mlx-community/Qwen3.6-27B-4bit",
+      "started_at": "20260701T235000Z",
+      "runner_process": {"returncode": 0},
+      "runs": [
+        {
+          "prompt_id": "image_toucan",
+          "run_index": 1,
+          "error": null,
+          "output_preview": "A colorful toucan with a vibrant beak perched on a tropical branch.",
+          "output_text": "A colorful toucan with a vibrant beak perched on a tropical branch.",
+          "completion_tokens": 14,
+          "ttft_s": 0.4,
+          "decode_s": 0.9,
+          "total_s": 1.3,
+          "decode_tps": 15.5,
+          "finish_reason": "stop"
+        }
+      ]
+    }
+  ]
+}

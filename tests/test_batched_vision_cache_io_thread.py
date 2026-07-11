@@ -1,9 +1,14 @@
 import time
 from queue import Queue
+from types import SimpleNamespace
 
 import mlx.core as mx
 
 from mlx_engine.model_kit.batched_vision.cache_io_thread import PromptCacheIOThread
+from mlx_engine.model_kit.batched_vision.prompt_cache.coordinator import (
+    RestoredPromptCache,
+)
+from mlx_engine.model_kit.batched_vision.prompt_cache.types import PromptPrefixChunk
 from mlx_engine.model_kit.batched_vision.request_lifecycle import (
     FailedRestore,
     GenerationRequest,
@@ -89,6 +94,117 @@ def test_cache_io_thread_prioritizes_restore_before_budget_and_save():
     assert result.request is request
     assert store.calls == [("budget", 123), ("save", "save")]
     assert store.closed
+
+
+def test_cache_io_thread_can_flush_matching_save_before_restore():
+    """A restore may flush the next matching save chain before planning."""
+    store = _FakeCacheStore()
+    generation_queue = Queue()
+    request = _request("restore")
+    matching_save = SimpleNamespace(
+        prefix_chunks=[PromptPrefixChunk(start=0, end=2, key="chunk-a")]
+    )
+
+    def prepare(with_request, flush_matching_save_jobs):
+        assert with_request is request
+        flushed = flush_matching_save_jobs(
+            [PromptPrefixChunk(start=0, end=2, key="chunk-a")]
+        )
+        assert flushed == 1
+        return _prepared(with_request)
+
+    thread = PromptCacheIOThread(
+        cache_store=store,
+        generation_queue=generation_queue,
+        prepare_request=prepare,
+    )
+    thread.enqueue_save(matching_save)
+    thread.enqueue_restore(request)
+    thread.start()
+
+    try:
+        prepared = generation_queue.get(timeout=1.0)
+    finally:
+        thread.close()
+
+    assert isinstance(prepared, PreparedInsert)
+    assert prepared.request is request
+    assert store.calls == [("save", matching_save)]
+
+
+def test_cache_io_thread_hands_restored_cache_to_generation_thread():
+    """The cache I/O thread posts the prepared restore object without mutation."""
+    store = _FakeCacheStore()
+    generation_queue = Queue()
+    request = _request("restore")
+    restored = RestoredPromptCache(
+        cached_prefix_len=2,
+        prompt_cache=["materialized-on-cache-io-thread"],
+        rope_deltas=None,
+    )
+
+    def prepare(with_request):
+        assert with_request is request
+        return PreparedInsert(
+            request=with_request,
+            prepared_prompt=object(),
+            restored=restored,
+        )
+
+    thread = PromptCacheIOThread(
+        cache_store=store,
+        generation_queue=generation_queue,
+        prepare_request=prepare,
+    )
+    thread.enqueue_restore(request)
+    thread.start()
+
+    try:
+        prepared = generation_queue.get(timeout=1.0)
+    finally:
+        thread.close()
+
+    assert isinstance(prepared, PreparedInsert)
+    assert prepared.request is request
+    assert prepared.restored is restored
+    assert prepared.restored.prompt_cache == ["materialized-on-cache-io-thread"]
+    assert store.calls == []
+
+
+def test_cache_io_thread_leaves_unrelated_save_queued_during_restore():
+    """A restore does not flush unrelated save jobs just because they exist."""
+    store = _FakeCacheStore()
+    generation_queue = Queue()
+    request = _request("restore")
+    unrelated_save = SimpleNamespace(
+        prefix_chunks=[PromptPrefixChunk(start=0, end=2, key="chunk-b")]
+    )
+
+    def prepare(with_request, flush_matching_save_jobs):
+        assert with_request is request
+        flushed = flush_matching_save_jobs(
+            [PromptPrefixChunk(start=0, end=2, key="chunk-a")]
+        )
+        assert flushed == 0
+        return _prepared(with_request)
+
+    thread = PromptCacheIOThread(
+        cache_store=store,
+        generation_queue=generation_queue,
+        prepare_request=prepare,
+    )
+    thread.enqueue_save(unrelated_save)
+    thread.enqueue_restore(request)
+    thread.start()
+
+    try:
+        prepared = generation_queue.get(timeout=1.0)
+        _wait_until(lambda: store.calls == [("save", unrelated_save)])
+    finally:
+        thread.close()
+
+    assert isinstance(prepared, PreparedInsert)
+    assert prepared.request is request
 
 
 def test_cache_io_thread_restore_error_posts_failed_restore_and_continues():

@@ -1,0 +1,51 @@
+{
+  "feature": "m14-dflash-post-load-preflight-accounting",
+  "date": "2026-06-28",
+  "real_target_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit",
+  "real_drafter_path": "/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824",
+  "real_target_bytes": 29502000144,
+  "real_target_gib": 27.48,
+  "real_drafter_bytes": 4251744832,
+  "real_drafter_gib": 3.96,
+  "synthetic_residual_memory_bytes": 21410103296,
+  "synthetic_residual_memory_gib": 19.94,
+  "scenario": "Patch residual free memory to the 19.94 GiB value the prior capped-smoke worker reported after the Qwen3.6 27B target loaded, then exercise both phases through the real preflight.",
+  "preload_phase": {
+    "target_resident": false,
+    "accounting": "target_bytes + drafter_bytes + max(combined * 0.25, 8 GiB) headroom",
+    "accounted_required_gib": 39.44,
+    "blockers": [
+      "Insufficient free memory for real-pair DFlash preflight: need at least 39.44 GiB, found 19.94 GiB"
+    ],
+    "resource_blockers": [
+      "Insufficient free memory for real-pair DFlash preflight: need at least 39.44 GiB, found 19.94 GiB"
+    ],
+    "verdict": "FAILS CLOSED — pre-load still requires full target + drafter + headroom"
+  },
+  "postload_phase": {
+    "target_resident": true,
+    "accounting": "drafter_bytes + max(drafter * 0.25, 8 GiB) headroom only",
+    "accounted_required_gib": 11.96,
+    "blockers": [],
+    "resource_blockers": [],
+    "verdict": "PASSES — post-load no longer double-counts the already-resident Qwen3.6 target"
+  },
+  "outstanding_fail_closed_conditions_preserved": [
+    "Local MLX/Metal-heavy listeners (e.g. Ollama, LM Studio, MLX, vLLM)",
+    "VLM / batched / distributed surfaces",
+    "Quantized KV cache modes (kv_bits, kv_group_size, quantized_kv_start)",
+    "Persistent VLM prompt-cache storage or admission thresholds",
+    "Loaded draft_model / num_draft_tokens / SpecPrefill / speculative_decoding_toggle",
+    "Images attached to a sequential DFlash generation",
+    "Genuinely insufficient memory for the drafter alone (postload_required > available)"
+  ],
+  "validators_run": {
+    "dflash_boundary_tests": "32 passed, 0 failed",
+    "dflash_runtime_tests": "4 passed, 0 failed",
+    "load_model_default_seq_nums_tests": "9 passed, 0 failed",
+    "full_m14_promotion_pytest_gate": "271 passed, 16 skipped, 0 failed",
+    "ruff_check_changed_files": "All checks passed",
+    "live_resource_gate_probe": "ready_for_dflash_smoke=True cloud_only_listener=True blocked_listener=False",
+    "synthetic_phase_aware_demo": "preload blocks (39.44 GiB > 19.94 GiB), postload passes (11.96 GiB < 19.94 GiB)"
+  }
+}

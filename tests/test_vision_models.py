@@ -1,6 +1,8 @@
+import os
 from pathlib import Path
-import pytest
+
 import mlx.core as mx
+import pytest
 from mlx_engine.generate import (
     load_model,
     tokenize,
@@ -28,6 +30,11 @@ MAX_KV_CACHE_SIZE = 20000
 # 512 was the previous default, and some tests were written with assertions
 # on the number of prompt processing events.
 CACHING_TEST_PREFILL_STEP_SIZE = 512
+LFM25_VL_MODEL_ENV = "MLX_ENGINE_LFM25_VL_MODEL_PATH"
+LFM25_VL_RETAINED_MODEL_PATH = Path(
+    "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/"
+    "lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit"
+)
 
 
 def _assert_batched_vlm_reporter_events(reporter: RecordingReporter) -> None:
@@ -83,6 +90,39 @@ def _assert_mentions_franklin(text: str) -> None:
 
 def _assert_ready_only(text: str) -> None:
     assert " ".join(text.strip().lower().split()) == "ready"
+
+
+def _lfm25_vl_model_path_or_skip() -> Path:
+    """Return a non-prompting LFM2.5-VL model path for real-model tests."""
+    candidates = []
+    configured_path = os.environ.get(LFM25_VL_MODEL_ENV)
+    if configured_path:
+        candidates.append(Path(configured_path).expanduser())
+    candidates.append(LFM25_VL_RETAINED_MODEL_PATH)
+
+    pointer_path = Path("~/.lmstudio-home-pointer").expanduser().resolve()
+    if pointer_path.exists():
+        lmstudio_home = Path(pointer_path.read_text().strip())
+        candidates.extend(
+            [
+                lmstudio_home
+                / "models"
+                / "lmstudio-community"
+                / "LFM2.5-VL-1.6B-MLX-8bit",
+                lmstudio_home
+                / "models"
+                / "lmstudio-community"
+                / "LFM2.5-VL-1.6B-MLX-4bit",
+            ]
+        )
+
+    for model_path in candidates:
+        if model_path.exists() and any(model_path.glob("*.safetensors")):
+            return model_path
+    pytest.skip(
+        "LFM2.5-VL model not found without prompting; set "
+        f"{LFM25_VL_MODEL_ENV} to run this real-model cache test"
+    )
 
 
 class TestVisionModels:
@@ -292,6 +332,67 @@ class TestVisionModels:
         self.toucan_test_runner(
             "lmstudio-community/LFM2.5-VL-1.6B-MLX-4bit", prompt, text_only=True
         )
+
+    @pytest.mark.heavy
+    def test_lfm2_5_vl_text_only_generation_caching(self):
+        """LFM2.5-VL text-only follow-ups should reuse generated-token cache."""
+        model_path = _lfm25_vl_model_path_or_skip()
+        model_kit = self.load_model(
+            model_path=model_path,
+            max_kv_size=MAX_KV_CACHE_SIZE,
+            prefill_step_size=CACHING_TEST_PREFILL_STEP_SIZE,
+        )
+
+        def generate_text(prompt: str, *, max_tokens: int = 512):
+            prompt_tokens = tokenize(model_kit, prompt)
+            reporter = RecordingReporter()
+
+            generated_text = ""
+            for result in create_generator(
+                model_kit=model_kit,
+                prompt_tokens=prompt_tokens,
+                seed=0,
+                temp=0.0,
+                max_tokens=max_tokens,
+                prompt_progress_reporter=reporter,
+            ):
+                generated_text += result.text
+                print(result.text, end="", flush=True)
+                if result.stop_condition:
+                    break
+            print("\n", flush=True)
+            return generated_text, reporter
+
+        prompt = dedent("""\
+            <|im_start|>user
+            Tell me a 500-word story about a traveler named Silas. Keep the name Silas important.<|im_end|>
+            <|im_start|>assistant
+            """)
+        generated_text, reporter = generate_text(prompt)
+        _assert_batched_vlm_reporter_events(reporter)
+        begin_event = reporter.events[0]
+        assert begin_event["type"] == "begin"
+        assert begin_event["cached_tokens"] == 0
+        assert "silas" in generated_text.lower()
+
+        cached_prompt = prompt + generated_text
+        expected_cached_tokens = _expected_cached_text_prompt_tokens(
+            model_kit, cached_prompt
+        )
+        prompt = cached_prompt + dedent("""\
+            <|im_end|>
+            <|im_start|>user
+            What was the main character's name? Answer with only the name.<|im_end|>
+            <|im_start|>assistant
+            """)
+        num_tokens = len(model_kit.tokenize(prompt))
+        assert num_tokens > CACHING_TEST_PREFILL_STEP_SIZE
+        generated_text, reporter = generate_text(prompt, max_tokens=64)
+        _assert_batched_vlm_reporter_events(reporter)
+        begin_event = reporter.events[0]
+        assert begin_event["type"] == "begin"
+        _assert_cached_text_prompt_reused(begin_event, expected_cached_tokens)
+        assert "silas" in generated_text.lower()
 
     @pytest.mark.heavy
     def test_mistral3_vision(self):

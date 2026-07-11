@@ -1,0 +1,179 @@
+{
+  "auth_mode": "no-auth",
+  "base_url": "http://127.0.0.1:3180",
+  "model": "cheetara-m7",
+  "modes_requested": [
+    "connect",
+    "text",
+    "image",
+    "health",
+    "auth"
+  ],
+  "results": {
+    "auth": {
+      "details": {
+        "auth_mode": "no-auth",
+        "credential_gating": "disabled",
+        "elapsed_s": 0.028,
+        "evidence_note": "auth was intentionally disabled for this run; no-auth request succeeded with HTTP 200",
+        "probes": [
+          {
+            "http_status": 200,
+            "name": "no_header"
+          }
+        ],
+        "sample_body": {
+          "choices": [
+            {
+              "finish_reason": "length",
+              "index": 0,
+              "message": {
+                "content": "The",
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": 1782508020,
+          "id": "chatcmpl-1a3b39d823534d2b8331f93c539b2ed2",
+          "model": "cheetara-m7",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 3,
+            "prompt_tokens": 10,
+            "total_tokens": 10
+          }
+        }
+      },
+      "status": "pass"
+    },
+    "connect": {
+      "details": {
+        "body": {
+          "data": [
+            {
+              "created": 1782508016,
+              "id": "cheetara-m7",
+              "object": "model",
+              "owned_by": "mlx-engine",
+              "supports_vision": true
+            }
+          ],
+          "object": "list"
+        },
+        "elapsed_s": 0.0137,
+        "headers": {
+          "Connection": "close",
+          "content-length": "132",
+          "content-type": "application/json",
+          "date": "Fri, 26 Jun 2026 21:07:00 GMT",
+          "server": "uvicorn"
+        },
+        "http_status": 200,
+        "model_count": 1,
+        "model_ids": [
+          "cheetara-m7"
+        ],
+        "object": "list",
+        "selectable": true,
+        "served_model": "cheetara-m7"
+      },
+      "status": "pass"
+    },
+    "health": {
+      "details": {
+        "body": {
+          "model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+          "model_type": "lfm2_vl",
+          "now": 1782508020,
+          "served_model": "cheetara-m7",
+          "started_at": 1782508016,
+          "status": "ok",
+          "supports_vision": true
+        },
+        "elapsed_s": 0.0009,
+        "headers": {
+          "Connection": "close",
+          "content-length": "241",
+          "content-type": "application/json",
+          "date": "Fri, 26 Jun 2026 21:07:00 GMT",
+          "server": "uvicorn"
+        },
+        "http_status": 200,
+        "model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+        "model_type": "lfm2_vl",
+        "now": 1782508020,
+        "served_model": "cheetara-m7",
+        "started_at": 1782508016,
+        "supports_vision": true,
+        "uptime_s": 4
+      },
+      "status": "pass"
+    },
+    "image": {
+      "details": {
+        "chunk_count": 6,
+        "content_text": "Toucan.",
+        "elapsed_s": 0.1068,
+        "finish_reasons": [
+          "stop"
+        ],
+        "http_status": 200,
+        "image_mime": "image/jpeg",
+        "image_path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/demo-data/toucan.jpeg",
+        "image_size_bytes": 7237,
+        "raw_excerpt": "data: {\"id\":\"chatcmpl-cheetara-compat-smoke-7254bd12\",\"object\":\"chat.completion.chunk\",\"created\":1782508020,\"model\":\"cheetara-m7\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-cheetara-compat-smoke-7254bd12\",\"object\":\"chat.completion.chunk\",\"created\":1782508020,\"model\":\"cheetara-m7\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"T\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-cheetara-compat-smoke-7254bd12\",\"object\":\"chat.completion.chunk\",\"created\":1782508020,\"model\":\"cheetara-m7\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ou\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-cheetara-compat-smoke-7254bd12\",\"object\":\"chat.completion.chunk\",\"created\":1782508020,\"model\":\"cheetara-m7\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"can\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-cheetara-compat-smoke-7254bd12\",\"object\":\"chat.completion.chunk\",\"created\":1782508020,\"model\":\"cheetara-m7\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-cheetara-compat-smoke-7254bd12\",\"object\":\"chat.completion.chunk\",\"created\":1782508020,\"model\":\"cheetara-m7\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+        "request_extras": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          },
+          "enable_thinking": false,
+          "min_p": 0.05,
+          "reasoning_effort": "low",
+          "repetition_context_size": 20,
+          "repetition_penalty": 1.05,
+          "stream_options": {
+            "include_usage": true
+          },
+          "top_k": 40,
+          "user": "cheetara-compat-smoke"
+        },
+        "stream_done_seen": true
+      },
+      "status": "pass"
+    },
+    "text": {
+      "details": {
+        "chunk_count": 4,
+        "content_text": "Ok.",
+        "elapsed_s": 0.0918,
+        "finish_reasons": [
+          "stop"
+        ],
+        "http_status": 200,
+        "raw_excerpt": "data: {\"id\":\"chatcmpl-cheetara-compat-smoke-82441a55\",\"object\":\"chat.completion.chunk\",\"created\":1782508020,\"model\":\"cheetara-m7\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-cheetara-compat-smoke-82441a55\",\"object\":\"chat.completion.chunk\",\"created\":1782508020,\"model\":\"cheetara-m7\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-cheetara-compat-smoke-82441a55\",\"object\":\"chat.completion.chunk\",\"created\":1782508020,\"model\":\"cheetara-m7\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-cheetara-compat-smoke-82441a55\",\"object\":\"chat.completion.chunk\",\"created\":1782508020,\"model\":\"cheetara-m7\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+        "request_extras": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          },
+          "enable_thinking": false,
+          "min_p": 0.05,
+          "reasoning_effort": "low",
+          "repetition_context_size": 20,
+          "repetition_penalty": 1.05,
+          "stream_options": {
+            "include_usage": true
+          },
+          "top_k": 40,
+          "user": "cheetara-compat-smoke"
+        },
+        "stream_done_seen": true
+      },
+      "status": "pass"
+    }
+  },
+  "summary": {
+    "failed": 0,
+    "passed": 5,
+    "total": 5
+  }
+}

@@ -2,15 +2,13 @@ from contextlib import contextmanager
 from queue import Queue
 import uuid
 import importlib
+from functools import lru_cache
 from mlx_engine.model_kit.batched_model_kit import (
     BatchedGenerationResponse,
     BatchedModelKit,
 )
-from mlx_engine.model_kit.batched_vision import (
-    BatchedVisionModelKit,
-)
 from mlx_engine.model_kit.batched_model_kit_types import RequestCancelled
-from typing import Any, Iterator, List, Optional, TypeAlias
+from typing import Any, Callable, Iterator, List, Optional, TypeAlias
 import json
 import logging
 from pathlib import Path
@@ -21,7 +19,6 @@ from mlx_engine.utils.kv_cache_quantization import get_kv_cache_quantization_par
 from mlx_lm.generate import stream_generate
 from mlx_lm.utils import load as mlx_lm_load
 from mlx_lm.models.cache import make_prompt_cache
-from mlx_vlm.structured import build_json_schema_logits_processor
 
 from mlx_engine.model_kit.model_kit import ModelKit
 from mlx_engine.model_kit.distributed_model_kit import DistributedModelKit
@@ -36,12 +33,37 @@ from mlx_engine.utils.generation_result import (
     GenerationResult,
     construct_user_cancelled_result,
 )
+from mlx_engine.utils.request_state import (
+    model_kit_has_active_requests,
+    request_id_is_empty,
+)
 from mlx_engine.utils.set_seed import set_seed
+from mlx_engine.utils.dflash_boundary import (
+    DFlashUnavailableError,
+    build_dflash_no_go_message,
+    probe_dflash_readiness,  # noqa: F401  re-exported for tests patching the generate module
+    resolve_dflash_options,
+    validate_dflash_postload_compatibility,
+    validate_dflash_preload_compatibility,
+    validate_dflash_surface_compatibility,
+)
 from mlx_engine.utils.speculative_decoding import (
     determine_draft_model_for_generation,
     configure_num_draft_tokens_in_generate_args,
     is_speculative_decoding_supported,
     SpeculativeDecodingNotSupportedError,
+)
+from mlx_engine.utils.suffix_decoding_runtime import (
+    resolve_suffix_decoding_options,
+    validate_suffix_decoding_compatibility,
+    suffix_stream_generate,
+)
+from mlx_engine.utils.dflash_runtime import dflash_stream_generate
+from mlx_engine.utils.specprefill import (
+    DEFAULT_SPECPREFILL_KEEP_PCT,
+    DEFAULT_SPECPREFILL_THRESHOLD,
+    SpecPrefillOptions,
+    resolve_specprefill_options,
 )
 from outlines.processors.structured import JSONLogitsProcessor
 from mlx_engine.utils.outlines_transformer_tokenizer import OutlinesTransformerTokenizer
@@ -63,28 +85,79 @@ from mlx_engine.utils.generation_helpers import (
 )
 from mlx_engine.utils.sampling import create_sampler
 from mlx_engine.utils.mlx_lm_stream import (
+    describe_stream_configuration,
+    emit_stream_configuration_probe,
     log_mlx_generation_exception,
     log_mlx_stream_state,
     prepare_mlx_lm_generation_stream,
 )
 
 MAX_TOP_LOGPROBS = 10
+DEFAULT_BATCHED_PREFILL_STEP_SIZE = 4096
+DEFAULT_SEQUENTIAL_TEXT_PREFILL_STEP_SIZE = 4096
 
 
 logger = logging.getLogger(__name__)
 
 SequentialGenerationKit: TypeAlias = ModelKit
-BatchedGenerationKit: TypeAlias = BatchedModelKit | BatchedVisionModelKit
+BatchedGenerationKit: TypeAlias = Any
 LoadedModelKit: TypeAlias = (
     SequentialGenerationKit | BatchedGenerationKit | DistributedModelKit
 )
 
 
+def resolve_batched_prefill_step_size(
+    prefill_step_size: int,
+    prefill_step_size_was_unspecified: bool,
+    use_batched_kit: bool,
+    model_type: str | None = None,
+) -> int:
+    """Return the effective prefill chunk size for batched text inference."""
+    if (
+        prefill_step_size_was_unspecified
+        and use_batched_kit
+        and model_type is not None
+        and model_type == "qwen3_5_text"
+    ):
+        return DEFAULT_BATCHED_PREFILL_STEP_SIZE
+    return prefill_step_size
+
+
+def resolve_sequential_text_prefill_step_size(
+    prefill_step_size: int,
+    prefill_step_size_was_unspecified: bool,
+    model_type: str | None = None,
+) -> int:
+    """Return the effective prefill chunk size for sequential text inference."""
+    if (
+        prefill_step_size_was_unspecified
+        and model_type is not None
+        and model_type in {"qwen2", "qwen3_5_text"}
+    ):
+        return DEFAULT_SEQUENTIAL_TEXT_PREFILL_STEP_SIZE
+    return prefill_step_size
+
+
+@lru_cache(maxsize=1)
+def _load_batched_vision_model_kit():
+    """Load the VLM batcher lazily so text-only imports stay lightweight."""
+    from mlx_engine.model_kit.batched_vision import BatchedVisionModelKit
+
+    return BatchedVisionModelKit
+
+
 class _SequentialModelKitGenerator(Iterator[GenerationResult]):
-    def __init__(self, model_kit: ModelKit, prompt_tokens: List[int], kwargs: dict):
+    def __init__(
+        self,
+        model_kit: ModelKit,
+        prompt_tokens: List[int],
+        kwargs: dict,
+        generation_fn: Callable[..., Iterator[GenerationResult]] | None = None,
+    ):
         self._model_kit = model_kit
         self._prompt_tokens = prompt_tokens
         self._kwargs = kwargs
+        self._generation_fn = generation_fn or _sequential_generation
         self._request_id = kwargs.get("request_id")
         self._results: Queue[tuple[str, object]] = Queue()
         self._closed = threading.Event()
@@ -122,7 +195,7 @@ class _SequentialModelKitGenerator(Iterator[GenerationResult]):
     def _generate(self) -> None:
         stream = None
         try:
-            stream = _sequential_generation(
+            stream = self._generation_fn(
                 self._model_kit,
                 self._prompt_tokens,
                 **self._kwargs,
@@ -194,7 +267,6 @@ def _handle_stop_string_detected(
     )
 
 
-
 def _is_known_vlm_model_type(model_type: str) -> bool:
     """Check if model_type is a known mlx-vlm vision architecture.
 
@@ -210,12 +282,29 @@ def _is_known_vlm_model_type(model_type: str) -> bool:
         return False
 
 
+def _resolve_loaded_model_path(model_kit: LoadedModelKit) -> Path:
+    """Best-effort resolve of the model snapshot path used to load a kit.
+
+    ModelKit and DistributedModelKit expose ``model_path``; BatchedModelKit
+    and BatchedVisionModelKit expose ``_model_path``. If the kit does not
+    expose either (e.g. tests substitute a fake), fall back to the current
+    working directory so the post-load preflight can still record a real
+    comparison.
+    """
+
+    for attr in ("model_path", "_model_path"):
+        candidate = getattr(model_kit, attr, None)
+        if candidate is not None:
+            return Path(candidate)
+    return Path.cwd()
+
+
 def load_model(
     model_path: str | Path,
     *,
     vocab_only: bool = False,
     max_kv_size: int | None = 4096,
-    max_seq_nums: int | None = 4,
+    max_seq_nums: int | None = None,
     seed: int | None = None,
     trust_remote_code: bool = False,
     kv_bits: Optional[int] = None,
@@ -224,6 +313,14 @@ def load_model(
     prefill_step_size: Optional[int] = None,
     distributed: bool = False,
     distributed_group: Any = None,
+    vlm_prompt_cache_storage_root: str | Path | None = None,
+    vlm_prompt_cache_namespace: str | None = None,
+    vlm_prompt_cache_min_save_tokens: int | None = None,
+    dflash_toggle: bool | None = None,
+    dflash_target_model: str | Path | None = None,
+    dflash_drafter_model: str | Path | None = None,
+    dflash_max_draft_tokens: int | None = None,
+    dflash_adaptive_scheduling: bool | None = None,
 ) -> LoadedModelKit:
     """
     Load a language model or vision-language model from the specified path.
@@ -235,7 +332,9 @@ def load_model(
         model_path (str | Path): Path to the model directory containing model files and config.json.
         vocab_only (bool): Only load vocabulary/tokenizer, not the full model.
         max_kv_size (int): Maximum size of the key-value cache used during model inference.
-        max_seq_nums (int): The maximum number of parallel generation requests that can be worked on
+        max_seq_nums (int | None): The maximum number of parallel generation requests that can be worked on.
+            When omitted, text-only loads default to the low-latency sequential path. Pass a value
+            greater than 1 to enable batched text inference.
         seed (Optional[int]): Random seed for reproducible generation. If provided, sets the
             random seed for all subsequent generation operations with this model.
         trust_remote_code (bool): Whether to allow loading of remote code during model initialization.
@@ -248,6 +347,18 @@ def load_model(
             tensor parallel inference.
         distributed_group (Any): Optional initialized MLX distributed group. If omitted,
             DistributedModelKit initializes the group.
+        vlm_prompt_cache_storage_root (str | Path | None): Optional persistent VLM prompt-cache
+            directory. When omitted, VLM prompt cache remains model-load-lifetime temporary storage.
+        vlm_prompt_cache_namespace (str | None): Optional namespace used to isolate persistent VLM
+            prompt-cache records. Defaults to the resolved model path.
+        vlm_prompt_cache_min_save_tokens (int | None): Minimum image-expanded reusable
+            prompt tokens needed before VLM prompt-cache records are saved. Persistent
+            stores default to 512; temporary stores default to 0.
+        dflash_toggle (bool | None): Explicit DFlash opt-in used to fail fast before
+            heavyweight loading when the selected target/drafter pair is incompatible.
+        dflash_target_model (str | Path | None): Real target model path for DFlash preflight.
+        dflash_drafter_model (str | Path | None): Local DFlash drafter snapshot path.
+        dflash_max_draft_tokens (int | None): Max draft tokens used for DFlash preflight.
 
     Returns:
         LoadedModelKit: An initialized model instance:
@@ -261,10 +372,56 @@ def load_model(
         json.JSONDecodeError: If config.json exists but contains invalid JSON
         ValueError: If the model configuration is invalid or unsupported
     """
+    prefill_step_size_was_unspecified = prefill_step_size is None
     set_seed(seed)
     prefill_step_size = validate_prefill_step_size(prefill_step_size)
-
+    vlm_prompt_cache_storage_root = (
+        None
+        if vlm_prompt_cache_storage_root is None
+        else Path(vlm_prompt_cache_storage_root)
+    )
+    model_path = Path(model_path)
+    config_json = json.loads((model_path / "config.json").read_text())
+    model_type = (
+        config_json.get("model_type", "").lower().replace("-", "_").replace(".", "_")
+    )
+    is_vlm = "vision_config" in config_json and _is_known_vlm_model_type(model_type)
+    parallel_requested = max_seq_nums is not None and max_seq_nums > 1
+    kv_bits, kv_group_size, quantized_kv_start = get_kv_cache_quantization_params(
+        kv_bits,
+        kv_group_size,
+        quantized_kv_start,
+    )
+    dflash_options = resolve_dflash_options(
+        dflash_toggle,
+        dflash_target_model,
+        dflash_drafter_model,
+        dflash_max_draft_tokens,
+        dflash_adaptive_scheduling,
+    )
+    if dflash_options.enabled:
+        validate_dflash_preload_compatibility(
+            options=dflash_options,
+            loaded_model_path=model_path,
+            is_vlm_route=is_vlm,
+            vocab_only=vocab_only,
+            distributed=distributed,
+            max_seq_nums=max_seq_nums,
+            kv_bits=kv_bits,
+            kv_group_size=kv_group_size,
+            quantized_kv_start=quantized_kv_start,
+            vlm_prompt_cache_storage_root=vlm_prompt_cache_storage_root,
+            vlm_prompt_cache_min_save_tokens=vlm_prompt_cache_min_save_tokens,
+        )
     if distributed:
+        if vlm_prompt_cache_storage_root is not None:
+            raise ValueError(
+                "VLM prompt cache persistence is only supported for BatchedVisionModelKit"
+            )
+        if vlm_prompt_cache_min_save_tokens is not None:
+            raise ValueError(
+                "VLM prompt cache save admission is only supported for BatchedVisionModelKit"
+            )
         if vocab_only:
             raise ValueError("Distributed loading does not support vocab_only")
         if any([kv_bits, kv_group_size, quantized_kv_start]):
@@ -294,10 +451,6 @@ def load_model(
         logger.info("DistributedModelKit start completed")
         return model_kit
 
-    model_path = Path(model_path)
-    config_json = json.loads((model_path / "config.json").read_text())
-    parallel_requested = max_seq_nums is not None and max_seq_nums > 1
-
     def warn_if_parallel(reason: str) -> None:
         """Helper to warn about batching not being supported, only if parallel was requested."""
         if parallel_requested:
@@ -315,9 +468,15 @@ def load_model(
     # a known mlx-vlm vision architecture. Some text-only models inherit
     # vision_config from a shared architecture config (e.g. qwen35 arch used
     # by qwen3.6 text models), so "vision_config" alone is not sufficient.
-    model_type = config_json.get("model_type", "").lower().replace("-", "_").replace(".", "_")
-    is_vlm = _is_known_vlm_model_type(model_type)
     if is_vlm and vocab_only:
+        if vlm_prompt_cache_storage_root is not None:
+            raise ValueError(
+                "VLM prompt cache persistence requires loading the VLM backend"
+            )
+        if vlm_prompt_cache_min_save_tokens is not None:
+            raise ValueError(
+                "VLM prompt cache save admission requires loading the VLM backend"
+            )
         model_kit = ModelKit(
             model_path,
             prefill_step_size=prefill_step_size,
@@ -325,6 +484,7 @@ def load_model(
             seed=seed,
         )
     elif is_vlm:
+        BatchedVisionModelKit = _load_batched_vision_model_kit()
         if any([kv_bits, kv_group_size, quantized_kv_start]):
             raise ValueError(
                 "The mlx-vlm batched vision path does not support KV cache quantization yet"
@@ -336,15 +496,19 @@ def load_model(
             max_seq_nums=max_seq_nums,
             trust_remote_code=trust_remote_code,
             seed=seed,
+            prompt_cache_storage_root=vlm_prompt_cache_storage_root,
+            prompt_cache_namespace=vlm_prompt_cache_namespace,
+            prompt_cache_min_save_tokens=vlm_prompt_cache_min_save_tokens,
         )
     else:
-        # For non-vision models, choose between BatchedModelKit
-        # (continuous batching) and ModelKit (sequential).
-        kv_bits, kv_group_size, quantized_kv_start = get_kv_cache_quantization_params(
-            kv_bits,
-            kv_group_size,
-            quantized_kv_start,
-        )
+        if vlm_prompt_cache_storage_root is not None:
+            raise ValueError(
+                "VLM prompt cache persistence is only supported for VLM models"
+            )
+        if vlm_prompt_cache_min_save_tokens is not None:
+            raise ValueError(
+                "VLM prompt cache save admission is only supported for VLM models"
+            )
 
         def is_batchable() -> bool:
             # 0. Ensure the load isn't vocab only
@@ -372,18 +536,57 @@ def load_model(
         # If max_seq_nums is set to 1, use ModelKit instead of BatchedModelKit. This gives users an escape hatch,
         # which they could use to enable spec decoding. We can remove this additional restriction once we add
         # spec decoding support to the batched backend
-        use_batched_kit = max_seq_nums != 1 and is_batchable()
+        use_batched_kit = (
+            max_seq_nums is not None and max_seq_nums > 1 and is_batchable()
+        )
+        if not use_batched_kit:
+            prefill_step_size = resolve_sequential_text_prefill_step_size(
+                prefill_step_size,
+                prefill_step_size_was_unspecified,
+                model_type=model_type,
+            )
+        batched_prefill_step_size = resolve_batched_prefill_step_size(
+            prefill_step_size,
+            prefill_step_size_was_unspecified,
+            use_batched_kit,
+            model_type=model_type,
+        )
 
         if use_batched_kit:
-            batched_max_seq_nums = 4 if max_seq_nums is None else max_seq_nums
+            emit_stream_configuration_probe(
+                reason="load-model-batched-text",
+                use_default_stream=False,
+            )
+            logger.info(
+                "Text load resolved to BatchedModelKit model_path=%s model_type=%s "
+                "max_seq_nums=%s prefill_step_size=%s stream_config=%s",
+                model_path,
+                model_type,
+                max_seq_nums,
+                batched_prefill_step_size,
+                describe_stream_configuration(False),
+            )
             model_kit = BatchedModelKit(
                 model_path,
                 max_kv_size=max_kv_size,
-                max_seq_nums=batched_max_seq_nums,
-                prefill_step_size=prefill_step_size,
+                max_seq_nums=max_seq_nums,
+                prefill_step_size=batched_prefill_step_size,
                 seed=seed,
             )
         else:
+            emit_stream_configuration_probe(
+                reason="load-model-sequential-text",
+                use_default_stream=False,
+            )
+            logger.info(
+                "Text load resolved to ModelKit model_path=%s model_type=%s "
+                "max_seq_nums=%s prefill_step_size=%s stream_config=%s",
+                model_path,
+                model_type,
+                max_seq_nums,
+                prefill_step_size,
+                describe_stream_configuration(False),
+            )
             model_kit = ModelKit(
                 model_path,
                 prefill_step_size=prefill_step_size,
@@ -470,6 +673,10 @@ def create_generator(
             if a draft model is loaded. If set to true, draft model must be loaded or else error.
             If set to false, speculative decoding is disabled even if a draft model is loaded.
         num_draft_tokens (Optional[int]): Number of tokens to draft when using speculative decoding
+        specprefill_toggle (Optional[bool]): Enable the guarded SpecPrefill prompt-processing path.
+        specprefill_keep_pct (Optional[float]): Fraction of selected prompt chunks when SpecPrefill is enabled.
+        specprefill_threshold (Optional[int]): Minimum uncached prompt tokens needed to try SpecPrefill.
+        specprefill_system_tokens (Optional[int]): Protected system-token prefix for future sparse-prefill helpers.
         request_id (Optional[int]): Id associated with the request
 
     Yields:
@@ -483,11 +690,108 @@ def create_generator(
     Raises:
         ValueError: If top_logprobs exceeds MAX_TOP_LOGPROBS or if any parameters are invalid
     """
+    BatchedVisionModelKit = _load_batched_vision_model_kit()
+    dflash_options = resolve_dflash_options(
+        kwargs.pop("dflash_toggle", None),
+        kwargs.pop("dflash_target_model", None),
+        kwargs.pop("dflash_drafter_model", None),
+        kwargs.pop("dflash_max_draft_tokens", None),
+        kwargs.pop("dflash_adaptive_scheduling", None),
+    )
+    suffix_decoding_options = resolve_suffix_decoding_options(
+        kwargs.get("suffix_decoding_toggle"),
+        kwargs.get("suffix_decoding_max_draft_tokens"),
+    )
+    if dflash_options.enabled:
+        if isinstance(model_kit, DistributedModelKit):
+            dflash_surface_label = "distributed"
+        elif isinstance(model_kit, BatchedModelKit):
+            dflash_surface_label = "batched-text"
+        elif isinstance(model_kit, BatchedVisionModelKit):
+            dflash_surface_label = "vlm"
+        else:
+            dflash_surface_label = "sequential"
+        dflash_surface_blockers = validate_dflash_surface_compatibility(
+            enabled=True,
+            surface_label=dflash_surface_label,
+            images_b64=kwargs.get("images_b64"),
+            specprefill_toggle=kwargs.get("specprefill_toggle"),
+            speculative_decoding_toggle=kwargs.get("speculative_decoding_toggle"),
+            num_draft_tokens=kwargs.get("num_draft_tokens"),
+            draft_model=kwargs.get("draft_model"),
+            model_kit_draft_model=getattr(model_kit, "draft_model", None),
+        )
+        dflash_loaded_model_path = _resolve_loaded_model_path(model_kit)
+        try:
+            dflash_readiness = validate_dflash_postload_compatibility(
+                options=dflash_options,
+                loaded_model_path=dflash_loaded_model_path,
+                is_vlm_route=isinstance(model_kit, BatchedVisionModelKit),
+                vocab_only=False,
+                distributed=isinstance(model_kit, DistributedModelKit),
+                max_seq_nums=getattr(model_kit, "max_seq_nums", None),
+                kv_bits=getattr(model_kit, "kv_bits", None),
+                kv_group_size=getattr(model_kit, "kv_group_size", None),
+                quantized_kv_start=getattr(model_kit, "quantized_kv_start", None),
+                vlm_prompt_cache_storage_root=getattr(model_kit, "_model_path", None)
+                and getattr(model_kit, "prompt_cache_storage_root", None),
+                vlm_prompt_cache_min_save_tokens=getattr(
+                    model_kit, "prompt_cache_min_save_tokens", None
+                ),
+            )
+        except DFlashUnavailableError:
+            raise
+        if dflash_surface_blockers:
+            raise DFlashUnavailableError(
+                build_dflash_no_go_message(
+                    dflash_readiness,
+                    surface_blockers=dflash_surface_blockers,
+                )
+            )
+        dflash_kwargs = dict(kwargs)
+        for key in (
+            "speculative_decoding_toggle",
+            "num_draft_tokens",
+            "suffix_decoding_toggle",
+            "suffix_decoding_max_draft_tokens",
+            "specprefill_toggle",
+            "specprefill_keep_pct",
+            "specprefill_threshold",
+            "specprefill_system_tokens",
+            "draft_model",
+        ):
+            dflash_kwargs.pop(key, None)
+        dflash_kwargs["dflash_options"] = dflash_options
+        return _SequentialModelKitGenerator(
+            model_kit,
+            prompt_tokens,
+            dflash_kwargs,
+            generation_fn=dflash_stream_generate,
+        )
     if isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit)) or (
         isinstance(model_kit, DistributedModelKit)
         and model_kit.uses_distributed_batching()
     ):
-        return _batched_generation(model_kit, prompt_tokens, **kwargs)
+        if suffix_decoding_options.enabled:
+            raise ValueError(
+                "SuffixDecoding is only supported for sequential text generation"
+            )
+        specprefill_keys = (
+            "specprefill_toggle",
+            "specprefill_keep_pct",
+            "specprefill_threshold",
+            "specprefill_system_tokens",
+        )
+        if kwargs.get("specprefill_toggle") is True or any(
+            kwargs.get(key) is not None for key in specprefill_keys[1:]
+        ):
+            raise ValueError("SpecPrefill is only supported for sequential generation")
+        batched_kwargs = dict(kwargs)
+        batched_kwargs.pop("suffix_decoding_toggle", None)
+        batched_kwargs.pop("suffix_decoding_max_draft_tokens", None)
+        for key in specprefill_keys:
+            batched_kwargs.pop(key, None)
+        return _batched_generation(model_kit, prompt_tokens, **batched_kwargs)
     if isinstance(model_kit, DistributedModelKit):
         request_id = kwargs.get("request_id")
         logger.info(
@@ -572,6 +876,12 @@ def _sequential_generation(
     max_tokens: Optional[int] = 10000000,
     speculative_decoding_toggle: Optional[bool] = None,
     num_draft_tokens: Optional[int] = None,
+    suffix_decoding_toggle: Optional[bool] = None,
+    suffix_decoding_max_draft_tokens: Optional[int] = None,
+    specprefill_toggle: Optional[bool] = None,
+    specprefill_keep_pct: Optional[float] = None,
+    specprefill_threshold: Optional[int] = None,
+    specprefill_system_tokens: Optional[int] = None,
     request_id: Optional[str] = None,
 ) -> Iterator[GenerationResult]:
     with _sequential_gen_abort_handler(model_kit, request_id) as cancel_event:
@@ -596,12 +906,71 @@ def _sequential_generation(
             if value is not None:
                 generate_args[attr] = value
 
-        # Set up speculative decoding
-        draft_model = determine_draft_model_for_generation(
-            model_kit, speculative_decoding_toggle
+        suffix_decoding_options = resolve_suffix_decoding_options(
+            suffix_decoding_toggle,
+            suffix_decoding_max_draft_tokens,
         )
+        validate_suffix_decoding_compatibility(
+            suffix_decoding_enabled=suffix_decoding_options.enabled,
+            model_kit=model_kit,
+            images_b64=images_b64,
+            speculative_decoding_toggle=speculative_decoding_toggle,
+            num_draft_tokens=num_draft_tokens,
+            specprefill_toggle=specprefill_toggle,
+        )
+
+        # Set up speculative decoding and SpecPrefill.  SpecPrefill uses the
+        # loaded draft model for prefill scoring only; it deliberately disables
+        # decode speculation until that combined mode is tested.
+        if specprefill_toggle is True and (
+            speculative_decoding_toggle is True or num_draft_tokens is not None
+        ):
+            raise ValueError(
+                "SpecPrefill cannot be combined with decode speculative decoding yet"
+            )
+
+        specprefill_options = None
+        specprefill_scoring_model = None
+        if specprefill_toggle is True:
+            threshold = (
+                DEFAULT_SPECPREFILL_THRESHOLD
+                if specprefill_threshold is None
+                else specprefill_threshold
+            )
+            # Validate tuning even when this prompt is too short to use the
+            # sparse path, but do not route ineligible prompts through the
+            # SpecPrefill prompt-processing branch.
+            SpecPrefillOptions(
+                enabled=True,
+                keep_pct=(
+                    DEFAULT_SPECPREFILL_KEEP_PCT
+                    if specprefill_keep_pct is None
+                    else specprefill_keep_pct
+                ),
+                threshold=threshold,
+                system_tokens=(
+                    0
+                    if specprefill_system_tokens is None
+                    else specprefill_system_tokens
+                ),
+            )
+            if len(prompt_tokens) > threshold:
+                specprefill_scoring_model = getattr(model_kit, "draft_model", None)
+                specprefill_options = resolve_specprefill_options(
+                    specprefill_toggle=specprefill_toggle,
+                    specprefill_keep_pct=specprefill_keep_pct,
+                    specprefill_threshold=specprefill_threshold,
+                    specprefill_system_tokens=specprefill_system_tokens,
+                    draft_model=specprefill_scoring_model,
+                )
+            draft_model = None
+        else:
+            draft_model = determine_draft_model_for_generation(
+                model_kit, speculative_decoding_toggle
+            )
+        decode_draft_model = draft_model
         configure_num_draft_tokens_in_generate_args(
-            model_kit, draft_model, num_draft_tokens, generate_args
+            model_kit, decode_draft_model, num_draft_tokens, generate_args
         )
 
         # Process prompt
@@ -613,11 +982,13 @@ def _sequential_generation(
                 generate_args,
                 max_image_size,
                 speculative_decoding_toggle,
+                draft_model_override=specprefill_scoring_model,
+                specprefill_options=specprefill_options,
             )
         except StopPromptProcessing:
             yield construct_user_cancelled_result()
             return
-        if draft_model is None:
+        if decode_draft_model is None and not suffix_decoding_options.enabled:
             # input embeddings not yet supported for speculative decoding in mlx-lm
             generate_args["input_embeddings"] = input_embeddings
 
@@ -676,138 +1047,159 @@ def _sequential_generation(
             f"max_kv_size={getattr(model_kit, 'max_kv_size', None)} "
             f"cross_prompt_cache={model_kit.is_cross_prompt_cache_active()}"
         )
-        prepare_mlx_lm_generation_stream(
-            reason="sequential-generation",
-            request_id=request_id,
-            distributed_group=distributed_group,
-            use_default_stream=is_distributed_model,
-        )
-        log_mlx_stream_state(
-            reason="before-stream-generate",
-            request_id=request_id,
-            distributed_group=distributed_group,
-            details=generation_details,
-        )
+        try:
+            prepare_mlx_lm_generation_stream(
+                reason="sequential-generation",
+                request_id=request_id,
+                distributed_group=distributed_group,
+                use_default_stream=is_distributed_model,
+            )
+            log_mlx_stream_state(
+                reason="before-stream-generate",
+                request_id=request_id,
+                distributed_group=distributed_group,
+                details=generation_details,
+            )
 
-        stream = stream_generate(
-            model=model_kit.model,
-            tokenizer=tokenizer,
-            draft_model=draft_model,
-            prompt=input_tokens,
-            max_tokens=max_tokens,
-            logits_processors=logits_processors,
-            prompt_progress_callback=mlx_lm_callback,
-            prefill_step_size=model_kit.prefill_step_size,
-            **generate_args,
-        )
-        log_mlx_stream_state(
-            reason="after-stream-generate-created",
-            request_id=request_id,
-            distributed_group=distributed_group,
-            details=generation_details,
-        )
+            if suffix_decoding_options.enabled:
+                stream = suffix_stream_generate(
+                    model=model_kit.model,
+                    tokenizer=tokenizer,
+                    prompt=input_tokens,
+                    max_tokens=max_tokens,
+                    logits_processors=logits_processors,
+                    prompt_progress_callback=mlx_lm_callback,
+                    prefill_step_size=model_kit.prefill_step_size,
+                    max_draft_tokens=suffix_decoding_options.max_draft_tokens,
+                    **generate_args,
+                )
+            else:
+                stream = stream_generate(
+                    model=model_kit.model,
+                    tokenizer=tokenizer,
+                    draft_model=decode_draft_model,
+                    prompt=input_tokens,
+                    max_tokens=max_tokens,
+                    logits_processors=logits_processors,
+                    prompt_progress_callback=mlx_lm_callback,
+                    prefill_step_size=model_kit.prefill_step_size,
+                    **generate_args,
+                )
+            log_mlx_stream_state(
+                reason="after-stream-generate-created",
+                request_id=request_id,
+                distributed_group=distributed_group,
+                details=generation_details,
+            )
 
-        received_first_generation_result = False
-        while not model_kit.is_shutdown() and not cancel_event.is_set():
-            try:
-                if not received_first_generation_result:
-                    log_mlx_stream_state(
-                        reason="before-first-generation-next",
+            received_first_generation_result = False
+            while not model_kit.is_shutdown() and not cancel_event.is_set():
+                try:
+                    if not received_first_generation_result:
+                        log_mlx_stream_state(
+                            reason="before-first-generation-next",
+                            request_id=request_id,
+                            distributed_group=distributed_group,
+                            details=generation_details,
+                        )
+                    generation_result = next(stream)
+                    if not received_first_generation_result:
+                        received_first_generation_result = True
+                        log_mlx_stream_state(
+                            reason="after-first-generation-next",
+                            request_id=request_id,
+                            distributed_group=distributed_group,
+                            details=(
+                                f"{generation_details} token={generation_result.token} "
+                                f"text_len={len(generation_result.text)}"
+                            ),
+                        )
+                except StopIteration:
+                    break
+                except StopPromptProcessing:
+                    yield construct_user_cancelled_result()
+                    return
+                except Exception:
+                    log_mlx_generation_exception(
+                        reason="sequential-generation",
                         request_id=request_id,
                         distributed_group=distributed_group,
-                        details=generation_details,
                     )
-                generation_result = next(stream)
-                if not received_first_generation_result:
-                    received_first_generation_result = True
-                    log_mlx_stream_state(
-                        reason="after-first-generation-next",
-                        request_id=request_id,
-                        distributed_group=distributed_group,
-                        details=(
-                            f"{generation_details} token={generation_result.token} "
-                            f"text_len={len(generation_result.text)}"
-                        ),
+                    raise
+
+                # Token processor
+                token = generation_result.token
+                text += generation_result.text
+                # record generated token to cache, if cache is active
+                if model_kit.is_cross_prompt_cache_active():
+                    model_kit.record_token_to_cache(token)
+
+                logprobs = generation_result.logprobs
+                token_buffer.append(
+                    Token(
+                        token,
+                        tokenizer.decode(token),
+                        float(logprobs[token]),
+                        from_draft=generation_result.from_draft,
                     )
-            except StopIteration:
-                break
-            except StopPromptProcessing:
+                )
+                if top_logprobs:
+                    top_logprobs_buffer.append(
+                        summarize_top_logprobs(tokenizer, logprobs, top_logprobs)
+                    )
+
+                # Stop processor
+                should_stop, should_buffer, stop_result = process_stop_string_check(
+                    stop_string_processor, token
+                )
+                if should_stop:
+                    yield _handle_stop_string_detected(
+                        tokenizer,
+                        stop_result,
+                        text,
+                        token_buffer,
+                        top_logprobs_buffer,
+                    )
+                    break  # stop generation
+
+                # If we currently have generated a partial match with a stop sequence, or detected an
+                # in-progress multi-byte string, generate new tokens until we know if the stop sequence
+                # is hit or not (i.e., make sure not to yield yet)
+                if should_buffer:
+                    continue
+
+                # Standard yield - yield when a non-empty text segment is available or eos token is hit
+                should_yield, stop_condition = should_yield_token(
+                    text, token, tokenizer
+                )
+                if (
+                    stop_condition is None
+                    and generation_result.finish_reason == "length"
+                ):
+                    should_yield = True
+                    stop_condition = GenerationStopCondition(
+                        stop_reason="token_limit",
+                        stop_string="",
+                        stop_tokens=[],
+                    )
+                if should_yield:
+                    yield GenerationResult(
+                        text=text,
+                        tokens=token_buffer,
+                        stop_condition=stop_condition,
+                        top_logprobs=top_logprobs_buffer,
+                    )
+                    token_buffer = []
+                    top_logprobs_buffer = []
+                    text = ""
+            if cancel_event.is_set() or model_kit.is_shutdown():
                 yield construct_user_cancelled_result()
-                return
-            except Exception:
-                log_mlx_generation_exception(
-                    reason="sequential-generation",
-                    request_id=request_id,
-                    distributed_group=distributed_group,
-                )
-                raise
-
-            # Token processor
-            token = generation_result.token
-            text += generation_result.text
-            # record generated token to cache, if cache is active
-            if model_kit.is_cross_prompt_cache_active():
-                model_kit.record_token_to_cache(token)
-
-            logprobs = generation_result.logprobs
-            token_buffer.append(
-                Token(
-                    token,
-                    tokenizer.decode(token),
-                    float(logprobs[token]),
-                    from_draft=generation_result.from_draft,
-                )
-            )
-            if top_logprobs:
-                top_logprobs_buffer.append(
-                    summarize_top_logprobs(tokenizer, logprobs, top_logprobs)
-                )
-
-            # Stop processor
-            should_stop, should_buffer, stop_result = process_stop_string_check(
-                stop_string_processor, token
-            )
-            if should_stop:
-                yield _handle_stop_string_detected(
-                    tokenizer,
-                    stop_result,
-                    text,
-                    token_buffer,
-                    top_logprobs_buffer,
-                )
-                break  # stop generation
-
-            # If we currently have generated a partial match with a stop sequence, or detected an
-            # in-progress multi-byte string, generate new tokens until we know if the stop sequence
-            # is hit or not (i.e., make sure not to yield yet)
-            if should_buffer:
-                continue
-
-            # Standard yield - yield when a non-empty text segment is available or eos token is hit
-            should_yield, stop_condition = should_yield_token(text, token, tokenizer)
-            if (
-                stop_condition is None
-                and generation_result.finish_reason == "length"
+            return
+        finally:
+            if specprefill_options is not None and hasattr(
+                model_kit, "cleanup_specprefill"
             ):
-                should_yield = True
-                stop_condition = GenerationStopCondition(
-                    stop_reason="token_limit",
-                    stop_string="",
-                    stop_tokens=[],
-                )
-            if should_yield:
-                yield GenerationResult(
-                    text=text,
-                    tokens=token_buffer,
-                    stop_condition=stop_condition,
-                    top_logprobs=top_logprobs_buffer,
-                )
-                token_buffer = []
-                top_logprobs_buffer = []
-                text = ""
-        if cancel_event.is_set() or model_kit.is_shutdown():
-            yield construct_user_cancelled_result()
-        return
+                model_kit.cleanup_specprefill()
 
 
 def _batched_generation(
@@ -836,7 +1228,9 @@ def _batched_generation(
     is_distributed_batched = isinstance(model_kit, DistributedModelKit)
     if is_distributed_batched:
         if images_b64 is not None and len(images_b64) > 0:
-            raise ValueError("Distributed batched generation does not support images yet")
+            raise ValueError(
+                "Distributed batched generation does not support images yet"
+            )
         if speculative_decoding_toggle is True or num_draft_tokens is not None:
             raise ValueError(
                 "Distributed batched generation does not support speculative decoding yet"
@@ -904,9 +1298,11 @@ def _batched_generation(
             repetition_context_size=repetition_context_size,
             min_tokens_to_keep=min_tokens_to_keep,
         )
-    elif isinstance(model_kit, BatchedVisionModelKit):
+    elif isinstance(model_kit, _load_batched_vision_model_kit()):
         # `max_image_size` is legacy-only; batched VLM lets mlx-vlm processors resize.
         if json_schema is not None:
+            from mlx_vlm.structured import build_json_schema_logits_processor
+
             logits_processors.append(
                 build_json_schema_logits_processor(
                     model_kit.tokenizer._tokenizer,
@@ -1041,10 +1437,11 @@ def stop_generation(
     """
     Register stop request based off of request_id
     """
-    if request_id is None or request_id == "":
-        logger.error("request_id cannot be empty in stop request")
+    if request_id_is_empty(request_id):
+        logger.debug("Ignoring empty stop request")
         return
 
+    BatchedVisionModelKit = _load_batched_vision_model_kit()
     if isinstance(model_kit, (BatchedModelKit, BatchedVisionModelKit)) or (
         isinstance(model_kit, DistributedModelKit)
         and model_kit.uses_distributed_batching()
@@ -1058,7 +1455,12 @@ def stop_generation(
 
 def unload(
     model_kit: LoadedModelKit,
+    *,
+    force: bool = False,
 ):
+    """Shutdown a loaded model, blocking accidental unloads while requests run."""
+    if not force and model_kit_has_active_requests(model_kit):
+        raise RuntimeError("Cannot unload a model while requests are still active")
     model_kit.shutdown()
 
 

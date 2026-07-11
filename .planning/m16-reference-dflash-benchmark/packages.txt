@@ -1,0 +1,11 @@
+datasets==5.0.0
+huggingface_hub==1.18.0
+mlx==0.31.2
+mlx-audio==0.4.4
+mlx-lm @ git+https://github.com/ml-explore/mlx-lm.git@ed1fca4cef15a824c5f1702c80f70b4cffc8e4dd
+mlx-metal==0.31.2
+mlx-vlm @ git+https://github.com/Blaizzy/mlx-vlm.git@7a28df17e804270cd809a545e73cb3f6e0d64e09
+protobuf==7.35.0
+sentencepiece==0.2.1
+tokenizers==0.22.2
+transformers==5.10.2

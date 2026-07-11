@@ -1,0 +1,1 @@
+{"mode":"baseline","prompt_id":1,"prompt":"Reply with the single word ok.","max_tokens":16,"temperature":0.0,"seed":0,"wall_time_s":16.732608,"prompt_tokens":19,"generation_tokens":2,"generation_tps":41.424,"peak_memory_gb":34.027,"exit_code":0,"output_text":"Generation: 2 tokens, 41.424 tokens-per-sec\nPeak memory: 34.027 GB","draft_stats":}

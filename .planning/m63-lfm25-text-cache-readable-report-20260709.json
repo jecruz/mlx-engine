@@ -1,0 +1,69 @@
+{
+  "milestone": "M63-lfm25-text-cache-readable-report",
+  "timestamp_utc": "2026-07-09T03:05:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Make retained LFM2.5-VL text-cache benchmark and comparison evidence readable for repeat candidate review.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lfm25_text_cache_report.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_lfm25_text_cache_report.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md"
+    ],
+    "details": [
+      "Added a Markdown renderer for LFM2.5 text-cache benchmark JSON and comparison JSON.",
+      "Generated a readable report from retained M53 benchmark and M54 comparison artifacts.",
+      "Preserved the no-promotion rule because live LM Studio validation remains blocked before inference."
+    ]
+  },
+  "artifacts": {
+    "readable_report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m63-lfm25-text-cache-evidence-report-20260709.md",
+    "benchmark_source": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m53-lfm25-text-cache-ratio-bench-20260709.json",
+    "comparison_source": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json"
+  },
+  "report_summary": {
+    "benchmark_samples": 3,
+    "benchmark_row_errors": 0,
+    "all_followups_cached": true,
+    "all_followups_small_prefill": true,
+    "all_outputs_preserve_name": true,
+    "followup_cache_reuse_ratio_avg": 0.95929203539823,
+    "followup_prefill_ratio_avg": 0.04070796460176991,
+    "comparison_status": "pass",
+    "followup_ttft_delta_pct": -2.3176152815160216,
+    "followup_total_delta_pct": -2.3601998805210855
+  },
+  "validation": [
+    {
+      "command": "python3 -m py_compile scripts/lfm25_text_cache_report.py tests/test_lfm25_text_cache_report.py scripts/lfm25_text_cache_bench.py scripts/lfm25_text_cache_compare.py",
+      "status": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_lfm25_text_cache_report.py tests/test_lfm25_text_cache_bench.py tests/test_lfm25_text_cache_compare.py -q",
+      "status": "passed",
+      "result": "8 passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lfm25_text_cache_report.py --benchmark .planning/m53-lfm25-text-cache-ratio-bench-20260709.json --comparison .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json --output .planning/m63-lfm25-text-cache-evidence-report-20260709.md --title \"M63 LFM2.5 Text-Cache Evidence\"",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m63-lfm25-text-cache-readable-report-20260709.json",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "READABLE_REPORT_TOOLING_ONLY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "still-blocked-before-inference",
+    "next_action": "Use the Markdown renderer for future LFM2.5 text-cache candidate reports after running the benchmark and comparison gates."
+  }
+}

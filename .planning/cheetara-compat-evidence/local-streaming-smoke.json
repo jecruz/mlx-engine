@@ -1,0 +1,123 @@
+{
+  "base_url": "http://127.0.0.1:3181",
+  "model": "cheetara-m9",
+  "modes_requested": [
+    "connect",
+    "chat",
+    "responses",
+    "health"
+  ],
+  "results": {
+    "chat": {
+      "details": {
+        "chunk_count": 4,
+        "content_text": "Ok.",
+        "elapsed_s": 0.0836,
+        "finish_reasons": [
+          "stop"
+        ],
+        "http_status": 200,
+        "raw_excerpt": "data: {\"id\":\"chatcmpl-3aff1f32c847493a91c8be45f610848a\",\"object\":\"chat.completion.chunk\",\"created\":1782575991,\"model\":\"cheetara-m9\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-3aff1f32c847493a91c8be45f610848a\",\"object\":\"chat.completion.chunk\",\"created\":1782575991,\"model\":\"cheetara-m9\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Ok\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-3aff1f32c847493a91c8be45f610848a\",\"object\":\"chat.completion.chunk\",\"created\":1782575991,\"model\":\"cheetara-m9\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-3aff1f32c847493a91c8be45f610848a\",\"object\":\"chat.completion.chunk\",\"created\":1782575991,\"model\":\"cheetara-m9\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+        "stream_done_seen": true
+      },
+      "status": "pass"
+    },
+    "connect": {
+      "details": {
+        "body": {
+          "data": [
+            {
+              "created": 1782575947,
+              "id": "cheetara-m9",
+              "object": "model",
+              "owned_by": "mlx-engine",
+              "supports_vision": true
+            }
+          ],
+          "object": "list"
+        },
+        "elapsed_s": 0.0121,
+        "headers": {
+          "Connection": "close",
+          "content-length": "132",
+          "content-type": "application/json",
+          "date": "Sat, 27 Jun 2026 15:59:50 GMT",
+          "server": "uvicorn"
+        },
+        "http_status": 200,
+        "model_count": 1,
+        "model_ids": [
+          "cheetara-m9"
+        ],
+        "object": "list",
+        "selectable": true,
+        "served_model": "cheetara-m9"
+      },
+      "status": "pass"
+    },
+    "health": {
+      "details": {
+        "body": {
+          "model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+          "model_type": "lfm2_vl",
+          "now": 1782575991,
+          "served_model": "cheetara-m9",
+          "started_at": 1782575947,
+          "status": "ok",
+          "supports_vision": true
+        },
+        "consistency_check": {
+          "models_consistent": true,
+          "models_http_status": 200,
+          "models_requested_model_present": true
+        },
+        "elapsed_s": 0.0009,
+        "headers": {
+          "Connection": "close",
+          "content-length": "241",
+          "content-type": "application/json",
+          "date": "Sat, 27 Jun 2026 15:59:50 GMT",
+          "server": "uvicorn"
+        },
+        "health_status": "ok",
+        "http_status": 200,
+        "model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+        "model_type": "lfm2_vl",
+        "now": 1782575991,
+        "served_model": "cheetara-m9",
+        "started_at": 1782575947,
+        "supports_vision": true,
+        "uptime_s": 44
+      },
+      "status": "pass"
+    },
+    "responses": {
+      "details": {
+        "content_text": "Ok.",
+        "delta_count": 2,
+        "elapsed_s": 0.0172,
+        "event_types": [
+          "response.created",
+          "response.output_item.added",
+          "response.content_part.added",
+          "response.output_text.delta",
+          "response.output_text.delta",
+          "response.content_part.done",
+          "response.output_item.done",
+          "response.completed"
+        ],
+        "http_status": 200,
+        "raw_excerpt": "event: response.created\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_6d1e7d355058\",\"object\":\"response\",\"created_at\":1782575991,\"status\":\"in_progress\",\"model\":\"cheetara-m9\",\"output\":[]}}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"sequence_number\":1,\"output_index\":0,\"item\":{\"id\":\"item_89a38f1e4116\",\"type\":\"message\",\"status\":\"in_progress\",\"role\":\"assistant\",\"content\":[]}}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"sequence_number\":2,\"item_id\":\"item_89a38f1e4116\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]}}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":3,\"item_id\":\"item_89a38f1e4116\",\"output_index\":0,\"content_index\":0,\"delta\":\"Ok\"}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"sequence_number\":4,\"item_id\":\"item_89a38f1e4116\",\"output_index\":0,\"content_index\":0,\"delta\":\".\"}\n\nevent: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"sequence_number\":5,\"item_id\":\"item_89a38f1e4116\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"Ok.\",\"annotations\":[]}}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"sequence_number\":6,\"output_index\":0,\"item\":{\"id\":\"item_89a38f1e4116\",\"type\":\"message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Ok.\",\"annotations\":[]}]}}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"sequence_number\":7,\"response\":{\"id\":\"resp_6d1e7d355058\",\"object\":\"response\",\"created_at\":1782575991,\"status\":\"completed\",\"model\":\"cheetara-m9\",\"output\":[{\"id\":\"item_89a38f1e4116\",\"type\":\"message\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Ok.\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":16,\"output_tokens\":3,\"total_tokens\":19}}}\n\ndata: [DONE]\n\n",
+        "stream_done_seen": true,
+        "typed_event_count": 8,
+        "untyped_chunk_count": 0
+      },
+      "status": "pass"
+    }
+  },
+  "summary": {
+    "failed": 0,
+    "passed": 4,
+    "total": 4
+  }
+}

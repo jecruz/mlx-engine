@@ -1,0 +1,18 @@
+Loading drafter (dflash): /Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824
+==========
+Files: [] 
+
+Prompt: <|im_start|>user
+List the first 5 prime numbers separated by commas.<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+2, 3, 5, 7, 11
+==========
+Prompt: 23 tokens, 5.465 tokens-per-sec
+Generation: 15 tokens, 38.972 tokens-per-sec
+Peak memory: 38.879 GB
+Speculative decoding: 8.00 accepted tokens/round (7.00 accepted drafts/round, 100.0% of drafted, avg draft 7.00) over 2 rounds

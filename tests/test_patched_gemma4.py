@@ -4,8 +4,10 @@ import mlx.core as mx
 from mlx_lm.models.base import create_causal_mask
 
 from mlx_engine.model_kit.patches.gemma4 import (
+    config_uses_bidirectional_visual_attention,
     patch_loaded_model,
     prepare_cached_suffix_prompt_kwargs,
+    uses_bidirectional_visual_attention,
 )
 
 
@@ -49,10 +51,71 @@ def test_gemma4_cached_suffix_prompt_kwargs_keeps_text_only_token_types():
     assert prepared["mm_token_type_ids"].tolist() == [[0, 0, 0, 0]]
 
 
+def test_gemma4_bidirectional_visual_detection_accepts_config_and_loaded_model():
+    model = SimpleNamespace(
+        language_model=SimpleNamespace(
+            model_type="gemma4_text",
+            config=SimpleNamespace(use_bidirectional_attention="vision"),
+        )
+    )
+    config = {
+        "model_type": "gemma4",
+        "text_config": {"use_bidirectional_attention": "vision"},
+    }
+
+    assert uses_bidirectional_visual_attention(model)
+    assert config_uses_bidirectional_visual_attention(config)
+
+
+def test_gemma4_bidirectional_visual_detection_accepts_unified_model():
+    model = SimpleNamespace(
+        language_model=SimpleNamespace(
+            model_type="gemma4_unified_text",
+            config=SimpleNamespace(use_bidirectional_attention="vision"),
+        )
+    )
+    config = SimpleNamespace(
+        model_type="gemma4_unified",
+        text_config=SimpleNamespace(use_bidirectional_attention="vision"),
+    )
+
+    assert uses_bidirectional_visual_attention(model)
+    assert config_uses_bidirectional_visual_attention(config)
+
+
+def test_gemma4_bidirectional_visual_detection_rejects_non_bidir_and_non_gemma():
+    non_bidir_gemma = SimpleNamespace(
+        language_model=SimpleNamespace(
+            model_type="gemma4_text",
+            config=SimpleNamespace(use_bidirectional_attention=None),
+        )
+    )
+    non_bidir_config = {
+        "model_type": "gemma4",
+        "text_config": {"use_bidirectional_attention": None},
+    }
+    non_gemma = SimpleNamespace(
+        language_model=SimpleNamespace(
+            model_type="qwen2_vl",
+            config=SimpleNamespace(use_bidirectional_attention="vision"),
+        )
+    )
+    non_gemma_config = {
+        "model_type": "qwen2_vl",
+        "text_config": {"use_bidirectional_attention": "vision"},
+    }
+
+    assert not uses_bidirectional_visual_attention(non_bidir_gemma)
+    assert not config_uses_bidirectional_visual_attention(non_bidir_config)
+    assert not uses_bidirectional_visual_attention(non_gemma)
+    assert not config_uses_bidirectional_visual_attention(non_gemma_config)
+
+
 def test_gemma4_suffix_visual_mask_patch_uses_query_rows_only():
     text_model = _Gemma4UnifiedTextModel()
     language_model = SimpleNamespace(
-        model_type="gemma4_unified_text",
+        model_type="gemma4_text",
+        config=SimpleNamespace(use_bidirectional_attention="vision"),
         model=text_model,
     )
     model = SimpleNamespace(language_model=language_model)
@@ -78,3 +141,27 @@ def test_gemma4_suffix_visual_mask_patch_uses_query_rows_only():
         )
         is base_mask
     )
+
+
+def test_gemma4_suffix_visual_mask_patch_handles_one_token_warm_suffix():
+    """One-token restored suffix masks still align query rows to cached keys."""
+    text_model = _Gemma4UnifiedTextModel()
+    language_model = SimpleNamespace(
+        model_type="gemma4_text",
+        config=SimpleNamespace(use_bidirectional_attention="vision"),
+        model=text_model,
+    )
+    model = SimpleNamespace(language_model=language_model)
+
+    patch_loaded_model(model)
+
+    base_mask = mx.zeros((1, 7), dtype=mx.bool_)
+    token_types = mx.array([[0, 0, 0, 0, 1, 1, 1]], dtype=mx.int32)
+    patched = text_model._apply_blockwise_bidirectional_overlay(
+        base_mask,
+        token_types,
+    )
+
+    assert patched.shape == (1, 1, 1, 7)
+    assert bool(patched[0, 0, 0, 4].item())
+    assert not bool(base_mask[0, 4].item())

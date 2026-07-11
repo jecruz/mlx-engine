@@ -5,6 +5,7 @@ import mlx.core as mx
 
 from mlx_engine.cache_wrapper import CacheWrapper
 from mlx_engine.utils.prompt_progress_reporter import PromptProgressReporter
+from mlx_engine.utils.specprefill import SpecPrefillOptions
 
 
 def process_prompt_text_only(
@@ -14,14 +15,19 @@ def process_prompt_text_only(
     draft_model: Optional[nn.Module],
     speculative_decoding_toggle: Optional[bool],
     prompt_progress_reporter: PromptProgressReporter,
+    specprefill_options: Optional[SpecPrefillOptions] = None,
 ):
     if cache_wrapper is None:
         raise ValueError("Cache wrapper is not initialized, cannot process prompt")
     # Make sure cache's draft model setting aligns with speculative decoding toggle
     should_use_draft_model = (
-        speculative_decoding_toggle
-        if speculative_decoding_toggle is not None
-        else draft_model is not None
+        False
+        if specprefill_options is not None
+        else (
+            speculative_decoding_toggle
+            if speculative_decoding_toggle is not None
+            else draft_model is not None
+        )
     )
     if should_use_draft_model:
         if not draft_model:
@@ -37,6 +43,8 @@ def process_prompt_text_only(
     prompt_tokens = cache_wrapper.update_cache(
         prompt_tokens,
         prompt_progress_reporter,
+        draft_model=draft_model,
+        specprefill_options=specprefill_options,
     )
     generate_args["prompt_cache"] = cache_wrapper.cache
     return prompt_tokens

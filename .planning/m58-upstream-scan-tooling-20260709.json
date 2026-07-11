@@ -1,0 +1,139 @@
+{
+  "milestone": "M58-upstream-scan-tooling",
+  "timestamp_utc": "2026-07-09T04:22:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Add a reusable factual upstream candidate scan reporter so repeat triage produces consistent JSON evidence before any cherry-pick or runtime candidate.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/upstream_candidate_scan.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_upstream_candidate_scan.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m58-upstream-candidate-scan-report-20260709.json"
+    ],
+    "details": [
+      "Added scripts/upstream_candidate_scan.py to collect upstream refs, head comparisons, branch recent commits, changed files, diffstat, and patch-id unmatched commits.",
+      "Kept the script factual only; it does not classify promotion readiness or apply cherry-picks.",
+      "Added focused tests with a fake git runner for count parsing, candidate summary collection, and CLI JSON output.",
+      "Generated a fresh M58 upstream candidate scan report from current refs."
+    ]
+  },
+  "scan_report": {
+    "path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m58-upstream-candidate-scan-report-20260709.json",
+    "command": ".venv-py312/bin/python scripts/upstream_candidate_scan.py --fetch --output .planning/m58-upstream-candidate-scan-report-20260709.json",
+    "head": "e5e4b5b",
+    "upstream_main_head": "8ae2610",
+    "origin_branch_head": "8f0fa26",
+    "head_vs_upstream_main": {
+      "left": 232,
+      "right": 1
+    },
+    "head_vs_origin_branch": {
+      "left": 37,
+      "right": 0
+    },
+    "candidate_branch_count": 6,
+    "candidate_branches": [
+      {
+        "branch": "upstream/neil/gemma4-tool-context",
+        "head": "9aa3db2",
+        "ahead_behind_vs_upstream_main": {
+          "left": 0,
+          "right": 17
+        },
+        "recent_commit_count": 12,
+        "changed_file_count": 7,
+        "unmatched_patch_id_count": 18
+      },
+      {
+        "branch": "upstream/yagil/dist",
+        "head": "366ebd4",
+        "ahead_behind_vs_upstream_main": {
+          "left": 5,
+          "right": 29
+        },
+        "recent_commit_count": 12,
+        "changed_file_count": 84,
+        "unmatched_patch_id_count": 0
+      },
+      {
+        "branch": "upstream/yagil/mlx-dist-non-batched",
+        "head": "c86c23a",
+        "ahead_behind_vs_upstream_main": {
+          "left": 5,
+          "right": 35
+        },
+        "recent_commit_count": 12,
+        "changed_file_count": 84,
+        "unmatched_patch_id_count": 6
+      },
+      {
+        "branch": "upstream/neil/vlm-parity-ci",
+        "head": "ea1a6bb",
+        "ahead_behind_vs_upstream_main": {
+          "left": 5,
+          "right": 82
+        },
+        "recent_commit_count": 12,
+        "changed_file_count": 44,
+        "unmatched_patch_id_count": 82
+      },
+      {
+        "branch": "upstream/will/lfm-2.5-unified",
+        "head": "461015c",
+        "ahead_behind_vs_upstream_main": {
+          "left": 25,
+          "right": 1
+        },
+        "recent_commit_count": 1,
+        "changed_file_count": 83,
+        "unmatched_patch_id_count": 1
+      },
+      {
+        "branch": "upstream/neil/img-caching",
+        "head": "7dfe3cd",
+        "ahead_behind_vs_upstream_main": {
+          "left": 39,
+          "right": 13
+        },
+        "recent_commit_count": 12,
+        "changed_file_count": 94,
+        "unmatched_patch_id_count": 13
+      }
+    ]
+  },
+  "validation": [
+    {
+      "command": "python3 -m py_compile scripts/upstream_candidate_scan.py tests/test_upstream_candidate_scan.py",
+      "status": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_upstream_candidate_scan.py -q",
+      "status": "passed",
+      "result": "3 passed in 0.25s"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m58-upstream-candidate-scan-report-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m58-upstream-scan-tooling-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "SCAN_TOOLING_ONLY",
+    "runtime_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "live_lm_studio_validation": "blocked-before-inference",
+    "next_action": "Use the scan reporter for future upstream refreshes, then manually classify candidates before any cherry-pick. Runtime promotion still requires retained benchmarks, quality gates, and live LM Studio validation."
+  }
+}

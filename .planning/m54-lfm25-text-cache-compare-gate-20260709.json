@@ -1,0 +1,102 @@
+{
+  "milestone": "M54-lfm25-text-cache-compare-gate",
+  "timestamp_utc": "2026-07-09T03:10:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Add a reusable comparison gate for retained LFM2.5-VL text-only generated-token cache benchmark reports.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lfm25_text_cache_compare.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_lfm25_text_cache_compare.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json"
+    ],
+    "details": [
+      "Added a JSON comparator for baseline and candidate LFM2.5 text-cache benchmark reports.",
+      "Computed missing ratio fields from token-count summaries so M52-style reports remain usable as baselines.",
+      "Failed candidates with row errors, missing follow-up cache reuse, missing small-prefill behavior, missing Silas fidelity, cache-reuse ratio regression, or prefill ratio regression.",
+      "Kept follow-up TTFT and total latency deltas in the report for review without making timing thresholds mandatory by default."
+    ]
+  },
+  "comparison": {
+    "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json",
+    "command": ".venv-py312/bin/python scripts/lfm25_text_cache_compare.py --baseline .planning/m52-lfm25-text-cache-bench-20260709.json --candidate .planning/m53-lfm25-text-cache-ratio-bench-20260709.json --output .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json",
+    "baseline": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m52-lfm25-text-cache-bench-20260709.json",
+    "candidate": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m53-lfm25-text-cache-ratio-bench-20260709.json",
+    "status": "pass",
+    "thresholds": {
+      "max_cache_ratio_regression": 0.01,
+      "max_prefill_ratio_regression": 0.01,
+      "max_ttft_regression_pct": null,
+      "max_total_regression_pct": null
+    },
+    "metrics": {
+      "sample_count": {
+        "baseline": 2,
+        "candidate": 3
+      },
+      "followup_cache_reuse_ratio_avg": {
+        "baseline": 0.95929203539823,
+        "candidate": 0.95929203539823,
+        "delta": 0.0,
+        "delta_pct": 0.0
+      },
+      "followup_prefill_ratio_avg": {
+        "baseline": 0.04070796460176991,
+        "candidate": 0.04070796460176991,
+        "delta": 0.0,
+        "delta_pct": 0.0
+      },
+      "followup_ttft_s_avg": {
+        "baseline": 0.018739916500635445,
+        "candidate": 0.018305597332073376,
+        "delta": -0.00043431916856206954,
+        "delta_pct": -2.3176152815160216
+      },
+      "followup_total_s_avg": {
+        "baseline": 0.02782779150584247,
+        "candidate": 0.02717100000396992,
+        "delta": -0.0006567915018725508,
+        "delta_pct": -2.3601998805210855
+      }
+    }
+  },
+  "validation": [
+    {
+      "command": "python3 -m py_compile scripts/lfm25_text_cache_compare.py tests/test_lfm25_text_cache_compare.py",
+      "status": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_lfm25_text_cache_compare.py -q",
+      "status": "passed",
+      "result": "3 passed in 0.02s"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lfm25_text_cache_compare.py --baseline .planning/m52-lfm25-text-cache-bench-20260709.json --candidate .planning/m53-lfm25-text-cache-ratio-bench-20260709.json --output .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json",
+      "status": "passed",
+      "result": "status=pass"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m54-lfm25-text-cache-m53-vs-m52-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m54-lfm25-text-cache-compare-gate-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "COMPARE_TOOL_ONLY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "not-applicable-no-runtime-candidate",
+    "next_action": "Use the M54 comparator to gate future LFM2.5 text-only generated-token cache runtime candidates against retained M53-style baselines before any promotion or LM Studio validation step."
+  }
+}

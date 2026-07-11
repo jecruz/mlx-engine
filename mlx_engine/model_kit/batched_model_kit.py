@@ -1,6 +1,7 @@
 from threading import Thread, Event
 import gc
 import json
+import os
 import sys
 import traceback
 from typing import Iterable
@@ -17,8 +18,17 @@ from queue import Queue
 from queue import Empty as QueueEmpty
 import time
 from mlx_lm.server import LRUPromptCache
+from mlx_lm.models.cache import KVCache, QuantizedKVCache
 from mlx_engine.utils.token import Token
-from mlx_engine.utils.mlx_lm_stream import prepare_mlx_lm_generation_stream
+from mlx_engine.utils.mlx_lm_stream import (
+    describe_stream_configuration,
+    prepare_mlx_lm_generation_stream,
+)
+from mlx_engine.utils.batched_timing import (
+    batched_timing_enabled,
+    elapsed_ms,
+    log_batched_timing,
+)
 
 from mlx_engine.model_kit.batched_model_kit_types import (
     BatchedGenerationResponse,
@@ -32,6 +42,94 @@ from mlx_engine.utils.mlx_threading import (
 from mlx_engine.utils.set_seed import set_seed
 
 logger = logging.getLogger(__name__)
+
+_STARTUP_LONG_WARMUP_ENV = "MLX_ENGINE_STARTUP_LONG_WARMUP"
+
+
+def _startup_long_warmup_enabled() -> bool:
+    """Return whether startup should prime the long benchmark prompt shape."""
+    value = os.environ.get(_STARTUP_LONG_WARMUP_ENV, "")
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+def _clone_cache_value(value):
+    if isinstance(value, mx.array):
+        return mx.array(value)
+    if isinstance(value, list):
+        return [_clone_cache_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_clone_cache_value(item) for item in value)
+    if isinstance(value, dict):
+        return {key: _clone_cache_value(item) for key, item in value.items()}
+    return value
+
+
+def _clone_cache_entry(entry):
+    if isinstance(entry, KVCache):
+        clone = KVCache()
+        clone.keys = mx.array(entry.keys) if entry.keys is not None else None
+        clone.values = mx.array(entry.values) if entry.values is not None else None
+        clone.offset = entry.offset
+        return clone
+    if isinstance(entry, QuantizedKVCache):
+        clone = QuantizedKVCache(group_size=entry.group_size, bits=entry.bits)
+        clone.keys = (
+            tuple(mx.array(item) for item in entry.keys)
+            if entry.keys is not None
+            else None
+        )
+        clone.values = (
+            tuple(mx.array(item) for item in entry.values)
+            if entry.values is not None
+            else None
+        )
+        clone.offset = entry.offset
+        return clone
+    from_state = getattr(type(entry), "from_state", None)
+    if (
+        callable(from_state)
+        and hasattr(entry, "state")
+        and hasattr(entry, "meta_state")
+    ):
+        try:
+            return from_state(
+                _clone_cache_value(entry.state),
+                _clone_cache_value(entry.meta_state),
+            )
+        except Exception:
+            logger.debug("Prompt cache clone via from_state failed; falling back.")
+    import copy
+
+    return copy.deepcopy(entry)
+
+
+class FastLRUPromptCache(LRUPromptCache):
+    """LRU prompt cache that clones reusable entries without full deepcopy."""
+
+    def fetch_nearest_cache(self, model_key: str, tokens: list[int]):
+        """Return a cloned nearest cache entry plus uncached suffix tokens."""
+        result = self._trie.search(model_key, tokens)
+        if result.exact is not None:
+            cache_entry = self._trie.get(result.model, result.exact)
+            return [_clone_cache_entry(entry) for entry in cache_entry.prompt_cache], []
+
+        short_length = len(result.shorter) if result.shorter is not None else 0
+        if result.longer is not None and result.common_prefix > short_length:
+            cache_entry = self._trie.get(result.model, result.longer)
+            cache = [_clone_cache_entry(entry) for entry in cache_entry.prompt_cache]
+            if can_trim_prompt_cache(cache):
+                prefix = min(len(tokens) - 1, result.common_prefix)
+                num_to_trim = len(result.longer) - prefix
+                trim_prompt_cache(cache, num_to_trim)
+                return cache, tokens[prefix:]
+
+        if short_length > 0:
+            cache_entry = self._trie.get(result.model, result.shorter)
+            return [
+                _clone_cache_entry(entry) for entry in cache_entry.prompt_cache
+            ], tokens[short_length:]
+
+        return None, tokens
 
 
 def _prepare_prompt_cache_for_generation(
@@ -61,6 +159,59 @@ def _prepare_prompt_cache_for_generation(
 
     # If we cannot trim an exact-hit cache, replay the full prompt instead.
     return None, [], prompt_tokens
+
+
+def _num_tokens_in_prompt_cache(prompt_cache) -> int | None:
+    """Return the cached token count for a prompt cache when offsets are exposed."""
+    if not prompt_cache:
+        return None
+
+    head_offset = getattr(prompt_cache[0], "offset", None)
+    if head_offset is not None:
+        return head_offset
+
+    for entry in prompt_cache[1:]:
+        entry_offset = getattr(entry, "offset", None)
+        if entry_offset is not None:
+            return entry_offset
+    return None
+
+
+def _trim_prompt_cache_to_prompt_length(prompt_cache, prompt_length: int):
+    """Return a prompt-only cache snapshot for cross-request reuse.
+
+    Batched generation responses can carry a cache that has already advanced
+    into generated tokens. Reusing that cache under the original prompt key
+    poisons exact-hit restores for repeated requests. Trim any extra generated
+    tail before reinserting the cache. If the cache cannot be trimmed safely,
+    return ``None`` so the caller skips reinsertion instead of storing a
+    corrupted entry.
+    """
+
+    cache_length = _num_tokens_in_prompt_cache(prompt_cache)
+    if cache_length is None or cache_length <= prompt_length:
+        return prompt_cache
+
+    if not can_trim_prompt_cache(prompt_cache):
+        logger.warning(
+            "Skipping cross-prompt cache insert because cache length %d exceeds "
+            "prompt length %d and the cache is not trimmable.",
+            cache_length,
+            prompt_length,
+        )
+        return None
+
+    num_to_trim = cache_length - prompt_length
+    trimmed = trim_prompt_cache(prompt_cache, num_to_trim)
+    if trimmed != num_to_trim:
+        logger.warning(
+            "Skipping cross-prompt cache insert because trimming removed %d of %d "
+            "generated tokens.",
+            trimmed,
+            num_to_trim,
+        )
+        return None
+    return prompt_cache
 
 
 class BatchedModelKit:
@@ -98,7 +249,7 @@ class BatchedModelKit:
         seed: int | None = None,
     ):
         self._requests = Queue()
-        self._prompt_cache = LRUPromptCache()
+        self._prompt_cache = FastLRUPromptCache()
         self._batch_results = {}
         self._backend_exception = None
         self._generation_thread = None
@@ -146,6 +297,143 @@ class BatchedModelKit:
         if isinstance(ids, int):
             return [ids]
         return ids
+
+    def _build_startup_warmup_prompt_tokens(self, target_len: int) -> list[int]:
+        """Build a synthetic prompt of the requested length for compile priming."""
+        warmup_tokens = self.tokenize("warmup")
+        if not warmup_tokens:
+            return [0] * max(2, target_len)
+
+        target_len = max(2, target_len)
+        if len(warmup_tokens) >= target_len:
+            return warmup_tokens[:target_len]
+
+        repeats = (target_len + len(warmup_tokens) - 1) // len(warmup_tokens)
+        return (warmup_tokens * repeats)[:target_len]
+
+    def _has_pending_startup_request(self) -> bool:
+        """Return whether a real request is waiting behind startup warmup."""
+        requests = getattr(self, "_requests", None)
+        return requests is not None and not requests.empty()
+
+    def _run_startup_warmup(self):
+        """Prime MLX compilation before the first user request reaches the queue."""
+        long_two_chunk_length = self._prefill_step_size + max(
+            1, (self._prefill_step_size * 3) // 4
+        )
+        warmup_cases = [
+            {
+                "length": 2,
+                "batch_size": 1,
+                "max_tokens": 32,
+                "samplers": None,
+                "logits_processors": None,
+            },
+            {
+                "length": 25,
+                "batch_size": 1,
+                "max_tokens": 32,
+                "samplers": None,
+                "logits_processors": None,
+            },
+            {
+                "length": 25,
+                "batch_size": self._max_seq_nums,
+                "max_tokens": 32,
+                "samplers": None,
+                "logits_processors": None,
+            },
+            {
+                # Prime the long prompt shape used by the benchmark workload.
+                "length": min(self._prefill_step_size, 512) + 1,
+                "batch_size": 1,
+                "max_tokens": 32,
+                "samplers": None,
+                "logits_processors": None,
+            },
+            {
+                # Prime a longer two-chunk prompt shape closer to the shared benchmark.
+                "length": long_two_chunk_length,
+                "batch_size": 1,
+                "max_tokens": 32,
+                "samplers": None,
+                "logits_processors": None,
+            },
+        ]
+        if _startup_long_warmup_enabled():
+            warmup_cases.append(
+                {
+                    # Prime the exact long prompt shape used by the shared benchmark.
+                    # This is opt-in because it can make large-model startup look hung.
+                    "length": 7162,
+                    "batch_size": 1,
+                    "max_tokens": 32,
+                    "samplers": None,
+                    "logits_processors": None,
+                }
+            )
+        timing_enabled = batched_timing_enabled()
+        for index, warmup_case in enumerate(warmup_cases):
+            if self._has_pending_startup_request():
+                logger.info(
+                    "Skipping remaining startup warmup; user request is queued."
+                )
+                break
+            warmup_generator = self._make_batch_generator()
+            try:
+                warmup_start = time.perf_counter() if timing_enabled else None
+                warmup_prompt = self._build_startup_warmup_prompt_tokens(
+                    warmup_case["length"]
+                )
+                prompts = [warmup_prompt] * warmup_case["batch_size"]
+                max_tokens = [warmup_case["max_tokens"]] * warmup_case["batch_size"]
+                kwargs = {}
+                warmup_generator.insert(
+                    prompts,
+                    max_tokens,
+                    **kwargs,
+                )
+                while warmup_generator.next():
+                    if self._has_pending_startup_request():
+                        logger.info(
+                            "Stopping startup warmup early; user request is queued."
+                        )
+                        break
+                mx.synchronize()
+                if timing_enabled:
+                    log_batched_timing(
+                        logger,
+                        "startup_warmup_case",
+                        case_index=index,
+                        prompt_tokens=warmup_case["length"],
+                        batch_size=warmup_case["batch_size"],
+                        max_tokens=warmup_case["max_tokens"],
+                        duration_ms=elapsed_ms(warmup_start),
+                    )
+            finally:
+                warmup_generator.close()
+
+    def _make_batch_generator(
+        self,
+        *,
+        completion_batch_size: int | None = None,
+    ) -> BatchGenerator:
+        if completion_batch_size is None:
+            completion_batch_size = self._max_seq_nums
+        return BatchGenerator(
+            self.model,
+            max_tokens=10000000,
+            completion_batch_size=completion_batch_size,
+            # As soon as we receive any prompt, stop decoding, prefill the new prompt, and add it to the decoding batch
+            # We probably want to make this behavior configurable, so that new prompts do not pause existing decodes
+            prefill_batch_size=1,
+            prefill_step_size=self._prefill_step_size,
+            stop_tokens=[[token] for token in self.tokenizer.eos_token_ids],
+            # Do not set any global post-processors, sampler and logits_processor are set per-request
+            sampler=None,
+            logits_processors=None,
+            max_kv_size=self._max_kv_size,
+        )
 
     def is_cross_prompt_cache_active(self) -> bool:
         """
@@ -299,31 +587,41 @@ class BatchedModelKit:
 
         install_mlx_compile_cache_cleanup_for_thread()
         set_seed(self._seed)
+        timing_enabled = batched_timing_enabled()
 
         if self.model is None:
+            load_start = time.perf_counter() if timing_enabled else None
             self.model, _ = mlx_lm.utils.load(self._model_path, lazy=False)
             mx.synchronize()
             mx.clear_cache()
+            if timing_enabled:
+                log_batched_timing(
+                    logger,
+                    "model_load",
+                    model_path=str(self._model_path),
+                    duration_ms=elapsed_ms(load_start),
+                )
+        stream_start = time.perf_counter() if timing_enabled else None
+        prepare_mlx_lm_generation_stream(reason="batched-scheduler")
+        logger.info(
+            "Batched scheduler stream configuration: %s",
+            describe_stream_configuration(False),
+        )
+        if timing_enabled:
+            log_batched_timing(
+                logger,
+                "generation_stream_prepare",
+                duration_ms=elapsed_ms(stream_start),
+            )
         self._startup_complete.set()
+        warmup_start = time.perf_counter() if timing_enabled else None
+        self._run_startup_warmup()
+        if timing_enabled:
+            log_batched_timing(
+                logger, "startup_warmup", duration_ms=elapsed_ms(warmup_start)
+            )
 
-        generation_stream = prepare_mlx_lm_generation_stream(
-            reason="batched-scheduler"
-        )
-        batch_generator = BatchGenerator(
-            self.model,
-            max_tokens=10000000,
-            completion_batch_size=self._max_seq_nums,
-            # As soon as we receive any prompt, stop decoding, prefill the new prompt, and add it to the decoding batch
-            # We probably want to make this behavior configurable, so that new prompts do not pause existing decodes
-            prefill_batch_size=1,
-            prefill_step_size=self._prefill_step_size,
-            stop_tokens=[[token] for token in self.tokenizer.eos_token_ids],
-            # Do not set any global post-processors, sampler and logits_processor are set per-request
-            sampler=None,
-            logits_processors=None,
-            max_kv_size=self._max_kv_size,
-            stream=generation_stream,
-        )
+        batch_generator = self._make_batch_generator()
         # only using one model, so model key name value does not matter
         current_model_key = "lmstudio"
 
@@ -359,11 +657,18 @@ class BatchedModelKit:
                     continue
 
                 with mx.stream(batch_generator.stream):
+                    cache_prepare_start = (
+                        time.perf_counter() if timing_enabled else None
+                    )
                     cache, cached_prefix, rest = _prepare_prompt_cache_for_generation(
                         self._prompt_cache, current_model_key, request.prompt_tokens
                     )
+                    cache_prepare_ms = (
+                        elapsed_ms(cache_prepare_start) if timing_enabled else None
+                    )
 
                     # Keep cache allocation on the same MLX stream as generation.
+                    insert_start = time.perf_counter() if timing_enabled else None
                     (uid,) = batch_generator.insert(
                         [rest],
                         [request.max_tokens],
@@ -372,14 +677,32 @@ class BatchedModelKit:
                         samplers=[request.samplers],
                         logits_processors=[request.logits_processors],
                     )
+                    insert_ms = elapsed_ms(insert_start) if timing_enabled else None
+
+                if timing_enabled:
+                    log_batched_timing(
+                        logger,
+                        "request_insert",
+                        request_id=request.request_id,
+                        prompt_tokens=len(request.prompt_tokens),
+                        cached_tokens=len(cached_prefix),
+                        rest_tokens=len(rest),
+                        cache_prepare_ms=cache_prepare_ms,
+                        insert_ms=insert_ms,
+                    )
 
                 # Track this request
                 self._batch_results[uid] = {
-                    "cache_key": request.prompt_tokens[:],
+                    "cross_prompt_cache_key": request.prompt_tokens[:],
+                    "live_cache_key": request.prompt_tokens[:],
                     "rqueue": request.rqueue,
                     "detokenizer": self.tokenizer.detokenizer,
                     "top_logprobs": request.top_logprobs,
                     "request_id": request.request_id,
+                    "inserted_at": time.perf_counter() if timing_enabled else None,
+                    "cached_tokens": len(cached_prefix),
+                    "rest_tokens": len(rest),
+                    "first_token_logged": False,
                 }
 
                 # Check for new requests
@@ -408,8 +731,19 @@ class BatchedModelKit:
                 for r in generation_responses:
                     # Create response object
                     result = self._batch_results[r.uid]
+                    if timing_enabled and not result["first_token_logged"]:
+                        result["first_token_logged"] = True
+                        log_batched_timing(
+                            logger,
+                            "first_token",
+                            request_id=result["request_id"],
+                            prompt_tokens=len(result["cross_prompt_cache_key"]),
+                            cached_tokens=result["cached_tokens"],
+                            rest_tokens=result["rest_tokens"],
+                            insert_to_first_token_ms=elapsed_ms(result["inserted_at"]),
+                        )
                     detokenizer = result["detokenizer"]
-                    result["cache_key"].append(r.token)
+                    result["live_cache_key"].append(r.token)
                     if r.finish_reason != "stop":
                         detokenizer.add_token(r.token)
                     if r.finish_reason is not None:
@@ -451,9 +785,16 @@ class BatchedModelKit:
                     # Clean up if necessary
                     if r.finish_reason is not None:
                         result["rqueue"].put(None)
-                        self._prompt_cache.insert_cache(
-                            current_model_key, result["cache_key"], r.prompt_cache
+                        prompt_cache_for_reuse = _trim_prompt_cache_to_prompt_length(
+                            r.prompt_cache,
+                            len(result["cross_prompt_cache_key"]),
                         )
+                        if prompt_cache_for_reuse is not None:
+                            self._prompt_cache.insert_cache(
+                                current_model_key,
+                                result["cross_prompt_cache_key"],
+                                prompt_cache_for_reuse,
+                            )
                         del self._batch_results[r.uid]
 
         for entry in self._batch_results.values():

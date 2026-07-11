@@ -1,6 +1,10 @@
 import mlx.core as mx
+import mlx_engine.model_kit.batched_vision.prompt_cache.coordinator as coordinator_module
 from mlx_engine.model_kit.batched_vision.prompt_cache.cache_store import (
     DiskPromptCacheRestorePlan,
+)
+from mlx_engine.model_kit.batched_vision.prompt_cache.chunks import (
+    build_prefix_cache_chunks,
 )
 from mlx_engine.model_kit.batched_vision.prompt_cache.coordinator import (
     VlmPromptCacheCoordinator,
@@ -13,7 +17,12 @@ from mlx_lm.models.cache import KVCache, RotatingKVCache
 
 
 class _FakeCacheStore:
-    def __init__(self, *, disk_prefix_len: int | None = None):
+    def __init__(
+        self,
+        *,
+        disk_prefix_len: int | None = None,
+        allow_save: bool = True,
+    ):
         self.restore_plan = (
             None
             if disk_prefix_len is None
@@ -33,6 +42,8 @@ class _FakeCacheStore:
         )
         self.recorded_tokens = []
         self.loaded_plans = []
+        self.allow_save = allow_save
+        self.prepared_chunks = []
 
     def plan_longest_prefix_restore(self, prompt_input_ids, image_spans):
         return self.restore_plan
@@ -50,6 +61,25 @@ class _FakeCacheStore:
 
     def can_store_records(self) -> bool:
         return True
+
+    def should_save_prompt(self, prefix_chunks) -> bool:
+        return self.allow_save
+
+    def prepare_save(
+        self,
+        *,
+        chunk,
+        prefix_chunks,
+        prompt_cache,
+        save_state_checkpoint,
+        is_final_prompt_boundary=False,
+    ):
+        self.prepared_chunks.append(chunk)
+        return {
+            "chunk": chunk,
+            "save_state_checkpoint": save_state_checkpoint,
+            "is_final_prompt_boundary": is_final_prompt_boundary,
+        }
 
 
 def _coordinator(cache_store):
@@ -70,6 +100,89 @@ def _rotating_kv_cache(prefix_len: int, *, max_size: int):
     keys = mx.arange(prefix_len, dtype=mx.float32).reshape(1, 1, prefix_len, 1)
     cache.update_and_fetch(keys, keys + 1000)
     return cache
+
+
+def test_coordinator_skips_save_when_store_admission_rejects_prompt():
+    """Prompt-cache admission should skip prepare/enqueue for small prompts."""
+    cache_store = _FakeCacheStore(allow_save=False)
+    coordinator, enqueued_saves = _coordinator(cache_store)
+    chunks = build_prefix_cache_chunks(list(range(300)), [])
+
+    coordinator.save_prompt_cache_snapshot(
+        prompt_cache=[_kv_cache(chunks[-1].end)],
+        prefix_chunks=chunks,
+        start_chunk_idx=0,
+        end_chunk_idx=len(chunks),
+        snapshot_len=chunks[-1].end,
+    )
+
+    assert cache_store.prepared_chunks == []
+    assert enqueued_saves == []
+
+
+def test_coordinator_marks_only_final_chunk_as_final_prompt_boundary():
+    """Final prompt snapshots only mark the terminal crossed chunk."""
+    cache_store = _FakeCacheStore()
+    coordinator, enqueued_saves = _coordinator(cache_store)
+    chunks = build_prefix_cache_chunks(list(range(1600)), [])
+
+    coordinator.save_prompt_cache_snapshot(
+        prompt_cache=[_kv_cache(chunks[-1].end)],
+        prefix_chunks=chunks,
+        start_chunk_idx=0,
+        end_chunk_idx=len(chunks),
+        snapshot_len=chunks[-1].end,
+        is_final_prompt_boundary=True,
+    )
+
+    expected_final_flags = [False] * (len(chunks) - 1) + [True]
+    assert [
+        save["is_final_prompt_boundary"] for save in enqueued_saves
+    ] == expected_final_flags
+    assert [
+        save["save_state_checkpoint"] for save in enqueued_saves
+    ] == expected_final_flags
+
+
+def test_coordinator_skips_one_token_ahead_final_state_checkpoint():
+    """Final snapshots keep exact state from the reusable-prefix boundary."""
+    cache_store = _FakeCacheStore()
+    coordinator, enqueued_saves = _coordinator(cache_store)
+    prompt = list(range(1600))
+    chunks = build_prefix_cache_chunks(prompt, [])
+
+    coordinator.save_prompt_cache_snapshot(
+        prompt_cache=[_kv_cache(len(prompt))],
+        prefix_chunks=chunks,
+        start_chunk_idx=len(chunks) - 1,
+        end_chunk_idx=len(chunks),
+        snapshot_len=len(prompt),
+        is_final_prompt_boundary=True,
+    )
+
+    assert [save["is_final_prompt_boundary"] for save in enqueued_saves] == [True]
+    assert [save["save_state_checkpoint"] for save in enqueued_saves] == [False]
+
+
+def test_coordinator_final_state_checkpoint_opt_out_keeps_old_alignment(monkeypatch):
+    """Operators can opt out and keep the old final-state checkpoint behavior."""
+    monkeypatch.setenv("MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN", "0")
+    cache_store = _FakeCacheStore()
+    coordinator, enqueued_saves = _coordinator(cache_store)
+    prompt = list(range(1600))
+    chunks = build_prefix_cache_chunks(prompt, [])
+
+    coordinator.save_prompt_cache_snapshot(
+        prompt_cache=[_kv_cache(len(prompt))],
+        prefix_chunks=chunks,
+        start_chunk_idx=len(chunks) - 1,
+        end_chunk_idx=len(chunks),
+        snapshot_len=len(prompt),
+        is_final_prompt_boundary=True,
+    )
+
+    assert [save["is_final_prompt_boundary"] for save in enqueued_saves] == [True]
+    assert [save["save_state_checkpoint"] for save in enqueued_saves] == [True]
 
 
 def test_coordinator_restores_exact_hot_prefix():
@@ -214,3 +327,59 @@ def test_coordinator_prefers_longer_disk_restore():
     assert restored.rope_deltas is None
     assert cache_store.loaded_plans == [cache_store.restore_plan]
     assert cache_store.recorded_tokens == [(512, 187)]
+
+
+def test_coordinator_disk_planning_timing_is_opt_in(monkeypatch):
+    """Disk restore planning should not log timing unless timing is enabled."""
+    cache_store = _FakeCacheStore(disk_prefix_len=512)
+    coordinator, _ = _coordinator(cache_store)
+    timing_events = []
+    monkeypatch.setattr(coordinator_module, "batched_timing_enabled", lambda: False)
+    monkeypatch.setattr(
+        coordinator_module,
+        "log_batched_timing",
+        lambda *args, **kwargs: timing_events.append((args, kwargs)),
+    )
+
+    restored = coordinator.restore(
+        prompt_input_ids=list(range(700)),
+        image_spans=[],
+    )
+
+    assert restored is not None
+    assert timing_events == []
+
+
+def test_coordinator_logs_disk_planning_timing_when_enabled(monkeypatch):
+    """Timing diagnostics should separate disk restore planning from loading."""
+    cache_store = _FakeCacheStore(disk_prefix_len=512)
+    cache_store.restore_plan.chunks = [object(), object()]
+    coordinator, _ = _coordinator(cache_store)
+    timing_events = []
+    monkeypatch.setattr(coordinator_module, "batched_timing_enabled", lambda: True)
+    monkeypatch.setattr(coordinator_module, "elapsed_ms", lambda start: 1.25)
+    monkeypatch.setattr(
+        coordinator_module,
+        "log_batched_timing",
+        lambda logger, event, **fields: timing_events.append((event, fields)),
+    )
+
+    restored = coordinator.restore(
+        prompt_input_ids=list(range(700)),
+        image_spans=[PromptImageSpan(start=10, end=20, image_hash="image")],
+    )
+
+    assert restored is not None
+    assert timing_events == [
+        (
+            "vlm_cache_restore_plan",
+            {
+                "prompt_tokens": 700,
+                "images": 1,
+                "cached_tokens": 512,
+                "chunks": 2,
+                "outcome": "hit",
+                "duration_ms": 1.25,
+            },
+        )
+    ]

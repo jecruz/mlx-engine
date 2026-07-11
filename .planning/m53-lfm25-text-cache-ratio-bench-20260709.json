@@ -1,0 +1,131 @@
+{
+  "model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+  "config": {
+    "samples": 3,
+    "max_kv_size": 20000,
+    "prefill_step_size": 512,
+    "story_tokens": 512,
+    "followup_tokens": 64
+  },
+  "summary": {
+    "sample_count": 3,
+    "row_errors": 0,
+    "all_followups_cached": true,
+    "all_followups_small_prefill": true,
+    "all_outputs_preserve_name": true,
+    "first_turn_ttft_s": {
+      "min": 0.029663291992619634,
+      "max": 0.1221212919917889,
+      "avg": 0.06099461132544093
+    },
+    "followup_ttft_s": {
+      "min": 0.01796470899716951,
+      "max": 0.018491875001927838,
+      "avg": 0.018305597332073376
+    },
+    "followup_total_s": {
+      "min": 0.026455292012542486,
+      "max": 0.02806445799069479,
+      "avg": 0.02717100000396992
+    },
+    "followup_cached_tokens": {
+      "min": 542.0,
+      "max": 542.0,
+      "avg": 542.0
+    },
+    "followup_total_prompt_tokens": {
+      "min": 565.0,
+      "max": 565.0,
+      "avg": 565.0
+    },
+    "followup_prefill_tokens_processed": {
+      "min": 23.0,
+      "max": 23.0,
+      "avg": 23.0
+    },
+    "followup_cache_reuse_ratio": {
+      "min": 0.95929203539823,
+      "max": 0.95929203539823,
+      "avg": 0.95929203539823
+    },
+    "followup_prefill_ratio": {
+      "min": 0.04070796460176991,
+      "max": 0.04070796460176991,
+      "avg": 0.04070796460176991
+    }
+  },
+  "samples": [
+    {
+      "sample_index": 1,
+      "first_turn": {
+        "prompt_tokens": 30,
+        "cached_tokens": 0,
+        "total_prompt_tokens": 29,
+        "prefill_tokens_processed": 29,
+        "completion_tokens": 512,
+        "ttft_s": 0.1221212919917889,
+        "total_s": 1.4945378749980591,
+        "output_text": "Silas was a traveler, a wanderer of the world, a seeker of adventure and a lover of the unknown. He had lived a long and eventful life, having seen many things and met many people. But despite all his experiences, he still felt a deep longing for something more, something that he could not quite put his finger on.\n\nOne day, as he was walking through a bustling market in a foreign city, he stumbled upon a small, unassuming shop. The sign above the door read \"Silas' Traveler's Guide,\" and the window was filled with an array of books, maps, and travel guides. Silas was immediately drawn to the shop, and he decided to take a look inside.\n\nAs he walked through the shop, he noticed a small, elderly man sitting at a table, surrounded by a group of travelers. The man was wearing a long, flowing robe, and he had a kind, gentle smile on his face. Silas approached the table and asked the man what he was doing.\n\nThe man looked up at him and smiled. \"I am Silas,\" he said. \"I am a traveler, just like you. I have come to this city to explore, to learn, and to experience the world.\"\n\nSilas was intrigued by the man's words, and he decided to sit down with him. \"What brings you to this city?\" he asked.\n\nThe man told Silas about his travels, about the places he had seen and the people he had met. He spoke of the beauty of the world, of the wonders it held, and of the adventures he had had. Silas listened intently, and he felt a deep sense of connection with the man.\n\nAs the sun began to set, the man stood up and said, \"I have a question for you, Silas. What is the most important thing you have learned on your travels?\"\n\nSilas thought for a moment, and then he replied, \"I have learned that the world is full of beauty and wonder, and that it is up to each of us to explore it and experience it. But more than that, I have learned that the most important thing is to be open to new experiences and to embrace the unknown.\"\n\nThe man smiled, and he nodded. \"I think you have a good point, Silas. I have learned that the world is full of beauty and wonder, and that it is up to each of us to explore it and"
+      },
+      "followup": {
+        "prompt_tokens": 566,
+        "cached_tokens": 542,
+        "total_prompt_tokens": 565,
+        "prefill_tokens_processed": 23,
+        "completion_tokens": 4,
+        "ttft_s": 0.018491875001927838,
+        "total_s": 0.026993250008672476,
+        "output_text": "Silas."
+      },
+      "error": null
+    },
+    {
+      "sample_index": 2,
+      "first_turn": {
+        "prompt_tokens": 30,
+        "cached_tokens": 0,
+        "total_prompt_tokens": 29,
+        "prefill_tokens_processed": 29,
+        "completion_tokens": 512,
+        "ttft_s": 0.031199249991914257,
+        "total_s": 1.420705917000305,
+        "output_text": "Silas was a traveler, a wanderer of the world, a seeker of adventure and a lover of the unknown. He had lived a long and eventful life, having seen many things and met many people. But despite all his experiences, he still felt a deep longing for something more, something that he could not quite put his finger on.\n\nOne day, as he was walking through a bustling market in a foreign city, he stumbled upon a small, unassuming shop. The sign above the door read \"Silas' Traveler's Guide,\" and the window was filled with an array of books, maps, and travel guides. Silas was immediately drawn to the shop, and he decided to take a look inside.\n\nAs he walked through the shop, he noticed a small, elderly man sitting at a table, surrounded by a group of travelers. The man was wearing a long, flowing robe, and he had a kind, gentle smile on his face. Silas approached the table and asked the man what he was doing.\n\nThe man looked up at him and smiled. \"I am Silas,\" he said. \"I am a traveler, just like you. I have come to this city to explore, to learn, and to experience the world.\"\n\nSilas was intrigued by the man's words, and he decided to sit down with him. \"What brings you to this city?\" he asked.\n\nThe man told Silas about his travels, about the places he had seen and the people he had met. He spoke of the beauty of the world, of the wonders it held, and of the adventures he had had. Silas listened intently, and he felt a deep sense of connection with the man.\n\nAs the sun began to set, the man stood up and said, \"I have a question for you, Silas. What is the most important thing you have learned on your travels?\"\n\nSilas thought for a moment, and then he replied, \"I have learned that the world is full of beauty and wonder, and that it is up to each of us to explore it and experience it. But more than that, I have learned that the most important thing is to be open to new experiences and to embrace the unknown.\"\n\nThe man smiled, and he nodded. \"I think you have a good point, Silas. I have learned that the world is full of beauty and wonder, and that it is up to each of us to explore it and"
+      },
+      "followup": {
+        "prompt_tokens": 566,
+        "cached_tokens": 542,
+        "total_prompt_tokens": 565,
+        "prefill_tokens_processed": 23,
+        "completion_tokens": 4,
+        "ttft_s": 0.01846020799712278,
+        "total_s": 0.02806445799069479,
+        "output_text": "Silas."
+      },
+      "error": null
+    },
+    {
+      "sample_index": 3,
+      "first_turn": {
+        "prompt_tokens": 30,
+        "cached_tokens": 0,
+        "total_prompt_tokens": 29,
+        "prefill_tokens_processed": 29,
+        "completion_tokens": 512,
+        "ttft_s": 0.029663291992619634,
+        "total_s": 1.4130494169949088,
+        "output_text": "Silas was a traveler, a wanderer of the world, a seeker of adventure and a lover of the unknown. He had lived a long and eventful life, having seen many things and met many people. But despite all his experiences, he still felt a deep longing for something more, something that he could not quite put his finger on.\n\nOne day, as he was walking through a bustling market in a foreign city, he stumbled upon a small, unassuming shop. The sign above the door read \"Silas' Traveler's Guide,\" and the window was filled with an array of books, maps, and travel guides. Silas was immediately drawn to the shop, and he decided to take a look inside.\n\nAs he walked through the shop, he noticed a small, elderly man sitting at a table, surrounded by a group of travelers. The man was wearing a long, flowing robe, and he had a kind, gentle smile on his face. Silas approached the table and asked the man what he was doing.\n\nThe man looked up at him and smiled. \"I am Silas,\" he said. \"I am a traveler, just like you. I have come to this city to explore, to learn, and to experience the world.\"\n\nSilas was intrigued by the man's words, and he decided to sit down with him. \"What brings you to this city?\" he asked.\n\nThe man told Silas about his travels, about the places he had seen and the people he had met. He spoke of the beauty of the world, of the wonders it held, and of the adventures he had had. Silas listened intently, and he felt a deep sense of connection with the man.\n\nAs the sun began to set, the man stood up and said, \"I have a question for you, Silas. What is the most important thing you have learned on your travels?\"\n\nSilas thought for a moment, and then he replied, \"I have learned that the world is full of beauty and wonder, and that it is up to each of us to explore it and experience it. But more than that, I have learned that the most important thing is to be open to new experiences and to embrace the unknown.\"\n\nThe man smiled, and he nodded. \"I think you have a good point, Silas. I have learned that the world is full of beauty and wonder, and that it is up to each of us to explore it and"
+      },
+      "followup": {
+        "prompt_tokens": 566,
+        "cached_tokens": 542,
+        "total_prompt_tokens": 565,
+        "prefill_tokens_processed": 23,
+        "completion_tokens": 4,
+        "ttft_s": 0.01796470899716951,
+        "total_s": 0.026455292012542486,
+        "output_text": "Silas."
+      },
+      "error": null
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "milestone": "M32-lmstudio-live-validation-attempt",
+  "date": "2026-07-08",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Validate the M31 final-boundary VLM state-checkpoint fix through the live LM Studio runtime before any broader packaging or promotion claim.",
+  "result": "BLOCKED_BY_LM_STUDIO_MODEL_REGISTRY",
+  "preflight": {
+    "lm_studio_app_running": true,
+    "server_initial_status": "not running",
+    "loaded_models_initial": "none",
+    "previous_selected_mlx_runtime": "mlx-llm-mac-arm64-apple-metal-advsimd-cheetara-mlx-thread-unsafe-runtime@2026.6.2303",
+    "official_mlx_runtime_pair": [
+      "_amphibian/app-mlx-generate-mac14-arm64@30",
+      "_amphibian/cpython3.11-mac-arm64@10"
+    ],
+    "isolated_runtime_candidate": "app-mlx-generate-mac14-arm64@32",
+    "codesign_team_id_matched_worker": true
+  },
+  "attempted_validation_setup": [
+    {
+      "step": "register isolated backend",
+      "command": "LMSTUDIO_MLX_RUNTIME_NAME=app-mlx-generate-mac14-arm64@32 LMSTUDIO_CPYTHON_RUNTIME_NAME=cpython3.11-mac-arm64@10 ./scripts/lmstudio-register-engine.sh m31-state-boundary 2026.7.8",
+      "status": "succeeded",
+      "note": "Registered a temporary backend and copied current mlx_engine source into runtime app-mlx-generate-mac14-arm64@32 only."
+    },
+    {
+      "step": "select temporary backend",
+      "command": "lms runtime select mlx-llm-mac-arm64-apple-metal-advsimd-m31-state-boundary",
+      "status": "succeeded"
+    },
+    {
+      "step": "start server",
+      "command": "lms server start",
+      "status": "succeeded",
+      "server": "127.0.0.1:4521"
+    },
+    {
+      "step": "load retained VLM by absolute path",
+      "command": "lms load /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --identifier m31-lfm25-vl --ttl 300 -y",
+      "status": "failed",
+      "error": "Model not found"
+    },
+    {
+      "step": "load retained VLM by expected model key",
+      "command": "lms load lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --identifier m31-lfm25-vl --ttl 300 -y",
+      "status": "failed",
+      "error": "Model not found"
+    },
+    {
+      "step": "symlink model directory into ~/.lmstudio/models",
+      "status": "ineffective",
+      "note": "lms ls still only reported the existing text-embedding model."
+    },
+    {
+      "step": "dry-run import safetensors file",
+      "command": "lms import /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit/model.safetensors --user-repo lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --symbolic-link --dry-run",
+      "status": "blocked",
+      "error": "File does not look like a model file; command opened an interactive confirmation prompt.",
+      "decision": "cancelled; do not force unsupported import"
+    }
+  ],
+  "cleanup": {
+    "killed_blocked_import_process": true,
+    "removed_ineffective_model_symlink": true,
+    "removed_temporary_backend_directory": "/Users/jeffreycruz/.lmstudio/extensions/backends/mlx-llm-mac-arm64-apple-metal-advsimd-m31-state-boundary-2026.7.8",
+    "restored_engine_index_from": "/Users/jeffreycruz/.lmstudio/.internal/internal-engine-index.json.script-backup",
+    "removed_backend_preference": "mlx-llm-mac-arm64-apple-metal-advsimd-m31-state-boundary",
+    "reselected_previous_mlx_runtime": "mlx-llm-mac-arm64-apple-metal-advsimd-cheetara-mlx-thread-unsafe-runtime@2026.6.2303",
+    "stopped_server": true,
+    "server_final_status": "not running",
+    "loaded_models_final": "none"
+  },
+  "remaining_blocker": "LM Studio does not have the retained LFM2.5-VL MLX directory registered as a loadable local model, and lms import does not safely accept the MLX safetensors file/directory in noninteractive mode.",
+  "next_safe_validation_path": [
+    "Register the retained MLX VLM directory in LM Studio through a supported non-copy model-registration path, or download/import the model through LM Studio so `lms ls` exposes a loadable model key.",
+    "Re-register an isolated backend against a non-official runtime copy, select it, start `lms server`, load the registered VLM with a short TTL, and send two same-prefix image requests through `http://127.0.0.1:4521/v1/chat/completions`.",
+    "Record server logs proving the custom backend source is active, warm request output retains `toucan`, and no `RuntimeError` / `Stream(gpu, ...)` text appears.",
+    "Restore the prior selected runtime and server state after validation."
+  ],
+  "decision": {
+    "status": "LIVE_VALIDATION_BLOCKED",
+    "m31_direct_validation_status": "retained",
+    "promotion_status": "no_live_lmstudio_promotion"
+  }
+}

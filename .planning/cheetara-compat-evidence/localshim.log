@@ -1,0 +1,18 @@
+2026-06-26 19:38:01,605 - vmlx_engine.local_mlx_compat - INFO - M9 local-compat: routing vmlx_engine.cli serve /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit through mlx-engine openai_adapter (env VMLX_ENGINE_LOCAL_COMPAT=1)
+2026-06-26 19:38:01,605 - vmlx_engine.local_mlx_compat - INFO - M9 local-compat: launching mlx-engine adapter from /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine: /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python -m mlx_engine.openai_adapter --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --host 127.0.0.1 --port 3181 --served-model-name cheetara-m9 --prefill-step-size 2048 --log-level INFO
+2026-06-26 19:38:06,106 - __main__ - INFO - mlx-engine OpenAI adapter starting model=/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit host=127.0.0.1 port=3181 auth=disabled
+[disk_budget][INFO]: VLM prompt cache disk budget: stage=provisional cap_gib=3.37
+[cache_store][INFO]: VLM prompt cache disk store: lifetime=temporary storage=temporary cleanup=model_unload_or_process_exit min_save_tokens=0
+[transformers] Ignoring clean_up_tokenization_spaces=True for BPE tokenizer TokenizersBackend. The clean_up_tokenization post-processing step is designed for WordPiece tokenizers and is destructive for BPE (it strips spaces before punctuation). Set clean_up_tokenization_spaces=False to suppress this warning, or set clean_up_tokenization_spaces_for_bpe_even_though_it_will_corrupt_output=True to force cleanup anyway.
+[model_kit][INFO]: VLM prompt cache chunk size: tokens=1024
+2026-06-26 19:38:06,943 - __main__ - INFO - Loaded model_kit=BatchedVisionModelKit served_model_name=cheetara-m9 supports_vision=True
+INFO:     Started server process [63352]
+INFO:     Uvicorn running on http://127.0.0.1:3181 (Press CTRL+C to quit)
+[coordinator][INFO]: Prompt cache restore: cached_tokens=0 uncached_tokens=15 lifetime_efficiency=0.00%
+[cache_store][INFO]: VLM prompt cache disk usage: used_mib=0.3 cap_mib=3451.2 lifetime_evicted_mib=0.0 records=2 restores=0 restore_ms=0.000 saves=1 save_ms=0.515 lifetime=model_load
+[disk_budget][INFO]: VLM prompt cache disk budget: stage=final cap_gib=0.05 limiter=max_kv_size
+[coordinator][INFO]: Prompt cache restore: cached_tokens=15 uncached_tokens=0 lifetime_efficiency=50.00%
+[coordinator][INFO]: Prompt cache restore: cached_tokens=15 uncached_tokens=0 lifetime_efficiency=66.67%
+[coordinator][INFO]: Prompt cache restore: cached_tokens=15 uncached_tokens=0 lifetime_efficiency=75.00%
+INFO:     Shutting down
+INFO:     Finished server process [63352]

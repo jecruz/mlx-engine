@@ -19,10 +19,21 @@ _INITIAL_PREFIX_HASH = hashlib.sha256(b"prompt-prefix-v1").hexdigest()
 def build_prefix_cache_chunks(
     prompt_input_ids: list[int],
     image_spans: list[PromptImageSpan],
+    *,
+    prefix_chunk_size: int = DEFAULT_PREFIX_CHUNK_SIZE,
 ) -> list[PromptPrefixChunk]:
-    """Return fixed-size rolling-hash prompt chunks."""
+    """Return reusable-prefix rolling-hash prompt chunks.
+
+    The final prompt token stays out of the reusable cache chain so exact
+    restores can replay the prefix and leave one seed token outside cache.
+    """
     chunks = []
-    extend_prefix_cache_chunks(prompt_input_ids, image_spans, chunks)
+    extend_prefix_cache_chunks(
+        prompt_input_ids,
+        image_spans,
+        chunks,
+        prefix_chunk_size=prefix_chunk_size,
+    )
     return chunks
 
 
@@ -30,13 +41,16 @@ def extend_prefix_cache_chunks(
     prompt_input_ids: list[int],
     image_spans: list[PromptImageSpan],
     chunks: list[PromptPrefixChunk],
+    *,
+    prefix_chunk_size: int = DEFAULT_PREFIX_CHUNK_SIZE,
 ) -> None:
-    """Append newly complete 256-token chunks in place."""
+    """Append newly reusable chunks in place."""
+    reusable_prefix_len = max(0, len(prompt_input_ids) - 1)
     chunk_start = chunks[-1].end if chunks else 0
     previous_chunk_key = chunks[-1].key if chunks else _INITIAL_PREFIX_HASH
 
-    while chunk_start + DEFAULT_PREFIX_CHUNK_SIZE <= len(prompt_input_ids):
-        chunk_end = chunk_start + DEFAULT_PREFIX_CHUNK_SIZE
+    while chunk_start + prefix_chunk_size <= reusable_prefix_len:
+        chunk_end = chunk_start + prefix_chunk_size
         chunk = _make_prefix_cache_chunk(
             previous_chunk_key,
             prompt_input_ids,
@@ -48,13 +62,27 @@ def extend_prefix_cache_chunks(
         previous_chunk_key = chunk.key
         chunk_start = chunk_end
 
+    if chunk_start < reusable_prefix_len:
+        chunk_end = reusable_prefix_len
+        chunk = _make_prefix_cache_chunk(
+            previous_chunk_key,
+            prompt_input_ids,
+            image_spans,
+            chunk_start,
+            chunk_end,
+        )
+        chunks.append(chunk)
+
 
 def first_unsaved_prefix_cache_chunk_index(
     chunks: list[PromptPrefixChunk],
     prompt_progress: int,
 ) -> int:
     """Return the first chunk ending after the already-cached prefix."""
-    return min(prompt_progress // DEFAULT_PREFIX_CHUNK_SIZE, len(chunks))
+    chunk_idx = 0
+    while chunk_idx < len(chunks) and chunks[chunk_idx].end <= prompt_progress:
+        chunk_idx += 1
+    return chunk_idx
 
 
 def _make_prefix_cache_chunk(

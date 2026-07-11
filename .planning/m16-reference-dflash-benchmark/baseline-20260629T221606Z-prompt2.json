@@ -1,0 +1,1 @@
+{"mode":"baseline","prompt_id":2,"prompt":"What is 2 + 2? Reply with a single digit.","max_tokens":16,"temperature":0.0,"seed":0,"wall_time_s":14.721667,"prompt_tokens":26,"generation_tokens":2,"generation_tps":41.331,"peak_memory_gb":34.034,"exit_code":0,"output_text":"Generation: 2 tokens, 41.331 tokens-per-sec\nPeak memory: 34.034 GB","draft_stats":}

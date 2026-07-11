@@ -1,0 +1,48 @@
+{
+  "milestone": "M38-doc-promotion-gate-refresh",
+  "timestamp_utc": "2026-07-09T00:57:47Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Keep public promotion claims aligned with current direct benchmark and live LM Studio evidence before any broader MLX inference-stack promotion.",
+  "current_state_checks": {
+    "git_status": "clean before edit; branch ahead of origin by 17 commits",
+    "lmstudio_vlm_validation": {
+      "status": "blocked",
+      "current_gate": "scripts/lmstudio_vlm_live_validation_preflight.py must report ready_for_live_validation=true before live VLM promotion",
+      "latest_prior_evidence": [
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m32-lmstudio-live-validation-blocker-20260708.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m36-lmstudio-download-path-diagnostics-20260709.json",
+        "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m37-upstream-scan-20260709.json"
+      ],
+      "reason": "LM Studio still does not expose lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit through lms ls --json, so live /v1/chat/completions validation has not run for the current retained VLM follow-up slice."
+    },
+    "thread_unsafe_stream_runtime": {
+      "python": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python",
+      "mlx_core": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/lib/python3.12/site-packages/mlx/core.cpython-312-darwin.so",
+      "has_new_thread_unsafe_stream": false,
+      "has_new_thread_local_stream": true,
+      "toggle_file": "/tmp/mlx-engine-thread-unsafe-stream",
+      "toggle_file_present": false,
+      "decision": "do-not-reopen",
+      "reason": "The current runtime still lacks mx.new_thread_unsafe_stream, so the opt-in shared-stream candidate remains a no-op and cannot produce a real A/B latency signal."
+    }
+  },
+  "changed_files": [
+    {
+      "path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md",
+      "change": "Clarified that terminal-packed final KV is backed by direct retained-workload evidence and still requires the LM Studio VLM preflight/live-validation gate before any broader LM Studio packaging or promotion claim."
+    },
+    {
+      "path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md",
+      "change": "Recorded the README promotion-gate clarification."
+    }
+  ],
+  "decision": {
+    "status": "DOC_CORRECTION_ONLY",
+    "runtime_changed": false,
+    "promotion_status": "NO_NEW_PROMOTION",
+    "live_lm_studio_validation": "still-blocked",
+    "next_action": "Do not package or promote the current VLM follow-up through LM Studio until the retained model is visible to lms ls --json and the live validation path passes."
+  }
+}

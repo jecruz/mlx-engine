@@ -1,0 +1,369 @@
+# mx.eval Restore Materialization Investigation
+
+Status: **active** | Started: 2026-06-19 | Branch: `mlx-vlm-prompt-cache-perf`
+
+## Problem Statement
+
+After path-based safetensor loading reduced KV-delta record-load time from 21ms to ~1.5ms,
+the remaining restore cost is dominated by `mx.eval` materialization at `cache_store.py:276`.
+Restore detail time is ~20ms, and the `mx.eval` call is the largest component.
+
+The `mx.eval` cannot simply be removed — the no-restore-eval candidate (2026-06-19) failed
+with `RuntimeError: There is no Stream(gpu, 3) in current thread.` The restore runs on the
+cache I/O thread, but decode runs on the generation thread. Without materialization, lazy
+arrays carry the I/O thread's MLX stream into the generation thread.
+
+## What mx.eval Actually Materializes
+
+The `mx.load(str(path))` call loads safetensor arrays that are already materialized on the GPU.
+The `mx.eval` at line 276 materializes only the post-load operations:
+
+1. `mx.concatenate([cache.state[0] for cache in caches], axis=2)` — lazy concat of keys
+2. `mx.concatenate([cache.state[1] for cache in caches], axis=2)` — lazy concat of values
+3. `mx.contiguous(keys)` / `mx.contiguous(values)` — lazy contiguous memory copy
+4. For rotating layers: `keys[..., -max_size:, :]` — lazy slice
+
+The loaded arrays themselves are already materialized. The eval cost is:
+- GPU memory reorganization (concat)
+- GPU memory copy (contiguous)
+- GPU synchronization (waiting for all operations)
+
+## Constraint
+
+**Do not remove `mx.eval`.** The no-restore-eval candidate proved that lazy arrays from the
+I/O thread's stream cannot be consumed on the generation thread. Any solution must either:
+- Keep materialization but reduce its cost, OR
+- Transfer stream ownership before passing arrays to the generation thread
+
+## Candidates
+
+### A: Defer mx.contiguous (skip the memory copy)
+
+Skip `mx.contiguous` in `_concat_kv_delta_caches` and `_concat_rotating_delta_caches`.
+The KV cache arrays would be non-contiguous views into concatenated tensors.
+
+- **Upside**: Eliminates the GPU memory copy cost (likely the dominant eval component)
+- **Downside**: MLX attention kernels may require contiguous inputs; decode could be slower or fail
+- **Risk**: Medium — needs decode correctness + performance validation
+- **Validation gate**: Must pass quality compare AND not regress decode TPS
+
+### B: Per-record eval during load (overlap with I/O)
+
+Materialize each record's arrays immediately after `mx.load`, spreading GPU work across
+the I/O timeline.
+
+- **Upside**: May overlap eval with disk I/O for subsequent records
+- **Downside**: Loaded arrays are already materialized; this only helps if `mx.load` returns
+  lazy arrays (unlikely for safetensors)
+- **Risk**: Low — still uses mx.eval, just moves it
+- **Validation gate**: Benchmark restore detail time
+
+### C: Stream-aware transfer
+
+After assembly, use MLX stream mechanisms to transfer arrays to the default stream
+without full materialization. Something like evaluating on a specific stream.
+
+- **Upside**: Could move cost to generation thread where it overlaps with other work
+- **Downside**: MLX stream API is limited; may not support partial transfer
+- **Risk**: High — similar failure mode to no-restore-eval
+- **Validation gate**: Must not produce cross-thread stream errors
+
+### D: Pre-concatenated save format
+
+During save, concatenate adjacent chunks into larger records. During restore, load
+fewer, larger records → less concat work.
+
+- **Upside**: Reduces number of concat operations at restore time
+- **Downside**: Changes save format; less flexible chunk eviction
+- **Risk**: Medium — format change, migration complexity
+- **Validation gate**: Benchmark + quality compare
+
+## Investigation Plan
+
+### Phase 1: Profile the eval breakdown (spike)
+
+Write a standalone script that:
+1. Creates mock KV cache arrays of realistic size
+2. Times concat, contiguous, and eval separately
+3. Reports the cost breakdown
+
+This tells us which operation dominates and guides candidate selection.
+
+### Phase 2: Test the best candidate
+
+1. Implement behind a feature flag or local experiment
+2. Run the benchmark harness with `MLX_ENGINE_BATCHED_TIMING=1`
+3. Run quality compare
+4. Promote or reject based on evidence
+
+### Phase 3: If promoted, harden
+
+1. Clean up experiment code
+2. Run full test suite
+3. Update docs
+4. Commit
+
+## Next Action
+
+Start Phase 1: write and run a profiling spike to understand the eval cost breakdown.
+
+## Phase 1 Results (2026-06-19)
+
+### Key Finding
+
+`mx.load(str(path), format="safetensors")` returns **lazy arrays**. The actual GPU
+transfer from CPU to GPU happens during `mx.eval`, not during `mx.load`. This was
+confirmed with a microbenchmark:
+
+- `mx.load` alone: ~0.02 ms (just returns a lazy handle)
+- `mx.load` + `mx.eval`: ~0.28 ms (GPU transfer happens here)
+- Second `mx.eval` on same array: ~0.001 ms (already materialized)
+
+This means the ~14ms `eval_ms` in benchmarks is dominated by GPU transfers of loaded
+safetensor data, not by the concat/contiguous operations (which are ~2ms for 420MB).
+
+### Spike Results
+
+With realistic dimensions (16 layers, 8 KV heads, head_dim=64, 15 chunks of 512 tokens,
+~420 MB total):
+- Concat+contiguous+eval: ~2.3 ms median
+- Eval only (pre-materialized): 0-11.6 ms (high variance, GPU sync)
+
+The concat/contiguous operations are fast. The eval cost is GPU synchronization.
+
+## Phase 2 Implementation (2026-06-19)
+
+### Candidate A: Per-Record Eager Materialization
+
+**Implemented** in commit `64b3d2a`.
+
+Change: After each `mx.load` call in `_load_one_chunk`, immediately `mx.eval(cache.state)`
+to trigger GPU transfer. The GPU can then transfer data while the CPU reads the next
+record from disk.
+
+The final `mx.eval` at line 276 is preserved as the cross-thread stream safety barrier.
+It now only materializes the concat/contiguous operations (arrays are already on GPU).
+
+### Benchmark Command
+
+Must be run from a **host tmux pane** (Metal not visible to sandboxed Codex):
+
+```bash
+cd /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness
+
+# With timing enabled to see per-record eval breakdown:
+MLX_ENGINE_BATCHED_TIMING=1 python3 shared_bench.py \
+  --engine mlx-engine \
+  --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/models/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit \
+  --runs 2 \
+  --max-tokens 32 \
+  --prompt-suite vlm_image_long_quality.json \
+  --vlm-prompt-cache-storage-root /tmp/mlx-engine-vlm-cache-eager-eval \
+  --vlm-prompt-cache-min-save-tokens 0
+
+# Quality compare after benchmark:
+python3 quality_compare.py \
+  --a reports/<new-benchmark>.json \
+  --b reports/20260619T000646Z-shared-bench.json \
+  --prompt-ids image_long_toucan
+```
+
+### Expected Results
+
+If GPU transfers overlap with disk I/O:
+- `eval_ms` in `vlm_cache_restore_detail` should decrease (less work for final eval)
+- `vlm_cache_record_eager_eval` events show per-record transfer times
+- Total `duration_ms` should decrease if overlap is effective
+- Warm TTFT should improve
+
+If no improvement:
+- GPU transfers may be serialized by MLX's stream scheduler
+- Disk I/O may be faster than GPU transfers (no overlap opportunity)
+- May need a different approach (stream transfer, pre-concatenated save format)
+
+### Validation Gates
+
+- [ ] Benchmark shows reduced `eval_ms` or `duration_ms`
+- [ ] Quality compare passes (output text matches baseline)
+- [ ] No cross-thread stream errors
+- [ ] No decode TPS regression
+
+## Phase 2 Test Results (2026-06-19 01:10 UTC)
+
+### Test Setup
+- Model: LFM2.5-VL-1.6B-MLX-8bit
+- Prompt: 97 tokens ("<image>\nDescribe this image in detail.")
+- Image: toucan.jpeg
+- Cache: persistent, min_save_tokens=0, namespace=eager-eval-test
+- MLX_ENGINE_BATCHED_TIMING=1
+
+### Cold Run
+- TTFT: 1394.3ms
+- prepare_inputs_ms: 13.265ms (image processing)
+- No cache hit
+
+### Warm Run (Cache Hit: 96/97 tokens)
+- TTFT: 124.8ms
+- metadata_hit: true (prepared prompt metadata reused, skipped image processing)
+- prepare_inputs_ms: 0.0ms
+
+### Key Timing Events
+
+| Event | Before (path-load baseline) | After (eager eval) | Change |
+|-------|---------------------------|-------------------|--------|
+| `vlm_cache_restore_detail.eval_ms` | ~13.936ms | **0.064ms** | **-99.5%** |
+| `vlm_cache_restore_detail.duration_ms` | ~20ms | **1.381ms** | **-93.1%** |
+| `vlm_cache_restore_detail.load_chunks_ms` | ~1.5ms | 1.244ms | similar |
+| `vlm_cache_record_eager_eval` (kv_delta, 6 layers) | N/A (new) | 0.379ms | new event |
+| `vlm_cache_record_eager_eval` (state_checkpoint, 10 layers) | N/A (new) | 0.3ms | new event |
+
+### Analysis
+
+The per-record eager eval successfully eliminates the final `mx.eval` cost:
+- GPU transfers happen during record load (0.379ms + 0.3ms = 0.679ms total)
+- Final `mx.eval` only materializes concat/contiguous (0.064ms)
+- Total materialization cost: 0.679 + 0.064 = 0.743ms (vs ~14ms before)
+
+The restore detail time dropped from ~20ms to 1.381ms, a 93% reduction.
+
+### Quality Flag
+
+⚠️ **Output mismatch on short prompt test:**
+- Cold: "This image features a toucan perched on a moss-covered branch..."
+- Warm: "This is a picture of a toucan. The toucan is black and yellow..."
+
+Both runs used temp=0.0 but produced different outputs. This may be:
+1. A pre-existing KV cache quality issue with LFM2.5-VL (unrelated to eager eval)
+2. A subtle correctness issue introduced by eager eval
+3. A short-prompt edge case (96 cached, 1 new token — very small delta)
+
+**Next step:** Run quality compare with the standard `image_long_toucan` prompt
+(7374 tokens) that was used in the previous passing quality gate. If that passes,
+the short-prompt mismatch is likely a pre-existing edge case.
+
+### Conclusion
+
+The per-record eager eval approach **works** for reducing `mx.eval` cost. The
+materialization overhead is eliminated by overlapping GPU transfers with disk I/O.
+Quality gate needs verification with the standard benchmark prompt before promotion.
+
+### Later Smoke Attempts (2026-06-19)
+
+Subsequent benchmark attempts from this workspace on both `vlm_image_long_quality.json`
+and `vlm_image_quality.json` exited with `runner exited -9` before emitting prompt rows.
+That makes the current blocker an environment/runtime issue rather than a code-path
+regression signal from the retained eager-eval implementation.
+
+### Corrected py312 Reruns (2026-06-19 02:26 UTC)
+
+The `runner exited -9` failures were caused by `shared_bench.py` defaulting to
+`/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv/bin/python`.
+That interpreter is killed on MLX import. Reruns must pass:
+
+```bash
+--mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python
+```
+
+The benchmark harness now has `--mlx-engine-batched-timing`, which enables
+`MLX_ENGINE_BATCHED_TIMING` inside the runner process instead of using an inline
+shell environment prefix. This avoids the Metal initialization failure seen when
+prefixing commands with environment assignments in this Codex tool session.
+
+Deterministic no-timing rerun:
+- Benchmark: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022612Z-shared-bench.json`
+- Quality compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022612Z-lfm25-vl-py312-det-notiming-quality-compare.json`
+- Quality: pass
+- Warm TTFT: `0.029690s` versus retained path-load `0.041822s`
+- Avg TTFT change: `-2.983%`
+- Total latency change: `-2.079%`
+- Decode TPS change: `-9.936%`
+
+Timed deterministic rerun:
+- Benchmark: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022541Z-shared-bench.json`
+- Quality compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022541Z-lfm25-vl-py312-timing-det-quality-compare.json`
+- Quality: pass
+- Warm TTFT: `0.052841s`
+- Restore detail: `37.744 ms`
+- Restore final `eval_ms`: `20.129 ms`
+
+Repeat no-timing deterministic rerun:
+- Benchmark: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022736Z-shared-bench.json`
+- Quality compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T022736Z-lfm25-vl-py312-det-notiming-r2-quality-compare.json`
+- Quality: pass
+- Warm TTFT: `0.044762s` versus retained path-load `0.041822s`
+- Avg TTFT change: `-2.250%`
+- Total latency change: `-1.306%`
+- Decode TPS change: `-13.796%`
+
+Conclusion: eager per-record materialization is rejected. It had one small
+no-timing win and one weaker repeat, both below the `3%` promotion threshold,
+while decode TPS regressed materially. Timing mode also perturbs the hot restore
+path, so it is useful only for attribution. The code change was reverted in
+commit `6a1fae0`; keep the retained path-load implementation as the current best
+result.
+
+### Post-Revert Validation Rerun (2026-06-19 02:32 UTC)
+
+After reverting eager per-record materialization, a fresh deterministic
+path-load rerun passed:
+
+- Benchmark: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T023205Z-shared-bench.json`
+- Quality compare: `/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260619T023205Z-lfm25-vl-post-revert-rerun-quality-compare.json`
+- Quality: pass
+- Warm TTFT: `0.023576s`
+- Avg TTFT change versus retained path-load: `-3.899%`
+- Total latency change versus retained path-load: `-2.782%`
+- Decode TPS change versus retained path-load: `-11.186%`
+
+This confirms the reverted branch is stable and still quality-safe. Because the
+decode rate remains lower and the restore-materialization candidate failed the
+two-attempt promotion threshold, further work should move to a different
+subsystem rather than continuing eager per-record materialization.
+
+## Candidate A Rerun: Skip mx.contiguous (2026-06-20)
+
+### Test
+
+Ran the existing restore-op microbenchmark after fixing its stale MLX
+`array.flags` diagnostic:
+
+```bash
+/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python \
+  .ecc/benchmarks/profile_eval_breakdown.py
+```
+
+The benchmark models a realistic restore shape:
+
+- 28 layers
+- 3 chunks
+- 2048 tokens per chunk
+- 4 KV heads
+- 128 head dim
+- 336 MB total KV data in float16
+
+### Result
+
+```text
+concat (lazy graph build, no eval)      median 0.03 ms
+concat + eval (no contiguous)           median 1.50 ms
+contiguous only (pre-concat input)      median 0.05 ms
+concat + contiguous + eval (current)    median 1.48 ms
+```
+
+Safety check:
+
+```text
+matmul on non-contiguous keys: OK
+matmul on contiguous keys: OK
+Max difference: 0.000000
+```
+
+### Decision
+
+Reject Candidate A for production. The contiguous copy is not the restore
+bottleneck in this profile; its median cost is about `0.05 ms`, and the current
+`concat + contiguous + eval` path is effectively tied with `concat + eval`.
+
+Do not remove `mx.contiguous` from restore assembly for this purpose. The next
+meaningful path remains lower-write-amplification record layout, not
+contiguous-copy removal.

@@ -1,0 +1,81 @@
+{
+  "milestone": "M39-lmstudio-supported-download-retry",
+  "timestamp_utc": "2026-07-09T01:06:48Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Retry the official LM Studio registration path for the retained LFM2.5-VL MLX model and determine whether live LM Studio validation can proceed.",
+  "preflight_before": {
+    "artifact": "/tmp/lmstudio-vlm-live-validation-preflight-m39-before.json",
+    "ready_for_live_validation": false,
+    "model_key": "lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+    "model_visible_to_lms": {
+      "visible": false,
+      "reason": "model key is absent from lms ls --json"
+    },
+    "model_dir": {
+      "path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+      "complete": true
+    }
+  },
+  "supported_download_retry": {
+    "command": "timeout 300 lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y",
+    "output_log": "/tmp/m39-lms-get.out",
+    "output_log_bytes": 343172,
+    "resolved_artifact": "LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB",
+    "observed_progress": "0.00%",
+    "process_after_retry": "no lms get process remained after the bounded run",
+    "exit_status_capture": "not captured; the shell wrapper attempted to assign zsh's read-only status variable after timeout returned"
+  },
+  "supported_download_confirmation": {
+    "command": "timeout 60 lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y",
+    "output_log": "/tmp/m39-lms-get-confirm.out",
+    "output_log_bytes": 69308,
+    "exit_status": 124,
+    "observed_progress": "0.00%",
+    "reason_for_confirmation": "The 300-second retry log already showed only 0.00% frames, but the initial wrapper lost the timeout exit status. This shorter repeat captured a clean timeout code."
+  },
+  "preflight_after": {
+    "artifact": "/tmp/lmstudio-vlm-live-validation-preflight-m39-after-300.json",
+    "ready_for_live_validation": false,
+    "model_key": "lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+    "model_visible_to_lms": {
+      "visible": false,
+      "reason": "model key is absent from lms ls --json"
+    },
+    "model_dir": {
+      "path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+      "exists": true,
+      "is_dir": true,
+      "complete": true
+    },
+    "lmstudio_store_model_dir": {
+      "path": "/Users/jeffreycruz/.lmstudio/models/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+      "exists": false,
+      "complete": false
+    },
+    "model_data": {
+      "path": "/Users/jeffreycruz/.lmstudio/.internal/model-data.json",
+      "exists": true,
+      "contains_model_key": true
+    },
+    "lms_ls_json_visible_models": [
+      "text-embedding-nomic-embed-text-v1.5"
+    ],
+    "server_status": "not running",
+    "loaded_models": "none"
+  },
+  "decision": {
+    "status": "SUPPORTED_DOWNLOAD_STILL_STALLED",
+    "live_lm_studio_validation": "blocked-before-inference",
+    "runtime_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "next_supported_command": "lms get https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --mlx -y",
+    "notes": [
+      "Do not hand-edit LM Studio model-index cache files.",
+      "Do not treat the complete external model directory as loadable until lms ls --json exposes the model key.",
+      "Do not force lms import for the MLX model.safetensors prompt.",
+      "Proceed to live /v1/chat/completions validation only after scripts/lmstudio_vlm_live_validation_preflight.py reports ready_for_live_validation=true."
+    ]
+  }
+}

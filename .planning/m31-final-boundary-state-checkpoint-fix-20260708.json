@@ -1,0 +1,92 @@
+{
+  "milestone": "M31-final-boundary-state-checkpoint-fix",
+  "date": "2026-07-08",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "problem": "With final-chunk state alignment enabled, the aligned prefill step saves an exact opaque state checkpoint at the reusable-prefix boundary, but the later true final prompt-boundary save could write terminal-packed KV and also overwrite that state checkpoint with one-token-ahead opaque state.",
+  "change": {
+    "runtime_files": [
+      "mlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py"
+    ],
+    "tests": [
+      "tests/test_batched_vision_coordinator.py",
+      "tests/test_batched_vision_cache_store.py"
+    ],
+    "docs": [
+      "README.md",
+      "CHANGELOG.md"
+    ],
+    "behavior": "When MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN is enabled and a true final prompt-boundary save is one token past the reusable-prefix chunk end, skip the opaque state checkpoint for that final save while still writing terminal-packed KV. The explicit alignment opt-out preserves the old final-state checkpoint behavior."
+  },
+  "direct_validation": {
+    "model": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+    "suite": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/prompt_suites/vlm_image_long_quality.json",
+    "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709T001037.751737Z-shared-bench.json",
+    "quality_inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709T001037.751737Z-m31-state-boundary-quality-inspect.json",
+    "cache_root": "/tmp/mlx-engine-vlm-cache-m31-state-boundary-20260709T001037Z",
+    "cache_root_size": "87M",
+    "runs": 2,
+    "max_tokens": 32,
+    "sampling": {
+      "temperature": 0.0,
+      "top_p": 1.0
+    },
+    "prompt_quality_status": "pass",
+    "top_level_status": "fail",
+    "top_level_status_reason": "Direct-only inspection remains fail-closed for promotion-route policy; prompt quality passed with no failed prompts.",
+    "rows": [
+      {
+        "prompt_id": "image_long_toucan",
+        "cached_tokens": 0,
+        "ttft_s": 1.1479871659830678,
+        "total_s": 1.1724872080085333,
+        "error": null,
+        "output_text": "A toucan."
+      },
+      {
+        "prompt_id": "image_long_toucan",
+        "cached_tokens": 7373,
+        "ttft_s": 0.032984041987219825,
+        "total_s": 0.051724249991821125,
+        "error": null,
+        "output_text": "A toucan."
+      }
+    ],
+    "warm_restore_detail": {
+      "cached_tokens": 7373,
+      "chunks": 8,
+      "records": 2,
+      "record_count_by_kind": {
+        "kv_delta": 1,
+        "rotating_delta": 0,
+        "state_checkpoint": 1
+      },
+      "eval_target_count": 22,
+      "materialized_bytes": 90681344,
+      "record_bytes": 90683491,
+      "eval_ms": 4.612,
+      "duration_ms": 5.272
+    },
+    "runtime_errors": {
+      "stream_gpu_error": false,
+      "runtime_error": false
+    }
+  },
+  "verification_commands": [
+    ".venv-py312/bin/python -m pytest tests/test_batched_vision_coordinator.py tests/test_batched_vision_cache_store.py tests/test_batched_vision_batch_generator.py -q",
+    ".venv-py312/bin/python -m pytest tests/test_batched_vision_coordinator.py tests/test_batched_vision_cache_store.py tests/test_batched_vision_batch_generator.py tests/test_batched_vision_model_kit.py tests/test_batched_vision_restore_planner.py -q",
+    ".venv-py312/bin/python -m pytest tests/test_batched_vision_*.py tests/test_patched_gemma4.py tests/test_patched_qwen3_5.py -q",
+    ".venv-py312/bin/python -m py_compile mlx_engine/model_kit/batched_vision/prompt_cache/coordinator.py tests/test_batched_vision_coordinator.py tests/test_batched_vision_cache_store.py",
+    "git diff --check",
+    "python3 shared_bench.py --engine mlx-engine --model /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --prompt-suite prompt_suites/vlm_image_long_quality.json --mlx-engine-python /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.venv-py312/bin/python --mlx-engine-vlm-prompt-cache-root /tmp/mlx-engine-vlm-cache-m31-state-boundary-20260709T001037Z --mlx-engine-vlm-prompt-cache-namespace m31-state-boundary-20260709T001037Z --mlx-engine-vlm-prompt-cache-min-save-tokens 512 --mlx-engine-process-restart --mlx-engine-batched-timing --runs 2 --max-tokens 32 --temperature 0.0 --top-p 1.0 --include-output-text --timeout 900",
+    "python3 quality_compare.py --candidate reports/20260709T001037.751737Z-shared-bench.json --out reports/20260709T001037.751737Z-m31-state-boundary-quality-inspect.json --min-completion-tokens 1"
+  ],
+  "decision": {
+    "status": "RETAIN_FIX",
+    "promotion_status": "DIRECT_VALIDATED_NO_LM_STUDIO_PROMOTION",
+    "default_change": true,
+    "live_lm_studio_validation": "not-run",
+    "live_lm_studio_reason": "This slice is a correctness/write-avoidance fix validated on the retained direct persistent-cache lane, not a new latency promotion candidate. Live LM Studio validation remains required before packaging or promoting a broader performance claim."
+  }
+}

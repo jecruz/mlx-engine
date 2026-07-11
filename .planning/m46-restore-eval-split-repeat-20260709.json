@@ -1,0 +1,155 @@
+{
+  "milestone": "M46-restore-eval-split-repeat",
+  "timestamp_utc": "2026-07-09T01:41:33Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "head": "11fba2b",
+  "objective": "Repeat M45 retained-workload timing with independent cache roots to verify whether restore eval_ms remains barrier-dominated.",
+  "runs": [
+    {
+      "label": "m46-r1",
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014025.811348Z-shared-bench.json",
+      "quality_inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014025.811348Z-m46-r1-quality-inspect.json",
+      "cache_root": "/tmp/mlx-engine-vlm-cache-m46-split-r1-11fba2b",
+      "cache_root_size": "87M",
+      "row_errors": 0,
+      "prompt_quality_status": "pass",
+      "promotion_gate_status": "fail",
+      "promotion_gate_note": "Candidate-only quality inspect has no comparison baseline; prompt quality passed.",
+      "row_audit": [
+        {
+          "run_index": 1,
+          "cached_tokens": 0,
+          "completion_tokens": 5,
+          "output_preview": "A toucan.",
+          "error": null
+        },
+        {
+          "run_index": 2,
+          "cached_tokens": 7373,
+          "completion_tokens": 5,
+          "output_preview": "A toucan.",
+          "error": null
+        }
+      ],
+      "summary": {
+        "avg_prompt_tokens": 7307.0,
+        "avg_cached_tokens": 3686.5,
+        "avg_ttft_s": 0.561,
+        "cold_ttft_s": 1.085,
+        "warm_ttft_s": 0.036,
+        "avg_decode_tps": 234.764,
+        "avg_total_s": 0.583
+      },
+      "restore_detail": {
+        "cached_tokens": 7373,
+        "records": 2,
+        "record_count_by_kind": {
+          "kv_delta": 1,
+          "rotating_delta": 0,
+          "state_checkpoint": 1
+        },
+        "load_chunks_ms": 0.555,
+        "assemble_ms": 0.015,
+        "eval_collect_ms": 0.05,
+        "eval_barrier_ms": 4.586,
+        "eval_ms": 4.644,
+        "touch_ms": 0.096,
+        "duration_ms": 5.32,
+        "eval_target_count": 22,
+        "materialized_bytes": 90681344
+      }
+    },
+    {
+      "label": "m46-r2",
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014047.330686Z-shared-bench.json",
+      "quality_inspect": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014047.330686Z-m46-r2-quality-inspect.json",
+      "cache_root": "/tmp/mlx-engine-vlm-cache-m46-split-r2-11fba2b",
+      "cache_root_size": "87M",
+      "row_errors": 0,
+      "prompt_quality_status": "pass",
+      "promotion_gate_status": "fail",
+      "promotion_gate_note": "Candidate-only quality inspect has no comparison baseline; prompt quality passed.",
+      "row_audit": [
+        {
+          "run_index": 1,
+          "cached_tokens": 0,
+          "completion_tokens": 5,
+          "output_preview": "A toucan.",
+          "error": null
+        },
+        {
+          "run_index": 2,
+          "cached_tokens": 7373,
+          "completion_tokens": 5,
+          "output_preview": "A toucan.",
+          "error": null
+        }
+      ],
+      "summary": {
+        "avg_prompt_tokens": 7307.0,
+        "avg_cached_tokens": 3686.5,
+        "avg_ttft_s": 0.563,
+        "cold_ttft_s": 1.089,
+        "warm_ttft_s": 0.037,
+        "avg_decode_tps": 241.914,
+        "avg_total_s": 0.585
+      },
+      "restore_detail": {
+        "cached_tokens": 7373,
+        "records": 2,
+        "record_count_by_kind": {
+          "kv_delta": 1,
+          "rotating_delta": 0,
+          "state_checkpoint": 1
+        },
+        "load_chunks_ms": 0.474,
+        "assemble_ms": 0.015,
+        "eval_collect_ms": 0.048,
+        "eval_barrier_ms": 5.996,
+        "eval_ms": 6.052,
+        "touch_ms": 0.108,
+        "duration_ms": 6.663,
+        "eval_target_count": 22,
+        "materialized_bytes": 90681344
+      }
+    }
+  ],
+  "aggregate": {
+    "samples": 2,
+    "row_errors": 0,
+    "prompt_quality_passes": 2,
+    "warm_cached_tokens": [
+      7373,
+      7373
+    ],
+    "warm_outputs": [
+      "A toucan.",
+      "A toucan."
+    ],
+    "eval_collect_ms": {
+      "min": 0.048,
+      "max": 0.05
+    },
+    "eval_barrier_ms": {
+      "min": 4.586,
+      "max": 5.996
+    },
+    "eval_ms": {
+      "min": 4.644,
+      "max": 6.052
+    },
+    "barrier_share_of_eval_ms": {
+      "min": 0.9875,
+      "max": 0.9907
+    }
+  },
+  "decision": {
+    "status": "REPEAT_EVIDENCE_ONLY",
+    "runtime_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "live_lm_studio_validation": "not-run-lmstudio-model-still-not-visible",
+    "next_action": "Do not pursue target-collection overhead as a latency candidate for the retained LFM2.5-VL warm-restore lane. Any future restore-eval optimization must reduce or safely restructure the actual materialization barrier while preserving cross-thread stream safety and quality."
+  }
+}

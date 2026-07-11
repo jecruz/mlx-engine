@@ -1,0 +1,89 @@
+{
+  "milestone": "M59-lmstudio-server-state-probe",
+  "timestamp_utc": "2026-07-09T04:43:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Determine whether starting the supported LM Studio local server unblocks retained LFM2.5-VL live-validation preflight.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "external_state_restored": true,
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m59-server-started.json"
+    ],
+    "details": [
+      "Observed LM Studio.app running while `lms server status` reported the local server was not running.",
+      "Started the server with the supported `lms server start` command; it listened on port 4521.",
+      "Re-ran the read-only VLM live-validation preflight while the server was running.",
+      "Stopped the server with `lms server stop` after the diagnostic because model visibility remained blocked."
+    ]
+  },
+  "commands": [
+    {
+      "command": "lms server status",
+      "status": "passed",
+      "result": "The server is not running."
+    },
+    {
+      "command": "lms ps",
+      "status": "passed",
+      "result": "No models are currently loaded."
+    },
+    {
+      "command": "lms ls --json",
+      "status": "passed",
+      "visible_model_keys": [
+        "text-embedding-nomic-embed-text-v1.5"
+      ]
+    },
+    {
+      "command": "lms server start",
+      "status": "passed",
+      "result": "Success! Server is now running on port 4521"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m59-server-started.json --timeout 30",
+      "status": "completed-nonzero",
+      "exit_code": 1,
+      "ready_for_live_validation": false,
+      "model_visible_to_lms": false,
+      "model_dir_complete": true,
+      "server_status": "running on port 4521",
+      "visible_model_keys": [
+        "text-embedding-nomic-embed-text-v1.5"
+      ]
+    },
+    {
+      "command": "lsof -nP -iTCP:4521 -sTCP:LISTEN",
+      "status": "passed",
+      "result": "LM Studio PID 1921 listening on 127.0.0.1:4521 during diagnostic"
+    },
+    {
+      "command": "lms server stop && lms server status",
+      "status": "passed",
+      "result": "Stopped the server on port 4521. The server is not running."
+    }
+  ],
+  "validation": [
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m59-server-started.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m59-lmstudio-server-state-probe-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "LIVE_VALIDATION_BLOCKED_BY_MODEL_VISIBILITY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "blocked-before-inference",
+    "blocker": "Starting the LM Studio local server succeeds, but retained LFM2.5-VL remains absent from `lms ls --json`; live validation is still blocked before inference.",
+    "next_action": "Do not run live `/v1/chat/completions` validation or promote runtime work until the retained VLM model key appears in `lms ls --json` and preflight reports ready_for_live_validation=true."
+  }
+}

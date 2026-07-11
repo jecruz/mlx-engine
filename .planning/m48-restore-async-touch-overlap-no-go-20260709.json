@@ -1,0 +1,97 @@
+{
+  "milestone": "M48-restore-async-touch-overlap-no-go",
+  "timestamp_utc": "2026-07-09T01:50:34Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Decide whether to add an env-gated restore path that starts eval materialization asynchronously, overlaps CPU-only LRU touch work, then keeps a blocking eval barrier before returning the restored cache.",
+  "candidate": {
+    "name": "restore-async-touch-overlap",
+    "proposed_switch": "MLX_ENGINE_RESTORE_EVAL_ASYNC_TOUCH_OVERLAP=1",
+    "runtime_behavior_changed": false,
+    "implemented": false,
+    "reason_not_implemented": "Measured CPU touch work is too small to materially hide the restore eval barrier, while adding async scheduling would increase cross-stream ordering complexity in the safety-critical restore handoff path."
+  },
+  "evidence_source": {
+    "summary_command": "python3 scripts/vlm_restore_eval_split_report.py /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m45-restore-eval-split/20260709T013633.520360Z-shared-bench.json /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014025.811348Z-shared-bench.json /Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014047.330686Z-shared-bench.json",
+    "reports": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m45-restore-eval-split/20260709T013633.520360Z-shared-bench.json",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014025.811348Z-shared-bench.json",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014047.330686Z-shared-bench.json"
+    ],
+    "sample_count": 3,
+    "missing_timing_reports": [],
+    "row_errors": 0,
+    "cached_tokens": [
+      7373,
+      7373,
+      7373
+    ],
+    "output_previews": [
+      "A toucan.",
+      "A toucan.",
+      "A toucan."
+    ]
+  },
+  "measurements": {
+    "samples": [
+      {
+        "sample": "M45",
+        "eval_barrier_ms": 4.904,
+        "eval_ms": 4.961,
+        "touch_ms": 0.093,
+        "touch_share_of_barrier": 0.018963,
+        "touch_share_of_eval": 0.018746
+      },
+      {
+        "sample": "M46-R1",
+        "eval_barrier_ms": 4.586,
+        "eval_ms": 4.644,
+        "touch_ms": 0.096,
+        "touch_share_of_barrier": 0.020934,
+        "touch_share_of_eval": 0.020672
+      },
+      {
+        "sample": "M46-R2",
+        "eval_barrier_ms": 5.996,
+        "eval_ms": 6.052,
+        "touch_ms": 0.108,
+        "touch_share_of_barrier": 0.018012,
+        "touch_share_of_eval": 0.017845
+      }
+    ],
+    "aggregate": {
+      "eval_barrier_ms": {
+        "min": 4.586,
+        "max": 5.996,
+        "avg": 5.162
+      },
+      "eval_ms": {
+        "min": 4.644,
+        "max": 6.052,
+        "avg": 5.219
+      },
+      "touch_ms": {
+        "min": 0.093,
+        "max": 0.108,
+        "avg": 0.099
+      },
+      "max_theoretical_overlap_win_ms": 0.108,
+      "max_theoretical_overlap_share_of_barrier": 0.020934,
+      "max_theoretical_overlap_share_of_eval": 0.020672
+    }
+  },
+  "decision": {
+    "status": "NO_GO",
+    "promotion_status": "NO_PROMOTION",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "not-applicable-no-runtime-candidate",
+    "rationale": [
+      "The only work available to overlap is LRU touch, which measured 0.093-0.108 ms across retained-workload samples.",
+      "The mandatory eval barrier measured 4.586-5.996 ms and remained 98.75-99.07% of eval_ms.",
+      "Even perfect overlap could hide at most 0.108 ms, or about 2.1% of the barrier in the best sample.",
+      "Adding async_eval before touch and eval after touch would introduce extra scheduling and ordering surface in the restore handoff path without a practical promotion-scale latency target."
+    ],
+    "next_action": "Do not implement restore async touch overlap. Continue looking for barrier-level approaches that reduce materialization cost or safely move the unavoidable barrier outside the user-visible warm restore path."
+  }
+}

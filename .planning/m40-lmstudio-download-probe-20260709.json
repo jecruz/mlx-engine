@@ -1,0 +1,61 @@
+{
+  "milestone": "M40-lmstudio-download-probe",
+  "timestamp_utc": "2026-07-09T01:10:47Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Make the official LM Studio VLM download/registration retry path bounded and machine-readable so live-validation blockers can be audited without shell-wrapper ambiguity.",
+  "changed_files": [
+    {
+      "path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/lmstudio_vlm_download_probe.py",
+      "change": "New JSON-producing wrapper around `lms get <hf-url> --mlx -y` using subprocess timeout, sanitized output tail, resolved-artifact extraction, progress extraction, timeout state, and exit-code capture."
+    },
+    {
+      "path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_lmstudio_vlm_download_probe.py",
+      "change": "Unit tests for zero-progress timeout and successful completion payloads."
+    },
+    {
+      "path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md",
+      "change": "Document the probe as the supported bounded way to run the LM Studio VLM registration retry before rerunning preflight."
+    },
+    {
+      "path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md",
+      "change": "Record the new probe script under Unreleased."
+    },
+    {
+      "path": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/performance-future-work.md",
+      "change": "Record the M40 gate-tooling decision."
+    }
+  ],
+  "validation": [
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_lmstudio_vlm_download_probe.py -q",
+      "status": "passed",
+      "result": "2 passed in 0.02s"
+    },
+    {
+      "command": "python3 -m py_compile scripts/lmstudio_vlm_download_probe.py",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m40-lmstudio-download-probe-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --timeout 5 --output /tmp/m40-lmstudio-download-probe-smoke.json --tail-lines 20",
+      "status": "passed",
+      "result": "probe returned non-zero as expected for timeout; JSON report written with timed_out=true, returncode=null, max_progress_percent=0.0, stalled_at_zero=true, resolved_artifact='LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB'"
+    }
+  ],
+  "decision": {
+    "status": "GATE_TOOLING_ONLY",
+    "runtime_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "live_lm_studio_validation": "still-blocked-until-preflight-ready",
+    "next_action": "Use the new probe for future supported lms-get retries, then run scripts/lmstudio_vlm_live_validation_preflight.py and proceed to live /v1/chat/completions validation only after ready_for_live_validation=true."
+  }
+}

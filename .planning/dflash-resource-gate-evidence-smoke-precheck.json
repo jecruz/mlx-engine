@@ -1,0 +1,140 @@
+{
+  "target": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit",
+  "drafter": "/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub/models--z-lab--Qwen3.5-27B-DFlash/snapshots/25ee0025ff950496a634e100b75c2db4515e9824",
+  "max_draft_tokens": 4,
+  "ready_for_dflash_smoke": true,
+  "readiness_error": null,
+  "report": {
+    "enabled": true,
+    "dependency_available": true,
+    "target_family": "qwen",
+    "drafter_family": "qwen",
+    "target_profile": {
+      "model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit",
+      "config_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit/config.json",
+      "vocab_size": 248320,
+      "tokenizer_vocab_size": 248044,
+      "num_hidden_layers": 64,
+      "architectures": [
+        "Qwen3_5ForConditionalGeneration"
+      ],
+      "model_type": "qwen3_5"
+    },
+    "cache_mode_blockers": [],
+    "route_blockers": [],
+    "resource_blockers": [],
+    "blockers": [],
+    "listener_evidence": [
+      {
+        "port": 3180,
+        "classification": "empty",
+        "is_allowed": true,
+        "pid": null,
+        "comm": null,
+        "command": null,
+        "cloud_backend_count": 0,
+        "local_heavy_backend_count": 0,
+        "config_path": null,
+        "blocker": null,
+        "notes": []
+      },
+      {
+        "port": 3181,
+        "classification": "empty",
+        "is_allowed": true,
+        "pid": null,
+        "comm": null,
+        "command": null,
+        "cloud_backend_count": 0,
+        "local_heavy_backend_count": 0,
+        "config_path": null,
+        "blocker": null,
+        "notes": []
+      },
+      {
+        "port": 3182,
+        "classification": "empty",
+        "is_allowed": true,
+        "pid": null,
+        "comm": null,
+        "command": null,
+        "cloud_backend_count": 0,
+        "local_heavy_backend_count": 0,
+        "config_path": null,
+        "blocker": null,
+        "notes": []
+      },
+      {
+        "port": 12444,
+        "classification": "cloud-only-llmdynamix",
+        "is_allowed": true,
+        "pid": 2552,
+        "comm": null,
+        "command": "/Users/jeffreycruz/Development/AI_TOOLS/llmdynamix/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+        "cloud_backend_count": 8,
+        "local_heavy_backend_count": 16,
+        "config_path": "/Users/jeffreycruz/.llmdynamix/merged-config.yaml",
+        "blocker": null,
+        "notes": [
+          "LLMDYNAMIX config at /Users/jeffreycruz/.llmdynamix/merged-config.yaml (pid=3157) lists 16 local MLX/Metal backend markers, but live probing shows no loaded models: ollama@11434 /api/ps reports 0 loaded models; lm studio@4521 not listening"
+        ]
+      }
+    ]
+  },
+  "listener_evidence_summary": [
+    {
+      "port": 3180,
+      "classification": "empty",
+      "is_allowed": true,
+      "pid": null,
+      "comm": null,
+      "command": null,
+      "cloud_backend_count": 0,
+      "local_heavy_backend_count": 0,
+      "config_path": null,
+      "blocker": null,
+      "notes": []
+    },
+    {
+      "port": 3181,
+      "classification": "empty",
+      "is_allowed": true,
+      "pid": null,
+      "comm": null,
+      "command": null,
+      "cloud_backend_count": 0,
+      "local_heavy_backend_count": 0,
+      "config_path": null,
+      "blocker": null,
+      "notes": []
+    },
+    {
+      "port": 3182,
+      "classification": "empty",
+      "is_allowed": true,
+      "pid": null,
+      "comm": null,
+      "command": null,
+      "cloud_backend_count": 0,
+      "local_heavy_backend_count": 0,
+      "config_path": null,
+      "blocker": null,
+      "notes": []
+    },
+    {
+      "port": 12444,
+      "classification": "cloud-only-llmdynamix",
+      "is_allowed": true,
+      "pid": 2552,
+      "comm": null,
+      "command": "/Users/jeffreycruz/Development/AI_TOOLS/llmdynamix/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+      "cloud_backend_count": 8,
+      "local_heavy_backend_count": 16,
+      "config_path": "/Users/jeffreycruz/.llmdynamix/merged-config.yaml",
+      "blocker": null,
+      "notes": [
+        "LLMDYNAMIX config at /Users/jeffreycruz/.llmdynamix/merged-config.yaml (pid=3157) lists 16 local MLX/Metal backend markers, but live probing shows no loaded models: ollama@11434 /api/ps reports 0 loaded models; lm studio@4521 not listening"
+      ]
+    }
+  ]
+}

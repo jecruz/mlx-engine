@@ -1,0 +1,55 @@
+{
+  "milestone": "M36-lmstudio-download-path-diagnostics",
+  "date": "2026-07-09",
+  "redmine_issue": 1190,
+  "objective": "Determine whether the M35 LM Studio download stall is caused by Hugging Face connectivity, LM Studio's HF proxy, local file availability, or LM Studio's download/import orchestration.",
+  "decision": "blocked-in-lmstudio-registration-orchestration",
+  "current_lmstudio_state": {
+    "cli_commit": "6041ae0",
+    "lms_ls_json": "Only text-embedding-nomic-embed-text-v1.5 is listed.",
+    "server": "not running",
+    "loaded_models": "none"
+  },
+  "hugging_face_cli": {
+    "version": "1.21.0",
+    "authenticated_user": "arpdevgroup",
+    "hub_cache": "/Volumes/StudioStackSSD4TB/Development/LLM/huggingface/hub",
+    "repo_info": "hf models info lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit succeeded.",
+    "download_dry_run": "hf download lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --dry-run --format json listed the expected 10 repository files including model.safetensors at 2.1G."
+  },
+  "network_probes": {
+    "direct_huggingface_config_json": {
+      "url": "https://huggingface.co/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit/resolve/main/config.json",
+      "result": "HTTP 200 with config payload."
+    },
+    "lmstudio_hf_proxy_config_json": {
+      "url": "https://search.lmstudio.ai/v1/hf-proxy/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit/resolve/main/config.json?download=true",
+      "result": "HTTP 200 with config payload."
+    },
+    "lmstudio_hf_proxy_model_range": {
+      "url": "https://search.lmstudio.ai/v1/hf-proxy/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit/resolve/main/model.safetensors?download=true",
+      "headers": "Range: bytes=0-1048575",
+      "result": "HTTP 206, Content-Range bytes 0-1048575/2083497259, first bytes read successfully."
+    }
+  },
+  "local_model_directory": {
+    "path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+    "required_files_present": true,
+    "file_count": 8,
+    "model_safetensors_size_bytes": 2083497259
+  },
+  "lmstudio_download_state": {
+    "download_jobs_contain_lfm_entry": false,
+    "single_downloads_contain_lfm_entry": false,
+    "temp_downloads_contain_lfm_entry": false,
+    "model_index_cache_contains_lfm_entry": false,
+    "model_index_cache_errors": "No LFM entry appeared in models, unclassifiedFiles, unresolvedVirtualModels, badModels, errors, or conflicts."
+  },
+  "import_probe": {
+    "command": "timeout 60 lms import /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit/model.safetensors --user-repo lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --hard-link --dry-run",
+    "result": "Still prompted that the file does not look like a model file and recommended against continuing; no files or index entries were created.",
+    "decision": "Do not force import for this MLX safetensors directory."
+  },
+  "conclusion": "Hugging Face auth, direct Hugging Face reads, and LM Studio's HF proxy reads work. The blocker is narrower than network access: LM Studio's `lms get` orchestration does not create a recorded LFM download job or index entry, and `lms import` does not safely accept the MLX safetensors file as a model. Live validation remains blocked before inference.",
+  "next_supported_action": "Investigate LM Studio's model index/download orchestration or use an official LM Studio UI/CLI path that creates a completed download job and model-index entry for lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit. Proceed to live validation only after `lms ls --json` exposes the model key."
+}

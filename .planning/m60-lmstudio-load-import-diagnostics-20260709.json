@@ -1,0 +1,59 @@
+{
+  "milestone": "M60-lmstudio-load-import-diagnostics",
+  "timestamp_utc": "2026-07-09T04:55:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Check whether supported non-loading LM Studio CLI paths can resolve the retained LFM2.5-VL model despite `lms ls --json` not exposing it.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [],
+    "details": [
+      "Ran `lms load --estimate-only` against the retained absolute model directory.",
+      "Inspected `lms import --help` and ran `lms import --dry-run` against the retained model.safetensors file with explicit user/repo metadata.",
+      "Did not load a model, import a model, edit LM Studio internals, or run live inference."
+    ]
+  },
+  "commands": [
+    {
+      "command": "timeout 60 lms load /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit --estimate-only --identifier m59-lfm25-vl-estimate -y",
+      "exit_code": 1,
+      "status": "failed-expected",
+      "stdout": "Model not found\n\nNo model found that matches model key \"/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit\".\n\nTo see a list of all downloaded models, run:\n\n    lms ls\n\nTo select a model interactively, remove the --yes flag:\n\n    lms load\n",
+      "stderr": "",
+      "finding": "LM Studio cannot resolve the retained absolute model directory through `lms load --estimate-only`."
+    },
+    {
+      "command": "lms import --help",
+      "exit_code": 0,
+      "status": "passed",
+      "finding": "`lms import` accepts a file path and supports `--dry-run`, but it is file-based rather than directory-based."
+    },
+    {
+      "command": "timeout 60 lms import /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit/model.safetensors --dry-run --copy --user-repo lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit -y",
+      "exit_code": 1,
+      "status": "failed-expected",
+      "stdout": "W The file name does not look like a model file. This may not work.\nW Model files usually have extensions: .gguf\nError: Target file already exists: /Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit/model.safetensors\n",
+      "stderr": "",
+      "finding": "The import dry-run does not provide a supported MLX directory registration path; it treats the safetensors file as suspicious/non-GGUF and errors."
+    }
+  ],
+  "validation": [
+    {
+      "command": "python3 -m json.tool .planning/m60-lmstudio-load-import-diagnostics-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "LIVE_VALIDATION_BLOCKED_BY_MODEL_INDEX_VISIBILITY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "blocked-before-inference",
+    "blocker": "LM Studio cannot resolve the retained model via `lms ls --json`, `lms load --estimate-only <absolute-model-dir>`, or `lms import --dry-run <model.safetensors>`.",
+    "next_action": "Continue to use only the supported `lms get <hf-url> --mlx -y` registration/download path or a future LM Studio-supported model registration mechanism; do not hand-edit indexes or promote runtime work before preflight reports ready_for_live_validation=true."
+  }
+}

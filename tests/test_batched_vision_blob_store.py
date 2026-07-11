@@ -69,6 +69,20 @@ def test_blob_store_round_trips_cache_record(blob_store, cache_factory):
     assert _cache_state_values(loaded[0]) == _cache_state_values(cache)
 
 
+def test_blob_store_profiled_load_round_trips_cache_record(blob_store):
+    """Profiled loads preserve the record and expose stage timings."""
+    cache = _arrays_cache()
+
+    blob_store.put("record", *_snapshot([cache]))
+    loaded = blob_store.load_record_profiled("record")
+
+    assert type(loaded.prompt_cache[0]) is ArraysCache
+    assert _cache_state_values(loaded.prompt_cache[0]) == _cache_state_values(cache)
+    assert loaded.safetensor_load_ms >= 0.0
+    assert loaded.unflatten_ms >= 0.0
+    assert loaded.cache_rebuild_ms >= 0.0
+
+
 def test_blob_store_delete_removes_record_and_store_remains_usable(blob_store):
     blob_store.put("old", *_snapshot([_arrays_cache()]))
 

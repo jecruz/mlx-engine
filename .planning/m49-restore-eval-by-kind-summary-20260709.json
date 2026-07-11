@@ -1,0 +1,196 @@
+{
+  "reports": [
+    "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m45-restore-eval-split/20260709T013633.520360Z-shared-bench.json",
+    "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014025.811348Z-shared-bench.json",
+    "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014047.330686Z-shared-bench.json"
+  ],
+  "sample_count": 3,
+  "missing_timing_reports": [],
+  "barrier_share_threshold": 0.95,
+  "barrier_dominated": true,
+  "aggregate": {
+    "eval_collect_ms": {
+      "min": 0.048,
+      "max": 0.05,
+      "avg": 0.04933333333333333
+    },
+    "eval_barrier_ms": {
+      "min": 4.586,
+      "max": 5.996,
+      "avg": 5.162
+    },
+    "eval_ms": {
+      "min": 4.644,
+      "max": 6.052,
+      "avg": 5.219
+    },
+    "barrier_share_of_eval_ms": {
+      "min": 0.987510766580534,
+      "max": 0.9907468605419697,
+      "avg": 0.988922669364694
+    },
+    "eval_target_count_by_kind": {
+      "kv_delta": 36,
+      "rotating_delta": 0,
+      "state_checkpoint": 30
+    },
+    "materialized_bytes_by_kind": {
+      "kv_delta": 271798272,
+      "rotating_delta": 0,
+      "state_checkpoint": 245760
+    },
+    "record_bytes_by_kind": {
+      "kv_delta": 271801653,
+      "rotating_delta": 0,
+      "state_checkpoint": 248820
+    },
+    "dominant_materialized_kind": "kv_delta",
+    "row_errors": 0
+  },
+  "samples": [
+    {
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m45-restore-eval-split/20260709T013633.520360Z-shared-bench.json",
+      "cached_tokens": 7373,
+      "records": 2,
+      "record_count_by_kind": {
+        "kv_delta": 1,
+        "rotating_delta": 0,
+        "state_checkpoint": 1
+      },
+      "record_bytes_by_kind": {
+        "kv_delta": 90600551,
+        "rotating_delta": 0,
+        "state_checkpoint": 82940
+      },
+      "load_chunks_ms": 0.496,
+      "assemble_ms": 0.015,
+      "eval_collect_ms": 0.05,
+      "eval_barrier_ms": 4.904,
+      "eval_ms": 4.961,
+      "touch_ms": 0.093,
+      "duration_ms": 5.576,
+      "eval_target_count": 22,
+      "eval_target_count_by_kind": {
+        "kv_delta": 12,
+        "rotating_delta": 0,
+        "state_checkpoint": 10
+      },
+      "materialized_bytes": 90681344,
+      "materialized_bytes_by_kind": {
+        "kv_delta": 90599424,
+        "rotating_delta": 0,
+        "state_checkpoint": 81920
+      },
+      "barrier_share_of_eval_ms": 0.9885103809715783,
+      "row_audit": {
+        "rows": 2,
+        "row_errors": 0,
+        "cached_tokens": [
+          0,
+          7373
+        ],
+        "output_previews": [
+          "A toucan.",
+          "A toucan."
+        ],
+        "errors": []
+      }
+    },
+    {
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014025.811348Z-shared-bench.json",
+      "cached_tokens": 7373,
+      "records": 2,
+      "record_count_by_kind": {
+        "kv_delta": 1,
+        "rotating_delta": 0,
+        "state_checkpoint": 1
+      },
+      "record_bytes_by_kind": {
+        "kv_delta": 90600551,
+        "rotating_delta": 0,
+        "state_checkpoint": 82940
+      },
+      "load_chunks_ms": 0.555,
+      "assemble_ms": 0.015,
+      "eval_collect_ms": 0.05,
+      "eval_barrier_ms": 4.586,
+      "eval_ms": 4.644,
+      "touch_ms": 0.096,
+      "duration_ms": 5.32,
+      "eval_target_count": 22,
+      "eval_target_count_by_kind": {
+        "kv_delta": 12,
+        "rotating_delta": 0,
+        "state_checkpoint": 10
+      },
+      "materialized_bytes": 90681344,
+      "materialized_bytes_by_kind": {
+        "kv_delta": 90599424,
+        "rotating_delta": 0,
+        "state_checkpoint": 81920
+      },
+      "barrier_share_of_eval_ms": 0.987510766580534,
+      "row_audit": {
+        "rows": 2,
+        "row_errors": 0,
+        "cached_tokens": [
+          0,
+          7373
+        ],
+        "output_previews": [
+          "A toucan.",
+          "A toucan."
+        ],
+        "errors": []
+      }
+    },
+    {
+      "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-bench-harness/reports/20260709-m46-restore-eval-split-repeat/20260709T014047.330686Z-shared-bench.json",
+      "cached_tokens": 7373,
+      "records": 2,
+      "record_count_by_kind": {
+        "kv_delta": 1,
+        "rotating_delta": 0,
+        "state_checkpoint": 1
+      },
+      "record_bytes_by_kind": {
+        "kv_delta": 90600551,
+        "rotating_delta": 0,
+        "state_checkpoint": 82940
+      },
+      "load_chunks_ms": 0.474,
+      "assemble_ms": 0.015,
+      "eval_collect_ms": 0.048,
+      "eval_barrier_ms": 5.996,
+      "eval_ms": 6.052,
+      "touch_ms": 0.108,
+      "duration_ms": 6.663,
+      "eval_target_count": 22,
+      "eval_target_count_by_kind": {
+        "kv_delta": 12,
+        "rotating_delta": 0,
+        "state_checkpoint": 10
+      },
+      "materialized_bytes": 90681344,
+      "materialized_bytes_by_kind": {
+        "kv_delta": 90599424,
+        "rotating_delta": 0,
+        "state_checkpoint": 81920
+      },
+      "barrier_share_of_eval_ms": 0.9907468605419697,
+      "row_audit": {
+        "rows": 2,
+        "row_errors": 0,
+        "cached_tokens": [
+          0,
+          7373
+        ],
+        "output_previews": [
+          "A toucan.",
+          "A toucan."
+        ],
+        "errors": []
+      }
+    }
+  ]
+}

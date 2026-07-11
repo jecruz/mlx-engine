@@ -29,7 +29,9 @@ def assert_not_source_checkout_runtime() -> None:
 
 
 def init_distributed_with_retry(timeout_seconds: float):
-    started_at = float(os.environ.get(distributed_init_started_at_env, time.monotonic()))
+    started_at = float(
+        os.environ.get(distributed_init_started_at_env, time.monotonic())
+    )
     os.environ[distributed_init_started_at_env] = str(started_at)
 
     try:
@@ -123,7 +125,9 @@ def main() -> None:
         )
     if args.init_smoke_only:
         run_collective_smoke(rank, size)
-        logger.info("Packaged distributed worker init smoke completed rank %s/%s", rank, size)
+        logger.info(
+            "Packaged distributed worker init smoke completed rank %s/%s", rank, size
+        )
         return
 
     from mlx_engine import load_model, unload
@@ -153,7 +157,7 @@ def main() -> None:
         run_worker_loop(rank, model_kit)
     finally:
         logger.info("Worker rank %s unloading model kit", rank)
-        unload(model_kit)
+        unload(model_kit, force=True)
 
 
 if __name__ == "__main__":

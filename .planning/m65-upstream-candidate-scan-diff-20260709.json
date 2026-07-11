@@ -1,0 +1,78 @@
+{
+  "milestone": "M65-upstream-candidate-scan-diff",
+  "timestamp_utc": "2026-07-09T03:25:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Compare upstream candidate scans across repeat runs so broad/no-cherry-pick decisions stay auditable while upstream monitoring continues.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/scripts/upstream_candidate_scan_diff.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_upstream_candidate_scan_diff.py",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/README.md",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/CHANGELOG.md"
+    ],
+    "details": [
+      "Added a readable Markdown diff for two upstream candidate scan JSON reports.",
+      "Compared the retained M58 and M62 scan reports to show that all six candidate branches stayed unchanged while the branch head advanced.",
+      "Preserved the no-promotion rule because the diff is review-only and does not change runtime behavior."
+    ]
+  },
+  "artifacts": {
+    "baseline_scan": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m58-upstream-candidate-scan-report-20260709.json",
+    "candidate_scan": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m62-upstream-candidate-scan-report-20260709.json",
+    "diff_report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m65-upstream-candidate-scan-diff-20260709.md"
+  },
+  "diff_summary": {
+    "baseline_head": "e5e4b5b",
+    "candidate_head": "a5f2f74",
+    "baseline_upstream_main_head": "8ae2610",
+    "candidate_upstream_main_head": "8ae2610",
+    "baseline_origin_branch_head": "8f0fa26",
+    "candidate_origin_branch_head": "8f0fa26",
+    "candidate_count": 6,
+    "branch_status_counts": {
+      "unchanged": 6,
+      "new": 0,
+      "removed": 0,
+      "changed": 0
+    },
+    "summary_delta": {
+      "head_vs_upstream_main.left": 4,
+      "head_vs_upstream_main.right": 0,
+      "head_vs_origin_branch.left": 4,
+      "head_vs_origin_branch.right": 0
+    }
+  },
+  "validation": [
+    {
+      "command": "python3 -m py_compile scripts/upstream_candidate_scan_diff.py tests/test_upstream_candidate_scan_diff.py scripts/upstream_candidate_scan.py tests/test_upstream_candidate_scan.py",
+      "status": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_upstream_candidate_scan_diff.py tests/test_upstream_candidate_scan.py tests/test_upstream_candidate_report.py -q",
+      "status": "passed",
+      "result": "8 passed"
+    },
+    {
+      "command": ".venv-py312/bin/python scripts/upstream_candidate_scan_diff.py .planning/m58-upstream-candidate-scan-report-20260709.json .planning/m62-upstream-candidate-scan-report-20260709.json --output .planning/m65-upstream-candidate-scan-diff-20260709.md --title \"M65 Upstream Candidate Scan Diff\"",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m65-upstream-candidate-scan-diff-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "READABLE_SCAN_DIFF_ONLY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "still-blocked-before-inference",
+    "next_action": "Use the scan diff when reviewing future upstream updates; the report is useful for triage but not for promotion."
+  }
+}

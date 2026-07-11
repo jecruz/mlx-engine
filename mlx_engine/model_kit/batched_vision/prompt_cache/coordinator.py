@@ -1,6 +1,8 @@
 import logging
+import os
 from dataclasses import dataclass
 from threading import Lock
+from time import perf_counter
 from typing import Any, Callable
 
 from mlx_engine.model_kit.batched_vision.prompt_cache.image_spans import (
@@ -18,9 +20,23 @@ from mlx_engine.model_kit.batched_vision.prompt_cache.cache_store import (
 from mlx_engine.model_kit.batched_vision.prompt_cache.records import (
     PromptCacheRecordCoverageError,
 )
+from mlx_engine.utils.batched_timing import (
+    batched_timing_enabled,
+    elapsed_ms,
+    log_batched_timing,
+)
 from mlx_lm.models.cache import can_trim_prompt_cache, trim_prompt_cache
 
 logger = logging.getLogger(__name__)
+
+_VLM_FINAL_CHUNK_STATE_ALIGN_ENV = "MLX_ENGINE_VLM_FINAL_CHUNK_STATE_ALIGN"
+
+
+def _final_chunk_state_align_enabled() -> bool:
+    value = os.environ.get(_VLM_FINAL_CHUNK_STATE_ALIGN_ENV, "")
+    if value == "":
+        return True
+    return value.lower() not in {"0", "false", "no", "off"}
 
 
 @dataclass
@@ -182,18 +198,37 @@ class VlmPromptCacheCoordinator:
         prompt_input_ids: list[int],
         image_spans: list[PromptImageSpan],
     ) -> DiskPromptCacheRestorePlan | None:
+        timing_enabled = batched_timing_enabled()
+        plan_start = perf_counter() if timing_enabled else None
+        plan = None
+        outcome = "miss"
         try:
-            return self._cache_store.plan_longest_prefix_restore(
+            plan = self._cache_store.plan_longest_prefix_restore(
                 prompt_input_ids,
                 image_spans,
             )
+            outcome = "hit" if plan is not None else "miss"
+            return plan
         except Exception:
+            outcome = "error"
             # Cache-store planning is an optimization; generation can recompute.
             logger.debug(
                 "Prompt cache store planning failed; treating it as a cache miss.",
                 exc_info=True,
             )
             return None
+        finally:
+            if timing_enabled:
+                log_batched_timing(
+                    logger,
+                    "vlm_cache_restore_plan",
+                    prompt_tokens=len(prompt_input_ids),
+                    images=len(image_spans),
+                    cached_tokens=0 if plan is None else plan.cached_prefix_len,
+                    chunks=0 if plan is None else len(plan.chunks),
+                    outcome=outcome,
+                    duration_ms=elapsed_ms(plan_start),
+                )
 
     def _take_hot_entry(self) -> _HotPromptCacheEntry | None:
         with self._hot_entry_lock:
@@ -272,20 +307,38 @@ class VlmPromptCacheCoordinator:
         start_chunk_idx: int,
         end_chunk_idx: int,
         snapshot_len: int,
+        *,
+        is_final_prompt_boundary: bool = False,
     ) -> None:
         """Prepare and enqueue crossed prompt-cache chunks from one snapshot."""
-        if not self._cache_store.can_store_records():
+        if not self._cache_store.should_save_prompt(prefix_chunks):
             return
 
         for chunk_idx in range(start_chunk_idx, end_chunk_idx):
             chunk = prefix_chunks[chunk_idx]
+            is_final_chunk = chunk_idx == end_chunk_idx - 1
+            save_state_checkpoint = is_final_chunk
+            if (
+                is_final_prompt_boundary
+                and is_final_chunk
+                and snapshot_len != chunk.end
+                and _final_chunk_state_align_enabled()
+            ):
+                # The final prompt pass is one token past the reusable prefix.
+                # Keep the exact chunk-boundary state written by the aligned
+                # prefill step; still write terminal-packed KV below.
+                save_state_checkpoint = False
             try:
                 pending_save = self._cache_store.prepare_save(
                     chunk=chunk,
                     prefix_chunks=prefix_chunks[: chunk_idx + 1],
                     prompt_cache=prompt_cache,
-                    # Opaque state caches are only exact at this model-call end.
-                    save_state_checkpoint=chunk.end == snapshot_len,
+                    # Opaque state caches are only exact at the end of this
+                    # snapshot, not necessarily at the end of a fixed-size chunk.
+                    save_state_checkpoint=save_state_checkpoint,
+                    is_final_prompt_boundary=(
+                        is_final_prompt_boundary and is_final_chunk
+                    ),
                 )
                 self._enqueue_pending_save(pending_save)
             except PromptCacheRecordCoverageError as exc:

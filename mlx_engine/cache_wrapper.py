@@ -7,6 +7,8 @@ import mlx.nn as nn
 from mlx_lm.generate import maybe_quantize_kv_cache
 from mlx_lm.models.cache import (
     LRUPromptCache,
+    KVCache,
+    QuantizedKVCache,
     can_trim_prompt_cache,
     make_prompt_cache,
     trim_prompt_cache,
@@ -17,9 +19,15 @@ from mlx_engine.utils.prompt_progress_reporter import (
     PromptProgressReporter,
     StopPromptProcessing,
 )
+from mlx_engine.utils.specprefill import (
+    SpecPrefillOptions,
+    cleanup_rope,
+    try_sparse_prefill,
+)
 
 
 PROMPT_PROCESSING_CHUNK_SIZE = 2048
+DEFERRED_CLEAR_DELAY_STEPS = 64
 
 # Checkpoint N tokens before end of prompt
 # This value is at parity with mlx-lm:
@@ -27,6 +35,90 @@ PROMPT_PROCESSING_CHUNK_SIZE = 2048
 DEFAULT_CHECKPOINT_TAIL_TOKENS = 11
 
 logger = logging.getLogger(__name__)
+
+
+def _clone_cache_value(value: Any) -> Any:
+    if isinstance(value, mx.array):
+        return mx.array(value)
+    if isinstance(value, list):
+        return [_clone_cache_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_clone_cache_value(item) for item in value)
+    if isinstance(value, dict):
+        return {key: _clone_cache_value(item) for key, item in value.items()}
+    return copy.deepcopy(value)
+
+
+def _clone_kv_cache_entry(entry: Any) -> Any:
+    clone = KVCache()
+    clone.keys = mx.array(entry.keys) if entry.keys is not None else None
+    clone.values = mx.array(entry.values) if entry.values is not None else None
+    clone.offset = entry.offset
+    return clone
+
+
+def _clone_quantized_kv_cache_entry(entry: Any) -> Any:
+    clone = QuantizedKVCache(group_size=entry.group_size, bits=entry.bits)
+    clone.keys = (
+        tuple(mx.array(item) for item in entry.keys) if entry.keys is not None else None
+    )
+    clone.values = (
+        tuple(mx.array(item) for item in entry.values)
+        if entry.values is not None
+        else None
+    )
+    clone.offset = entry.offset
+    return clone
+
+
+def _clone_cache_entry(entry: Any) -> Any:
+    if isinstance(entry, KVCache):
+        return _clone_kv_cache_entry(entry)
+    if isinstance(entry, QuantizedKVCache):
+        return _clone_quantized_kv_cache_entry(entry)
+
+    from_state = getattr(type(entry), "from_state", None)
+    if (
+        callable(from_state)
+        and hasattr(entry, "state")
+        and hasattr(entry, "meta_state")
+    ):
+        try:
+            return from_state(
+                _clone_cache_value(entry.state),
+                _clone_cache_value(entry.meta_state),
+            )
+        except Exception:
+            logger.debug("Cache snapshot clone via from_state failed; falling back.")
+    return copy.deepcopy(entry)
+
+
+class FastLRUPromptCache(LRUPromptCache):
+    def fetch_nearest_cache(self, model: Any, tokens: List[int]):
+        result = self._trie.search(model, tokens)
+        if result.exact is not None:
+            cache_entry = self._trie.get(result.model, result.exact)
+            return [_clone_cache_entry(entry) for entry in cache_entry.prompt_cache], []
+
+        short_length = len(result.shorter) if result.shorter is not None else 0
+        if result.longer is not None and result.common_prefix > short_length:
+            cache_entry = self._trie.get(result.model, result.longer)
+            if can_trim_prompt_cache(cache_entry.prompt_cache):
+                cache = [
+                    _clone_cache_entry(entry) for entry in cache_entry.prompt_cache
+                ]
+                prefix = min(len(tokens) - 1, result.common_prefix)
+                num_to_trim = len(result.longer) - prefix
+                trim_prompt_cache(cache, num_to_trim)
+                return cache, tokens[prefix:]
+
+        if short_length > 0:
+            cache_entry = self._trie.get(result.model, result.shorter)
+            return [
+                _clone_cache_entry(entry) for entry in cache_entry.prompt_cache
+            ], tokens[short_length:]
+
+        return None, tokens
 
 
 def validate_prefill_step_size(prefill_step_size: Optional[int] = None) -> int:
@@ -68,6 +160,9 @@ class CacheWrapper:
 
         self._history = self._make_history()
         self._history_key = "session"
+        self._generation_step_counter = 0
+        self._deferred_clear_at: int | None = None
+        self._sparse_cache_active = False
         # Keep token history host-side. Sequential requests can resume on a
         # different native thread, and lazy MLX arrays carry stream ownership.
         self._live_tokens: Optional[List[int]] = None
@@ -86,11 +181,16 @@ class CacheWrapper:
     def _make_history(self) -> LRUPromptCache:
         # Store up to N checkpoints. This number can be tuned (or made configurable) if
         # it's too high or low
-        return LRUPromptCache(max_size=self._history_capacity)
+        return FastLRUPromptCache(max_size=self._history_capacity)
 
     def _num_tokens_in_cache(self, cache: Optional[List[Any]] = None) -> int | None:
         cache = self._live_cache if cache is None else cache
-        for entry in cache:
+        if cache:
+            head_offset = getattr(cache[0], "offset", None)
+            if head_offset is not None:
+                return head_offset
+
+        for entry in cache[1:]:
             if hasattr(entry, "offset"):
                 return entry.offset
         return None
@@ -107,12 +207,36 @@ class CacheWrapper:
         self._history.insert_cache(
             self._history_key,
             list(tokens),
-            copy.deepcopy(cache),
+            [_clone_cache_entry(entry) for entry in cache],
             cache_type=cache_type,
         )
 
+    def _clear_cache_now(self) -> None:
+        mx.synchronize()
+        mx.clear_cache()
+
+    def _schedule_deferred_clear(self) -> None:
+        target = self._generation_step_counter + DEFERRED_CLEAR_DELAY_STEPS
+        if self._deferred_clear_at is None or target > self._deferred_clear_at:
+            self._deferred_clear_at = target
+
+    def _maybe_clear_cache(self) -> None:
+        if (
+            self._deferred_clear_at is None
+            or self._generation_step_counter < self._deferred_clear_at
+        ):
+            return
+
+        self._deferred_clear_at = None
+        self._clear_cache_now()
+
     def _flush_live_cache(self) -> None:
         if self._live_tokens is None:
+            return
+        if self._sparse_cache_active:
+            self._sparse_cache_active = False
+            self._live_tokens = None
+            self._live_cache = self._make_cache()
             return
 
         cache_length = self._num_tokens_in_cache()
@@ -133,8 +257,9 @@ class CacheWrapper:
         if cache_length <= 0:
             return
 
+        snapshot_length = min(len(self._live_tokens), cache_length + 1)
         self._store_snapshot(
-            self._live_tokens[:cache_length],
+            self._live_tokens[:snapshot_length],
             self._live_cache,
             cache_type="assistant",
         )
@@ -188,10 +313,10 @@ class CacheWrapper:
         remaining_tokens = tokens
         num_processed = 0
         stored_checkpoint = False
+        current_cache_size = self._num_tokens_in_cache(cache)
 
         while remaining_tokens.size > 0:
             current_chunk_size = min(self._chunk_size, remaining_tokens.size)
-            current_cache_size = self._num_tokens_in_cache(cache)
             if (
                 checkpoint_prefix_len is not None
                 and current_cache_size is not None
@@ -205,12 +330,12 @@ class CacheWrapper:
             maybe_quantize_kv_cache(prompt_cache=cache, **self._kv_cache_qtn_params)
             self._live_cache[cache_start : cache_start + len(cache)] = cache
             mx.eval([entry.state for entry in cache])
+            if current_cache_size is not None:
+                current_cache_size += current_chunk_size
 
             remaining_tokens = remaining_tokens[current_chunk_size:]
             num_processed += current_chunk_size
-            mx.clear_cache()
 
-            current_cache_size = self._num_tokens_in_cache(cache)
             if (
                 checkpoint_prefix_len is not None
                 and not stored_checkpoint
@@ -225,7 +350,9 @@ class CacheWrapper:
 
             if not reporter.update(is_draft, num_processed):
                 logger.info("Prompt processing was cancelled by the user.")
-                live_cache_size = self._num_tokens_in_cache()
+                live_cache_size = current_cache_size
+                if live_cache_size is None:
+                    live_cache_size = self._num_tokens_in_cache()
                 if live_cache_size is None:
                     self._live_tokens = None
                     self._live_cache = self._make_cache()
@@ -237,10 +364,13 @@ class CacheWrapper:
         self,
         prompt_tokens: mx.array,
         reporter: PromptProgressReporter,
+        draft_model: Optional[nn.Module] = None,
+        specprefill_options: Optional[SpecPrefillOptions] = None,
     ) -> mx.array:
         prompt_token_list = prompt_tokens.tolist()
         total_prompt_tokens = len(prompt_tokens)
 
+        self._maybe_clear_cache()
         self._flush_live_cache()
 
         restored_cache, uncached_tokens = self._restore_cache(
@@ -267,6 +397,38 @@ class CacheWrapper:
 
         # Leave one token outside the cache to seed decode.
         prefill_tokens = uncached_tokens[:-1]
+        if (
+            specprefill_options is not None
+            and specprefill_options.enabled
+            and draft_model is not None
+            and self._kv_cache_qtn_params["kv_bits"] is None
+            and self._max_kv_size is None
+            and len(uncached_tokens) > specprefill_options.threshold
+            and specprefill_options.system_tokens < len(uncached_tokens)
+        ):
+            try:
+                result = try_sparse_prefill(
+                    model=self.model,
+                    draft_model=draft_model,
+                    prompt_tokens=prompt_tokens,
+                    uncached_tokens=uncached_tokens,
+                    cache=self._live_cache[: len(self.model.layers)],
+                    cached_tokens=cached_tokens,
+                    options=specprefill_options,
+                    chunk_size=self._chunk_size,
+                    reporter=reporter,
+                )
+            except Exception:
+                logger.exception("SpecPrefill failed; falling back to full prefill")
+            else:
+                if result is not None:
+                    self._live_cache = result.cache
+                    self._live_tokens = list(result.live_tokens)
+                    self._sparse_cache_active = True
+                    reporter.finish(is_draft=False)
+                    self._schedule_deferred_clear()
+                    return result.seed_tokens
+
         checkpoint_prefix_len = None
         # Only checkpoint the main-model path; quantized caches skip checkpointing.
         if self._draft_model is None and self._kv_cache_qtn_params["kv_bits"] is None:
@@ -277,41 +439,50 @@ class CacheWrapper:
             if checkpoint_prefix_len is not None and checkpoint_prefix_len <= 0:
                 checkpoint_prefix_len = None
 
-        generation_stream = prepare_mlx_lm_generation_stream(
-            reason="cache-prefill"
-        )
-        with mx.stream(generation_stream):
-            if self._draft_model is not None:
-                draft_cache = self._live_cache[len(self.model.layers) :]
+        generation_stream = prepare_mlx_lm_generation_stream(reason="cache-prefill")
+        try:
+            with mx.stream(generation_stream):
+                if self._draft_model is not None:
+                    draft_cache = self._live_cache[len(self.model.layers) :]
+                    self._prefill_cache(
+                        model=self._draft_model,
+                        cache=draft_cache,
+                        cache_start=len(self.model.layers),
+                        tokens=prefill_tokens,
+                        reporter=reporter,
+                        is_draft=True,
+                        checkpoint_prefix_len=None,
+                    )
+
+                main_cache = self._live_cache[: len(self.model.layers)]
                 self._prefill_cache(
-                    model=self._draft_model,
-                    cache=draft_cache,
-                    cache_start=len(self.model.layers),
+                    model=self.model,
+                    cache=main_cache,
+                    cache_start=0,
                     tokens=prefill_tokens,
                     reporter=reporter,
-                    is_draft=True,
-                    checkpoint_prefix_len=None,
+                    is_draft=False,
+                    checkpoint_prefix_len=checkpoint_prefix_len,
                 )
-
-            main_cache = self._live_cache[: len(self.model.layers)]
-            self._prefill_cache(
-                model=self.model,
-                cache=main_cache,
-                cache_start=0,
-                tokens=prefill_tokens,
-                reporter=reporter,
-                is_draft=False,
-                checkpoint_prefix_len=checkpoint_prefix_len,
-            )
+        except StopPromptProcessing:
+            self._clear_cache_now()
+            raise
 
         reporter.finish(is_draft=False)
+        self._schedule_deferred_clear()
         return uncached_tokens[-1:]
 
     def record_generated_token(self, token: int) -> None:
+        self._generation_step_counter += 1
+        self._maybe_clear_cache()
         if self._live_tokens is None:
             self._live_tokens = [token]
             return
         self._live_tokens.append(token)
+
+    def cleanup_specprefill(self) -> None:
+        """Restore transient SpecPrefill model state after generation exits."""
+        cleanup_rope(self.model)
 
     def set_draft_model(self, draft_model: nn.Module) -> None:
         if self.model is None:
@@ -324,6 +495,8 @@ class CacheWrapper:
 
         self._history = self._make_history()
         self._draft_model = draft_model
+        self._deferred_clear_at = None
+        self._sparse_cache_active = False
         self._live_tokens = None
         self._live_cache = self._make_cache()
 
@@ -333,6 +506,8 @@ class CacheWrapper:
         main_cache = self._live_cache[: len(self.model.layers)]
         self._history = self._make_history()
         self._draft_model = None
+        self._deferred_clear_at = None
+        self._sparse_cache_active = False
         if len(main_cache) == len(self.model.layers):
             self._live_cache = main_cache
             return

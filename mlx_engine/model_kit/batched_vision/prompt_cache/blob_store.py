@@ -1,9 +1,11 @@
 import io
+import hashlib
 import os
 import tempfile
 from bisect import bisect_left
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import mlx.core as mx
@@ -15,6 +17,16 @@ from mlx.utils import tree_unflatten
 class _BlobExtent:
     offset: int
     length: int
+
+
+@dataclass
+class LoadedSafetensorRecord:
+    """Loaded cache record plus deserialization timing breakdown."""
+
+    prompt_cache: list[Any]
+    safetensor_load_ms: float
+    unflatten_ms: float
+    cache_rebuild_ms: float
 
 
 class _BlobReader:
@@ -123,6 +135,12 @@ class TemporarySafetensorBlobStore:
         reader = _BlobReader(self._fd, ref.offset, ref.length)
         return _load_record_from_file(reader)
 
+    def load_record_profiled(self, key: str) -> LoadedSafetensorRecord:
+        """Load a committed record with a deserialization timing breakdown."""
+        ref = self._records[key]
+        reader = _BlobReader(self._fd, ref.offset, ref.length)
+        return _load_record_from_file_profiled(reader)
+
     def exists(self, key: str) -> bool:
         return key in self._records
 
@@ -214,20 +232,128 @@ class TemporarySafetensorBlobStore:
             os.ftruncate(self._fd, self._end)
 
 
+class PersistentSafetensorBlobStore:
+    """Directory-backed immutable safetensors blob store.
+
+    This backend is intentionally simpler than the temporary single-file store:
+    one logical record maps to one content-addressed file. The cache-store index
+    owns logical metadata and eviction policy.
+    """
+
+    def __init__(self, directory: Path):
+        self._directory = directory
+        self._directory.mkdir(parents=True, exist_ok=True)
+
+    def put(
+        self,
+        key: str,
+        arrays: dict[str, Any],
+        safetensor_metadata: dict[str, str],
+    ) -> int:
+        """Store one safetensors record and return its serialized byte length."""
+        path = self._path_for_key(key)
+        if path.exists():
+            return path.stat().st_size
+
+        buffer = io.BytesIO()
+        mx.save_safetensors(buffer, arrays, safetensor_metadata)
+        blob = buffer.getbuffer()
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w+b",
+            dir=self._directory,
+            prefix=".record-",
+            suffix=".safetensors.tmp",
+            delete=False,
+        )
+        tmp_path = Path(tmp.name)
+        try:
+            with tmp:
+                tmp.write(blob)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(tmp_path, path)
+        except Exception:
+            tmp_path.unlink(missing_ok=True)
+            raise
+
+        return path.stat().st_size
+
+    def load_record(self, key: str) -> list[Any]:
+        """Load a committed record; missing keys are caller invariant errors."""
+        return _load_record_from_source(str(self._path_for_key(key)))
+
+    def load_record_profiled(self, key: str) -> LoadedSafetensorRecord:
+        """Load a committed record with a deserialization timing breakdown."""
+        return _load_record_from_source_profiled(str(self._path_for_key(key)))
+
+    def exists(self, key: str) -> bool:
+        return self._path_for_key(key).exists()
+
+    def size(self, key: str) -> int:
+        """Return a committed record size; missing keys are invariant errors."""
+        return self._path_for_key(key).stat().st_size
+
+    def delete(self, key: str) -> None:
+        self._path_for_key(key).unlink(missing_ok=True)
+
+    def close(self) -> None:
+        """Close the blob store without deleting persistent records."""
+        return
+
+    def _path_for_key(self, key: str) -> Path:
+        digest = hashlib.sha256(key.encode()).hexdigest()
+        return self._directory / f"{digest}.safetensors"
+
+
 def _load_record_from_file(file_obj) -> list[Any]:
     """Deserialize one safetensors blob back into MLX-LM cache objects."""
+    return _load_record_from_source_profiled(file_obj).prompt_cache
+
+
+def _load_record_from_source(source) -> list[Any]:
+    """Deserialize one safetensors source back into MLX-LM cache objects."""
+    return _load_record_from_source_profiled(source).prompt_cache
+
+
+def _elapsed_ms(start: float) -> float:
+    """Return elapsed milliseconds from a local perf-counter sample."""
+    return round((perf_counter() - start) * 1000.0, 3)
+
+
+def _load_record_from_file_profiled(file_obj) -> LoadedSafetensorRecord:
+    """Deserialize one safetensors blob and capture load-stage timings."""
+    return _load_record_from_source_profiled(file_obj)
+
+
+def _load_record_from_source_profiled(source) -> LoadedSafetensorRecord:
+    """Deserialize one safetensors source and capture load-stage timings."""
+    start = perf_counter()
     arrays, safetensor_metadata = mx.load(
-        file_obj,
+        source,
         format="safetensors",
         return_metadata=True,
     )
+    safetensor_load_ms = _elapsed_ms(start)
+
+    start = perf_counter()
     arrays = tree_unflatten(list(arrays.items()))
     cache_meta_states, cache_class_names = tree_unflatten(
         list(safetensor_metadata.items())
     )
-    return [
+    unflatten_ms = _elapsed_ms(start)
+
+    start = perf_counter()
+    prompt_cache = [
         getattr(mlx_lm_cache, cache_class_name).from_state(state, meta_state)
         for cache_class_name, state, meta_state in zip(
             cache_class_names, arrays, cache_meta_states
         )
     ]
+    cache_rebuild_ms = _elapsed_ms(start)
+
+    return LoadedSafetensorRecord(
+        prompt_cache=prompt_cache,
+        safetensor_load_ms=safetensor_load_ms,
+        unflatten_ms=unflatten_ms,
+        cache_rebuild_ms=cache_rebuild_ms,
+    )

@@ -1,6 +1,7 @@
 """Tests for the Qwen3.5 monkey patches."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,6 +11,7 @@ from mlx_lm.models.cache import ArraysCache, BatchKVCache, KVCache, make_prompt_
 from mlx_lm.models.qwen3_5 import Model, ModelArgs
 import mlx_lm.models.qwen3_5 as qwen3_5_module
 from mlx_lm.models.qwen3_next import Qwen3NextAttention
+from mlx_vlm.models.base import LanguageModelOutput
 from mlx_vlm.models.qwen3_5 import language as vlm_qwen3_5_language
 from transformers import AutoTokenizer
 
@@ -393,6 +395,40 @@ def test_vlm_qwen3_5_gated_delta_fast_path_skips_upstream_decode_conv(monkeypatc
     assert calls[0][1]["use_kernel"] is True
 
 
+def test_vlm_qwen3_5_gated_delta_fast_path_contiguous_cache_write(monkeypatch):
+    calls = []
+    contiguous_inputs = []
+
+    def fake_gated_delta_update(*args, **kwargs):
+        calls.append((args, kwargs))
+        q = args[0]
+        state = args[7]
+        return mx.ones_like(q), state
+
+    original_contiguous = qwen3_5_patches.mx.contiguous
+
+    def fake_contiguous(value):
+        contiguous_inputs.append(value)
+        return original_contiguous(value)
+
+    monkeypatch.setattr(qwen3_5_patches, "gated_delta_update", fake_gated_delta_update)
+    monkeypatch.setattr(qwen3_5_patches.mx, "contiguous", fake_contiguous)
+
+    layer = _FakeVlmGatedDeltaNet()
+    inputs = mx.ones((1, 1, layer.hidden_size))
+    cache = [None, None]
+
+    qwen3_5_patches._patched_vlm_qwen3_5_gated_delta_net_call(
+        layer,
+        inputs,
+        cache=cache,
+    )
+
+    assert len(calls) == 1
+    assert len(contiguous_inputs) == 1
+    assert cache[0].shape == (1, layer.conv_kernel_size - 1, layer.conv_dim)
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
@@ -588,6 +624,81 @@ def test_qwen3_5_prefill_decode_consistency(use_mrope):
     )
 
 
+def test_qwen3_5_ordinary_decode_fast_path_completes_correctly():
+    """The Qwen3.5 GDN fast path must complete ordinary decode without errors.
+
+    Runs prefill on a short prompt, then iteratively decodes one token at a time.
+    Each decode step exercises the patched GDN fast path (target_verify=False,
+    gdn_sink=None, seq_len=1, plain KV cache) for every linear layer.
+
+    The test guards against VAL-M8-001 regression: representative Qwen text
+    requests must complete without empty, collapsed, or prematurely terminated
+    output, and without row-level errors, before any promotion decision is
+    considered.
+
+    Assertions cover only what this test independently proves on the synthetic
+    ordinary-decode path:
+      * non-empty logits at prefill and every decode step (max abs > 0),
+      * non-collapsed token stream (the autoregressive loop yields more than
+        one distinct token, so the fast path does not degenerate into a
+        constant-output repeat),
+      * proper termination (the decode loop runs the configured number of
+        steps and never aborts early).
+
+    Logit-alignment between full-sequence prefill and incremental prefill+decode
+    is covered separately by `test_qwen3_5_prefill_decode_consistency`, not by
+    this test. This test does not assert any latency improvement; it only proves
+    the fast path completes the ordinary-decode lifecycle correctly.
+    """
+    model = make_model()
+    prefill_tokens = 8
+    decode_steps = 12
+    prompt = mx.arange(prefill_tokens, dtype=mx.int32)[None, :]
+
+    cache = make_prompt_cache(model)
+    prefill_output = model(prompt, cache=cache)
+    mx.eval(prefill_output, [layer.state for layer in cache])
+    assert prefill_output.shape == (
+        1,
+        prefill_tokens,
+        QWEN3_5_TEXT_CONFIG["vocab_size"],
+    )
+
+    prefill_last_logits = prefill_output[0, -1, :]
+    assert mx.max(mx.abs(prefill_last_logits)).item() > 0.0, (
+        "Prefill produced all-zero logits; the fast-path decode cannot start."
+    )
+
+    generated_tokens = []
+    next_token = mx.argmax(prefill_last_logits, keepdims=True).astype(mx.int32)[None, :]
+    for step in range(decode_steps):
+        decode_output = model(next_token, cache=cache)
+        mx.eval(decode_output, [layer.state for layer in cache])
+        logits = decode_output[0, -1, :]
+        assert mx.max(mx.abs(logits)).item() > 0.0, (
+            f"Decode step {step} produced all-zero logits; ordinary decode "
+            "must yield non-empty logits on every step."
+        )
+        generated_tokens.append(int(next_token.item()))
+        next_token = mx.argmax(logits, keepdims=True).astype(mx.int32)[None, :]
+
+    assert len(generated_tokens) == decode_steps, (
+        f"Ordinary decode terminated prematurely after "
+        f"{len(generated_tokens)} of {decode_steps} steps."
+    )
+    assert len(set(generated_tokens)) > 1, (
+        "Ordinary decode produced only one repeated token; the fast path "
+        "must yield a non-duplicated token sequence."
+    )
+
+    final_logits = mx.array(model(next_token, cache=cache))[0, -1, :]
+    mx.eval(final_logits)
+    assert mx.max(mx.abs(final_logits)).item() > 0.0, (
+        "Final decode iteration produced all-zero logits; ordinary decode "
+        "must remain non-empty through the configured step count."
+    )
+
+
 @pytest.mark.parametrize("case", QWEN3_5_MROPE_CHUNK_CASES)
 def test_qwen3_5_mrope_chunked_prefill_matches_unchunked(case):
     """Chunked MRoPE prefill must match unchunked prefill."""
@@ -665,6 +776,52 @@ def test_qwen3_5_text_only_batch_cache_matches_prompt_cache():
     assert mx.allclose(reference_logits, batch_logits, atol=1e-4).item(), (
         f"Text-only batch-cache logits mismatch (max diff {diff:.6f})."
     )
+
+
+def test_qwen3_5_text_hidden_capture_is_ordered_and_capture_safe():
+    """Target-layer hidden capture must be stable and keep logits unchanged."""
+    model = make_model(num_hidden_layers=4, full_attention_interval=2)
+    tokens = mx.array([[0, 1, 2, 3]])
+
+    baseline_cache = make_prompt_cache(model)
+    baseline_logits = model(tokens, cache=baseline_cache)
+    mx.eval(baseline_logits)
+
+    capture_ids = [3, 1]
+    capture_sink = []
+    captured = model(
+        tokens,
+        cache=make_prompt_cache(model),
+        capture_layer_ids=capture_ids,
+        hidden_sink=capture_sink,
+    )
+    mx.eval([baseline_logits, captured.logits, *capture_sink])
+
+    assert isinstance(captured, LanguageModelOutput)
+    assert captured.hidden_states is capture_sink
+    assert captured.gdn_states is None
+    assert len(captured.hidden_states) == len(capture_ids)
+    assert [state.shape for state in captured.hidden_states] == [
+        (1, tokens.shape[1], QWEN3_5_TEXT_CONFIG["hidden_size"])
+    ] * len(capture_ids)
+    assert mx.allclose(baseline_logits, captured.logits, atol=1e-4).item(), (
+        "Capture-enabled text logits must match the capture-off baseline."
+    )
+
+    ordered_sink = []
+    ordered_capture = model(
+        tokens,
+        cache=make_prompt_cache(model),
+        capture_layer_ids=sorted(capture_ids),
+        hidden_sink=ordered_sink,
+    )
+    mx.eval([ordered_capture.logits, *ordered_sink])
+
+    assert len(ordered_sink) == len(capture_sink)
+    for captured_state, ordered_state in zip(capture_sink, ordered_sink):
+        assert mx.allclose(captured_state, ordered_state, atol=1e-4).item(), (
+            "Hidden-state capture order must follow layer progression."
+        )
 
 
 @pytest.mark.parametrize("model_name", REAL_MODEL_CASES)
@@ -812,6 +969,74 @@ def test_vlm_qwen3_5_text_left_padded_decode_uses_original_vlm(monkeypatch):
     assert calls[0][2:5] == (None, None, cache)
     position_ids = calls[0][5]["position_ids"]
     assert position_ids.tolist() == [[7], [5]]
+
+
+def test_vlm_qwen3_5_text_left_padded_decode_advances_per_row_positions(monkeypatch):
+    """Sequential decode steps must keep per-row positions in lockstep with cache offsets."""
+    calls = []
+
+    class FakeInnerModel:
+        fa_idx = 0
+
+        def __call__(self, *args, **kwargs):
+            raise AssertionError("text fast path should not be used")
+
+    class FakeLanguageModel:
+        model = FakeInnerModel()
+        _position_ids = None
+        _rope_deltas = None
+
+    class MutableFakeCache:
+        def __init__(self):
+            self.left_padding = mx.array([0, 2])
+            self.offset = mx.array([7, 5])
+
+    def fake_original_call(
+        self,
+        inputs,
+        inputs_embeds=None,
+        mask=None,
+        cache=None,
+        **kwargs,
+    ):
+        calls.append(kwargs.get("position_ids"))
+        return "original"
+
+    monkeypatch.setattr(
+        qwen3_5_patches,
+        "OriginalVlmQwen3_5LanguageModelCall",
+        fake_original_call,
+    )
+
+    cache = [MutableFakeCache()]
+    inputs = mx.array([[11], [12]])
+
+    qwen3_5_patches._patched_vlm_qwen3_5_language_model_call(
+        FakeLanguageModel(),
+        inputs,
+        cache=cache,
+    )
+
+    cache[0].offset = mx.array([8, 6])
+
+    qwen3_5_patches._patched_vlm_qwen3_5_language_model_call(
+        FakeLanguageModel(),
+        inputs,
+        cache=cache,
+    )
+
+    cache[0].offset = mx.array([9, 7])
+
+    qwen3_5_patches._patched_vlm_qwen3_5_language_model_call(
+        FakeLanguageModel(),
+        inputs,
+        cache=cache,
+    )
+
+    assert len(calls) == 3
+    assert calls[0].tolist() == [[7], [5]]
+    assert calls[1].tolist() == [[8], [6]]
+    assert calls[2].tolist() == [[9], [7]]
 
 
 def test_vlm_qwen3_5_text_left_padded_prefill_uses_fast_path(monkeypatch):
@@ -989,6 +1214,78 @@ def test_vlm_qwen3_5_decode_rope_deltas_kw_syncs_state():
         "VLM Qwen3.5 decode ignored kwarg rope_deltas after state was cleared "
         f"(max diff {diff:.6f})."
     )
+
+
+def test_vlm_qwen3_5_rope_index_handles_fully_padded_vision_rows():
+    """Fully padded vision rows must not crash batched rope-index construction."""
+    language_model = vlm_qwen3_5_language.LanguageModel.__new__(
+        vlm_qwen3_5_language.LanguageModel
+    )
+    language_model.config = SimpleNamespace(
+        vision_config=SimpleNamespace(spatial_merge_size=2),
+        image_token_id=101,
+        video_token_id=102,
+        vision_start_token_id=100,
+    )
+
+    input_ids = mx.array(
+        [
+            [0, 0, 0, 0],
+            [10, 100, 101, 11],
+        ],
+        dtype=mx.int32,
+    )
+    attention_mask = mx.array(
+        [
+            [0, 0, 0, 0],
+            [1, 1, 1, 1],
+        ],
+        dtype=mx.int32,
+    )
+    image_grid_thw = mx.array([[1, 2, 2]], dtype=mx.int32)
+
+    position_ids, rope_deltas = language_model.get_rope_index(
+        input_ids,
+        image_grid_thw=image_grid_thw,
+        attention_mask=attention_mask,
+    )
+    mx.eval(position_ids, rope_deltas)
+
+    assert position_ids.shape == (3, 2, 4)
+    assert rope_deltas.tolist() == [[0], [0]]
+
+
+def test_vlm_qwen3_5_left_padded_batch_prefill_preserves_batch_cache_metadata():
+    """Mixed left padding must keep batched cache offsets and padding coherent."""
+    text_config = vlm_qwen3_5_language.TextConfig.from_dict(
+        {
+            **QWEN3_5_TEXT_CONFIG,
+            "num_hidden_layers": 2,
+            "full_attention_interval": 2,
+        }
+    )
+    model = vlm_qwen3_5_language.Qwen3_5Model(text_config)
+
+    arrays_cache = ArraysCache(size=2)
+    arrays_cache.left_padding = mx.array([5, 0], dtype=mx.int32)
+    batch_kv_cache = BatchKVCache([5, 0])
+    cache = [arrays_cache, batch_kv_cache]
+
+    first_chunk = mx.array([[0, 0, 0], [1, 2, 3]], dtype=mx.int32)
+    first_out = model(first_chunk, cache=cache)
+    mx.eval(first_out, cache[1].offset, cache[1].left_padding)
+
+    assert first_out.shape == (2, 3, text_config.hidden_size)
+    assert cache[1].offset.tolist() == [-2, 3]
+    assert cache[1].left_padding.tolist() == [5, 0]
+
+    second_chunk = mx.array([[0, 0, 4], [4, 5, 6]], dtype=mx.int32)
+    second_out = model(second_chunk, cache=cache)
+    mx.eval(second_out, cache[1].offset, cache[1].left_padding)
+
+    assert second_out.shape == (2, 3, text_config.hidden_size)
+    assert cache[1].offset.tolist() == [1, 6]
+    assert cache[1].left_padding.tolist() == [5, 0]
 
 
 def test_vlm_qwen3_5_text_prompt_cache_restore_matches_original_vlm():

@@ -1,0 +1,87 @@
+{
+  "milestone": "M55-lmstudio-vlm-gate-refresh",
+  "timestamp_utc": "2026-07-09T03:28:00Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Recheck whether live LM Studio validation is unblocked for retained LFM2.5-VL runtime candidates.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m55.json",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m55.json",
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m55-after-probe.json"
+    ],
+    "details": [
+      "Ran the read-only LM Studio VLM live-validation preflight before any live inference attempt.",
+      "Ran the supported bounded `lms get <hf-url> --mlx -y` probe after the preflight reported the retained VLM was not visible to `lms ls --json`.",
+      "Re-ran the read-only preflight after the download probe to verify whether model visibility changed."
+    ]
+  },
+  "preflight_before_probe": {
+    "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m55.json",
+    "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m55.json --timeout 30",
+    "exit_code": 1,
+    "ready_for_live_validation": false,
+    "model_visible_to_lms": false,
+    "model_dir_complete": true,
+    "server_status": "not-running",
+    "lms_ls_visible_model_keys": [
+      "text-embedding-nomic-embed-text-v1.5"
+    ],
+    "model_data_contains_model_key": true
+  },
+  "download_probe": {
+    "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-download-probe-20260709-m55.json",
+    "command": ".venv-py312/bin/python scripts/lmstudio_vlm_download_probe.py --output .planning/lmstudio-vlm-download-probe-20260709-m55.json --timeout 300",
+    "exit_code": 1,
+    "success": false,
+    "timed_out": true,
+    "returncode": null,
+    "duration_s": 300.0089084999927,
+    "resolved_artifact": "LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB",
+    "max_progress_percent": 0.0,
+    "stalled_at_zero": true
+  },
+  "preflight_after_probe": {
+    "report": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/lmstudio-vlm-live-validation-preflight-20260709-m55-after-probe.json",
+    "command": ".venv-py312/bin/python scripts/lmstudio_vlm_live_validation_preflight.py --output .planning/lmstudio-vlm-live-validation-preflight-20260709-m55-after-probe.json --timeout 30",
+    "exit_code": 1,
+    "ready_for_live_validation": false,
+    "model_visible_to_lms": false,
+    "model_dir_complete": true,
+    "lms_ls_visible_model_keys": [
+      "text-embedding-nomic-embed-text-v1.5"
+    ]
+  },
+  "validation": [
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m55.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-download-probe-20260709-m55.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/lmstudio-vlm-live-validation-preflight-20260709-m55-after-probe.json",
+      "status": "passed"
+    },
+    {
+      "command": "python3 -m json.tool .planning/m55-lmstudio-vlm-gate-refresh-20260709.json",
+      "status": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  ],
+  "decision": {
+    "status": "LIVE_VALIDATION_BLOCKED_BEFORE_INFERENCE",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "blocked-before-inference",
+    "blocker": "The retained LFM2.5-VL model directory is complete and LM Studio metadata contains the model key, but `lms ls --json` still does not expose the VLM. The supported `lms get` path resolved the correct artifact but timed out after 300 seconds at 0% progress.",
+    "next_action": "Do not run live LM Studio `/v1/chat/completions` validation or promote a runtime candidate until a later preflight reports ready_for_live_validation=true."
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "milestone": "M51-lfm25-text-cache-gate",
+  "timestamp_utc": "2026-07-09T02:04:56Z",
+  "redmine_issue": 1190,
+  "repository": "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine",
+  "branch": "mlx-vlm-restore-eval-followup",
+  "objective": "Adapt the useful part of upstream/will/lfm-2.5-unified into a local non-prompting LFM2.5-VL generated-token cache gate.",
+  "change": {
+    "runtime_behavior_changed": false,
+    "promotion_status": "NO_PROMOTION",
+    "files": [
+      "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/tests/test_vision_models.py"
+    ],
+    "details": [
+      "Added a non-prompting LFM2.5-VL model resolver for real-model tests.",
+      "The resolver honors MLX_ENGINE_LFM25_VL_MODEL_PATH, then the retained benchmark model path under /Volumes/StudioStackSSD4TB, then existing ~/.lmstudio model slots.",
+      "Added a heavy LFM2.5-VL text-only generated-token cache test adapted from upstream/will/lfm-2.5-unified without invoking model_getter, input(), or lms get.",
+      "The test verifies first-request uncached generation, second-request cache reuse above the prefill step size, small follow-up prefill, and response fidelity for the generated name Silas."
+    ]
+  },
+  "upstream_source": {
+    "ref": "upstream/will/lfm-2.5-unified",
+    "commit": "461015c",
+    "subject": "Add test for LFM 2.5 caching",
+    "adaptation": "Ported the intent into the current local batched VLM test surface using the retained LFM2.5-VL 8-bit model path instead of the old ~/.lmstudio model_getter-only path."
+  },
+  "validation": [
+    {
+      "command": "python3 -m py_compile tests/test_vision_models.py",
+      "status": "passed"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_vision_models.py::TestVisionModels::test_lfm2_5_vl_text_only_generation_caching --collect-only -q",
+      "status": "passed",
+      "result": "1 test collected"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_vision_models.py::TestVisionModels::test_lfm2_5_vl_text_only_generation_caching -q -rs",
+      "status": "passed",
+      "result": "1 skipped with reason: need --heavy option to run"
+    },
+    {
+      "command": ".venv-py312/bin/python -m pytest tests/test_vision_models.py::TestVisionModels::test_lfm2_5_vl_text_only_generation_caching -q -s --heavy",
+      "status": "passed",
+      "result": "1 passed, 2 warnings in 5.76s",
+      "model_path": "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/LFM2.5-VL-1.6B-MLX-8bit",
+      "cache_evidence": {
+        "first_request": {
+          "cached_tokens": 0,
+          "total_prompt_tokens": 29,
+          "prefill_tokens_processed": 29
+        },
+        "second_request": {
+          "cached_tokens": 542,
+          "total_prompt_tokens": 565,
+          "prefill_tokens_processed": 23,
+          "lifetime_efficiency": "91.25%"
+        },
+        "response_fidelity": "Second response contained Silas."
+      }
+    }
+  ],
+  "decision": {
+    "status": "TEST_GATE_ONLY",
+    "runtime_changed": false,
+    "live_lm_studio_validation": "not-applicable-no-runtime-candidate",
+    "next_action": "Use this non-prompting LFM2.5 generated-token cache gate when evaluating future prompt-cache or text-only VLM caching changes. It does not itself promote a latency candidate."
+  }
+}
