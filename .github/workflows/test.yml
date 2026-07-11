@@ -1,0 +1,33 @@
+name: Test and deployment checks
+
+on:
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  hermetic-tests:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pip install --no-deps .
+      - run: python -m pytest -q
+
+  deployment-contract:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: bash -n scripts/install-internal.sh scripts/verify-internal-install.sh scripts/rollback-internal.sh scripts/uninstall-internal.sh
+      - run: plutil -lint install/ai.lmstudio.mlx-engine-adapter.plist.in
+      - run: python -m pip install --no-deps .
+      - run: mlx-engine-version

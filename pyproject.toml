@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlx-engine-internal"
+version = "0.1.0"
+description = "Apple MLX inference engine and host-local OpenAI adapter"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+
+[project.scripts]
+mlx-engine-adapter = "mlx_engine.openai_adapter:main"
+mlx-engine-version = "mlx_engine.version:main"
+
+[tool.setuptools.packages.find]
+include = ["mlx_engine*"]

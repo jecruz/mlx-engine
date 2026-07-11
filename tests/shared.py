@@ -1,4 +1,5 @@
 import base64
+import os
 from pathlib import Path
 import sys
 import subprocess
@@ -95,22 +96,40 @@ class CancellingReporter(RecordingReporter):
 
 
 def model_getter(model_name: str):
-    """Helper method to get a model, prompt user to download if not found"""
+    """Return a local model path without prompting during automated tests."""
 
     with open(Path("~/.lmstudio-home-pointer").expanduser().resolve(), "r") as f:
         lmstudio_home = Path(f.read().strip())
     model_path = lmstudio_home / "models" / model_name
 
-    # Check if model exists, if not prompt user to download
+    # Automated runs must never block on stdin or download large fixtures implicitly.
     if not model_path.exists():
         print(f"\nModel {model_name} not found at {model_path}")
+
+        if os.environ.get("PYTEST_CURRENT_TEST"):
+            import pytest
+
+            if os.environ.get("MLX_ENGINE_TEST_REQUIRE_MODELS") == "1":
+                pytest.fail(
+                    f"required model fixture is missing: {model_name} at {model_path}",
+                    pytrace=False,
+                )
+            if os.environ.get("MLX_ENGINE_TEST_DOWNLOAD_MODELS") != "1":
+                pytest.skip(f"model fixture is not installed: {model_name}")
 
         def greenify(text):
             return f"\033[92m{text}\033[0m"
 
-        response = input(
-            f"Would you like to download the model {greenify(model_name)}? (y/N): "
-        )
+        if os.environ.get("MLX_ENGINE_TEST_DOWNLOAD_MODELS") == "1":
+            response = "y"
+        elif sys.stdin.isatty():
+            response = input(
+                f"Would you like to download the model {greenify(model_name)}? (y/N): "
+            )
+        else:
+            raise RuntimeError(
+                f"model {model_name} is missing and stdin is not interactive"
+            )
         if response.lower() == "y":
             print(f"Downloading model with command: lms get {model_name}")
             subprocess.run(["lms", "get", model_name], check=True)

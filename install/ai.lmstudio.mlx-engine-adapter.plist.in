@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.lmstudio.mlx-engine-adapter</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@RUNTIME_DIR@/.venv/bin/mlx-engine-adapter</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>@PORT@</string>
+    <string>--model</string>
+    <string>@MODEL_PATH@</string>
+    <string>--served-model-name</string>
+    <string>@MODEL_NAME@</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+  <key>StandardOutPath</key>
+  <string>@LOG_DIR@/adapter.log</string>
+  <key>StandardErrorPath</key>
+  <string>@LOG_DIR@/adapter-error.log</string>
+</dict>
+</plist>

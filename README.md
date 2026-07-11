@@ -52,6 +52,51 @@ cd mlx-engine
 pip install -U -r requirements.txt
 ```
 
+### Internal Production Install
+
+The internal adapter installs outside the source checkout under
+`~/.local/share/mlx-engine` and runs through launchd. The installer records the
+source revision, keeps the previous release as a rollback snapshot, creates an
+isolated Python 3.11 environment, and writes
+`~/Library/LaunchAgents/ai.lmstudio.mlx-engine-adapter.plist`.
+
+```bash
+./scripts/install-internal.sh --model /absolute/path/to/model --served-model-name internal-model
+```
+
+Verify both the installed revision and live health endpoint:
+
+```bash
+./scripts/verify-internal-install.sh "$(git rev-parse HEAD)"
+```
+
+Update by rerunning `scripts/install-internal.sh` from the desired source
+revision. Roll back to a captured revision or uninstall completely:
+
+```bash
+./scripts/rollback-internal.sh REVISION
+./scripts/uninstall-internal.sh
+```
+
+The launchd service listens on `127.0.0.1:3180`; it is not exposed to the
+network. Logs are written under `~/Library/Logs/mlx-engine`.
+
+### Test Tiers
+
+The default suite is hermetic with respect to model downloads: tests that need
+an unavailable local model skip instead of prompting on stdin.
+
+```bash
+python -m pytest -q
+python -m pytest -q --require-models
+python -m pytest -q --heavy --require-models
+python -m pytest -q --download-models
+```
+
+`--require-models` is the internal model-matrix gate and fails when any required
+fixture is missing. `--download-models` is an explicit operator action and is
+never used by CI.
+
 ### Text Model Demo
 Download models with the `lms` CLI tool. The `lms` CLI documentation can be found here: https://lmstudio.ai/docs/cli
 Run the `demo.py` script with an MLX text generation model:

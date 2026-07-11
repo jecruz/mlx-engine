@@ -4,6 +4,14 @@
 
 ### Added
 
+- Add an internal macOS distribution path with Python package metadata,
+  idempotent install/update, launchd registration, revision verification,
+  rollback snapshots, and uninstall support.
+- Add macOS CI gates for the hermetic pytest suite and deployment contract.
+- Add explicit missing-model test controls so automated runs skip unavailable
+  model fixtures by default, fail under `--require-models`, and download only
+  under `--download-models`.
+
 - Add `scripts/vlm_restore_eval_split_report.py` to summarize
   `vlm_cache_restore_detail` split timing across repeated `shared_bench.py`
   reports with row-error/cache/output evidence.
@@ -49,6 +57,9 @@
   `LMSTUDIO_CPYTHON_RUNTIME_NAME`.
 
 ### Changed
+
+- Record current-manifest paired Gemma4 12B and Qwen3.6 27B promotion evidence;
+  Qwen3.6 passes while Gemma4 remains blocked by vMLX image-route row errors.
 
 - Clarify that terminal-packed final KV is backed by direct retained-workload
   evidence and still requires the LM Studio VLM preflight/live-validation gate
