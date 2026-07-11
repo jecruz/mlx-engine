@@ -13,6 +13,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -31,5 +33,5 @@ jobs:
         path: ~/.cache/pre-commit/
         key: pre-commit|${{ env.pythonLocation }}|${{ hashFiles('.pre-commit-config.yaml') }}
 
-    - name: Run pre-commit
-      run: pre-commit run --show-diff-on-failure --color=always --all-files
+    - name: Run pre-commit on pull request changes
+      run: pre-commit run --show-diff-on-failure --color=always --from-ref "origin/${{ github.base_ref }}" --to-ref HEAD

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mlx_engine import version as version_module
+import mlx_engine_version as version_module
 
 
 def test_runtime_version_reads_revision_from_installed_runtime(

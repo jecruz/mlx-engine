@@ -16,6 +16,7 @@ permissions:
 
 jobs:
   CLAAssistant:
+    if: github.repository == 'lmstudio-ai/mlx-engine'
     runs-on: ubuntu-latest
     steps:
       - name: "CLA Assistant"

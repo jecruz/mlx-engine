@@ -12,7 +12,10 @@ license = { text = "MIT" }
 
 [project.scripts]
 mlx-engine-adapter = "mlx_engine.openai_adapter:main"
-mlx-engine-version = "mlx_engine.version:main"
+mlx-engine-version = "mlx_engine_version:main"
+
+[tool.setuptools]
+py-modules = ["mlx_engine_version"]
 
 [tool.setuptools.packages.find]
 include = ["mlx_engine*"]
