@@ -102,9 +102,8 @@ def test_resolved_artifact_survives_long_spinner_tail(monkeypatch):
     """Artifact extraction must not depend on the retained output tail length."""
 
     def fake_run(*_args, **_kwargs):
-        output = (
-            "↓ To download: LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB\n"
-            + "\n".join("⠙ [▏                     ] 0.00%" for _ in range(250))
+        output = "↓ To download: LFM2.5 VL 1.6B 8BIT [MLX] - 2.09 GB\n" + "\n".join(
+            "⠙ [▏                     ] 0.00%" for _ in range(250)
         )
         raise subprocess.TimeoutExpired(
             cmd=["lms", "get"],

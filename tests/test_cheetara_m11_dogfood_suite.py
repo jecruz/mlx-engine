@@ -14,14 +14,14 @@ from typing import Any, Optional
 
 
 SCRIPT_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "scripts"
-    / "cheetara_m11_dogfood_suite.py"
+    Path(__file__).resolve().parent.parent / "scripts" / "cheetara_m11_dogfood_suite.py"
 )
 
 
 def _load_suite_module():
-    spec = importlib.util.spec_from_file_location("cheetara_m11_dogfood_suite", SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "cheetara_m11_dogfood_suite", SCRIPT_PATH
+    )
     if spec is None or spec.loader is None:  # pragma: no cover - import sanity
         raise RuntimeError("Failed to load cheetara_m11_dogfood_suite module spec")
     module = importlib.util.module_from_spec(spec)
@@ -259,7 +259,11 @@ def test_suite_runs_all_m11_tasks_and_records_dependencies() -> None:
     assert report["evidence_paths"]["report_json"] == str(output_path)
     assert output_path.exists()
     assert len(server.request_bodies) == 4
-    image_bodies = [body for body in server.request_bodies if isinstance(body["messages"][0]["content"], list)]
+    image_bodies = [
+        body
+        for body in server.request_bodies
+        if isinstance(body["messages"][0]["content"], list)
+    ]
     assert len(image_bodies) == 3
     assert any(
         any(part.get("type") == "image_url" for part in body["messages"][0]["content"])

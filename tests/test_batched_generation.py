@@ -23,9 +23,7 @@ def model_kit():
     """Load model once for all tests."""
     from mlx_engine.generate import load_model, unload
 
-    kit = load_model(
-        model_path=MODEL_PATH, max_kv_size=4096, max_seq_nums=4, seed=0
-    )
+    kit = load_model(model_path=MODEL_PATH, max_kv_size=4096, max_seq_nums=4, seed=0)
     yield kit
     unload(kit)
 

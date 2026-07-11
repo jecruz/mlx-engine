@@ -29,16 +29,12 @@ from typing import Any, Optional
 
 # Load the smoke script as a module without requiring it to be on PYTHONPATH.
 SCRIPT_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "scripts"
-    / "local_streaming_smoke.py"
+    Path(__file__).resolve().parent.parent / "scripts" / "local_streaming_smoke.py"
 )
 
 
 def _load_smoke_module():
-    spec = importlib.util.spec_from_file_location(
-        "local_streaming_smoke", SCRIPT_PATH
-    )
+    spec = importlib.util.spec_from_file_location("local_streaming_smoke", SCRIPT_PATH)
     if spec is None or spec.loader is None:  # pragma: no cover - import sanity
         raise RuntimeError("Failed to load local_streaming_smoke module spec")
     module = importlib.util.module_from_spec(spec)
@@ -96,31 +92,39 @@ class _FakeLocalAdapterHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - http.server convention
         if self.path == "/health":
-            self._send_json(self.config.get("health_status", 200), {
-                "status": self.config.get("health_status_field", "ok"),
-                "served_model": self.config.get("health_served_model", "cheetara-m9"),
-                "model_path": "/tmp/fake-local-model",
-                "model_type": "lfm2_vl",
-                "supports_vision": True,
-                "started_at": 1700000000,
-                "now": 1700000010,
-            })
+            self._send_json(
+                self.config.get("health_status", 200),
+                {
+                    "status": self.config.get("health_status_field", "ok"),
+                    "served_model": self.config.get(
+                        "health_served_model", "cheetara-m9"
+                    ),
+                    "model_path": "/tmp/fake-local-model",
+                    "model_type": "lfm2_vl",
+                    "supports_vision": True,
+                    "started_at": 1700000000,
+                    "now": 1700000010,
+                },
+            )
             return
         if self.path == "/v1/models":
             model_ids = self.config.get("models_returned_ids", ["cheetara-m9"])
-            self._send_json(self.config.get("models_status", 200), {
-                "object": "list",
-                "data": [
-                    {
-                        "id": model_id,
-                        "object": "model",
-                        "created": 1700000000,
-                        "owned_by": "mlx-engine",
-                        "supports_vision": True,
-                    }
-                    for model_id in model_ids
-                ],
-            })
+            self._send_json(
+                self.config.get("models_status", 200),
+                {
+                    "object": "list",
+                    "data": [
+                        {
+                            "id": model_id,
+                            "object": "model",
+                            "created": 1700000000,
+                            "owned_by": "mlx-engine",
+                            "supports_vision": True,
+                        }
+                        for model_id in model_ids
+                    ],
+                },
+            )
             return
         self._send_json(404, {"error": {"message": "not found"}})
 
@@ -139,31 +143,41 @@ class _FakeLocalAdapterHandler(BaseHTTPRequestHandler):
     def _handle_chat(self) -> None:
         status = self.config.get("chat_status", 200)
         if status != 200:
-            self._send_json(status, {"error": {"message": f"fake chat status {status}"}})
+            self._send_json(
+                status, {"error": {"message": f"fake chat status {status}"}}
+            )
             return
         chunks = self.config.get("chat_chunks") or ["ok"]
         rendered: list[str] = []
         for chunk in chunks:
-            rendered.append(json.dumps({
-                "id": "chatcmpl-local-fake",
-                "object": "chat.completion.chunk",
-                "created": 1700000000,
-                "model": "cheetara-m9",
-                "choices": [
+            rendered.append(
+                json.dumps(
                     {
-                        "index": 0,
-                        "delta": {"role": "assistant", "content": chunk},
-                        "finish_reason": None,
+                        "id": "chatcmpl-local-fake",
+                        "object": "chat.completion.chunk",
+                        "created": 1700000000,
+                        "model": "cheetara-m9",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"role": "assistant", "content": chunk},
+                                "finish_reason": None,
+                            }
+                        ],
                     }
-                ],
-            }))
-        rendered.append(json.dumps({
-            "id": "chatcmpl-local-fake",
-            "object": "chat.completion.chunk",
-            "created": 1700000000,
-            "model": "cheetara-m9",
-            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-        }))
+                )
+            )
+        rendered.append(
+            json.dumps(
+                {
+                    "id": "chatcmpl-local-fake",
+                    "object": "chat.completion.chunk",
+                    "created": 1700000000,
+                    "model": "cheetara-m9",
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                }
+            )
+        )
         body = "".join(f"data: {line}\n\n" for line in rendered) + "data: [DONE]\n\n"
         self._send_raw(200, body.encode("utf-8"), "text/event-stream")
 
@@ -183,9 +197,7 @@ class _FakeLocalAdapterHandler(BaseHTTPRequestHandler):
         for event_type, payload in events:
             body_pieces.append(f"event: {event_type}\ndata: {json.dumps(payload)}\n\n")
         body_pieces.append("data: [DONE]\n\n")
-        self._send_raw(
-            200, "".join(body_pieces).encode("utf-8"), "text/event-stream"
-        )
+        self._send_raw(200, "".join(body_pieces).encode("utf-8"), "text/event-stream")
 
     def _default_happy_responses_events(self) -> list[tuple[str, dict[str, Any]]]:
         """Canonical happy-path Responses event sequence with three text deltas."""
@@ -436,13 +448,23 @@ def test_chat_fails_when_done_marker_missing() -> None:
                 return
             length = int(self.headers.get("content-length", "0"))
             self.rfile.read(length) if length else b""
-            body_text = "data: " + json.dumps({
-                "id": "chatcmpl-fake",
-                "object": "chat.completion.chunk",
-                "choices": [
-                    {"index": 0, "delta": {"content": "ok"}, "finish_reason": None}
-                ],
-            }) + "\n\n"
+            body_text = (
+                "data: "
+                + json.dumps(
+                    {
+                        "id": "chatcmpl-fake",
+                        "object": "chat.completion.chunk",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": "ok"},
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                )
+                + "\n\n"
+            )
             self._send_raw(200, body_text.encode("utf-8"), "text/event-stream")
 
         _FakeLocalAdapterHandler.do_POST = _patched  # type: ignore[method-assign]
@@ -485,11 +507,15 @@ def test_responses_fails_when_done_marker_missing() -> None:
             self.rfile.read(length) if length else b""
             body_text = (
                 "event: response.created\n"
-                "data: " + json.dumps({
-                    "type": "response.created",
-                    "sequence_number": 0,
-                    "response": {"id": "resp_x", "object": "response"},
-                }) + "\n\n"
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "response.created",
+                        "sequence_number": 0,
+                        "response": {"id": "resp_x", "object": "response"},
+                    }
+                )
+                + "\n\n"
             )
             self._send_raw(200, body_text.encode("utf-8"), "text/event-stream")
 
@@ -582,7 +608,9 @@ def test_responses_fails_when_typed_event_suffix_missing() -> None:
             },
         ),
     ]
-    with _FakeLocalAdapterServer({"responses_typed_events": truncated_events}) as server:
+    with _FakeLocalAdapterServer(
+        {"responses_typed_events": truncated_events}
+    ) as server:
         result = SMOKE._run_responses(server.base_url, "cheetara-m9")
     assert result["status"] == "fail"
     assert "suffix" in result["details"]["reason"].lower()

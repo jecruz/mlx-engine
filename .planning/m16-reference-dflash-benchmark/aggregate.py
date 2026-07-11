@@ -6,19 +6,20 @@ Robust to the broken baseline-N-...json files (which had an awk extraction
 bug). We re-parse the .log files since they contain the authoritative
 assistant output and the CLI metrics.
 """
+
 import json
 import re
 import sys
 from pathlib import Path
 
-LOG_DIR = Path("/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m16-reference-dflash-benchmark")
+LOG_DIR = Path(
+    "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/.planning/m16-reference-dflash-benchmark"
+)
 
 
 def parse_log(path):
     content = path.read_text()
-    assistant_m = re.search(
-        r"<\|im_start\|>assistant\n(.*?)={10,}", content, re.DOTALL
-    )
+    assistant_m = re.search(r"<\|im_start\|>assistant\n(.*?)={10,}", content, re.DOTALL)
     output_text = ""
     if assistant_m:
         body = assistant_m.group(1)
@@ -69,9 +70,11 @@ def main():
             text = jpath.read_text()
             pm = re.search(r'"prompt":"([^"]*)"', text)
             wm = re.search(r'"wall_time_s":([\d.]+)', text)
-            return (pm.group(1) if pm else None,
-                    float(wm.group(1)) if wm else None,
-                    None)
+            return (
+                pm.group(1) if pm else None,
+                float(wm.group(1)) if wm else None,
+                None,
+            )
 
     results = {"baseline": {}, "dflash": {}}
     for path in base_logs:
@@ -163,7 +166,8 @@ def main():
                 1: "ok",
                 2: "4",
                 3: "2, 3, 5, 7, 11",
-            }[p["prompt_id"]].lower() in (p["dflash"]["output_text"] or "").lower()
+            }[p["prompt_id"]].lower()
+            in (p["dflash"]["output_text"] or "").lower()
             for p in per_prompt
         ),
         "no_visible_thinking_leak": all(
@@ -174,15 +178,9 @@ def main():
             not re.search(r"(.)\1{15,}", (p["dflash"]["output_text"] or ""))
             for p in per_prompt
         ),
-        "dflash_wins_prompts": sum(
-            1 for p in per_prompt if p["delta_pct"] > 5
-        ),
-        "dflash_loses_prompts": sum(
-            1 for p in per_prompt if p["delta_pct"] < -5
-        ),
-        "dflash_mixed_prompts": sum(
-            1 for p in per_prompt if abs(p["delta_pct"]) <= 5
-        ),
+        "dflash_wins_prompts": sum(1 for p in per_prompt if p["delta_pct"] > 5),
+        "dflash_loses_prompts": sum(1 for p in per_prompt if p["delta_pct"] < -5),
+        "dflash_mixed_prompts": sum(1 for p in per_prompt if abs(p["delta_pct"]) <= 5),
     }
 
     # Final decision
@@ -191,19 +189,31 @@ def main():
         and decision["no_visible_thinking_leak"]
         and decision["no_repetition_loops"]
     ):
-        if decision["dflash_wins_prompts"] >= 2 and decision["dflash_loses_prompts"] == 0:
-            decision_summary = "reference DFlash wins locally (clean throughput win, no quality loss)"
-        elif decision["dflash_wins_prompts"] >= 1 and decision["dflash_loses_prompts"] >= 1:
+        if (
+            decision["dflash_wins_prompts"] >= 2
+            and decision["dflash_loses_prompts"] == 0
+        ):
+            decision_summary = (
+                "reference DFlash wins locally (clean throughput win, no quality loss)"
+            )
+        elif (
+            decision["dflash_wins_prompts"] >= 1
+            and decision["dflash_loses_prompts"] >= 1
+        ):
             decision_summary = (
                 "reference DFlash mixed locally (quality preserved; throughput win on "
                 "longer outputs but overhead-dominated loss on short outputs)"
             )
         elif decision["dflash_loses_prompts"] >= 2:
-            decision_summary = "reference DFlash fails locally (consistent throughput regression)"
+            decision_summary = (
+                "reference DFlash fails locally (consistent throughput regression)"
+            )
         else:
             decision_summary = "reference DFlash neutral locally"
     else:
-        decision_summary = "reference DFlash fails locally (quality regression detected)"
+        decision_summary = (
+            "reference DFlash fails locally (quality regression detected)"
+        )
 
     summary = {
         "timestamp_utc": ts,

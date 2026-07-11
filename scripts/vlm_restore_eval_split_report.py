@@ -132,7 +132,9 @@ def _range_summary(samples: list[dict[str, Any]], key: str) -> dict[str, float |
     }
 
 
-def _sum_numeric_maps(samples: list[dict[str, Any]], key: str) -> dict[str, int | float]:
+def _sum_numeric_maps(
+    samples: list[dict[str, Any]], key: str
+) -> dict[str, int | float]:
     """Return summed numeric values for dict-like sample fields."""
     totals: dict[str, int | float] = {}
     for sample in samples:
@@ -173,7 +175,9 @@ def build_report(
         )
 
     barrier_shares = _numeric_values(samples, "barrier_share_of_eval_ms")
-    materialized_bytes_by_kind = _sum_numeric_maps(samples, "materialized_bytes_by_kind")
+    materialized_bytes_by_kind = _sum_numeric_maps(
+        samples, "materialized_bytes_by_kind"
+    )
     return {
         "reports": [str(path) for path in report_paths],
         "sample_count": len(samples),
@@ -198,9 +202,7 @@ def build_report(
             "dominant_materialized_kind": _dominant_numeric_map_key(
                 materialized_bytes_by_kind,
             ),
-            "row_errors": sum(
-                sample["row_audit"]["row_errors"] for sample in samples
-            ),
+            "row_errors": sum(sample["row_audit"]["row_errors"] for sample in samples),
         },
         "samples": samples,
     }

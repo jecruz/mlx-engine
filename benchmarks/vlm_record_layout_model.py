@@ -92,9 +92,8 @@ def snapshot_packed_replace_final_layout(
     write_units = 0
     for chunk_index in range(chunk_count):
         is_snapshot_end = (
-            (chunk_index + 1) % chunks_per_snapshot == 0
-            or chunk_index == chunk_count - 1
-        )
+            chunk_index + 1
+        ) % chunks_per_snapshot == 0 or chunk_index == chunk_count - 1
         if is_snapshot_end:
             write_units += chunk_index + 1
         elif chunk_index == 0:

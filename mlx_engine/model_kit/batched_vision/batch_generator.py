@@ -63,6 +63,7 @@ def _vlm_final_chunk_state_align_enabled() -> bool:
 
 DEFERRED_CLEAR_DELAY_STEPS = 8
 
+
 class PromptCacheSaveCallback(Protocol):
     """Receives prompt-cache snapshots that cross reusable prefix chunks."""
 
@@ -408,9 +409,7 @@ class GenerationBatch:
             else [[] for _ in uids]
         )
         request_ids_by_row = (
-            list(request_ids)
-            if request_ids is not None
-            else [None] * len(uids)
+            list(request_ids) if request_ids is not None else [None] * len(uids)
         )
         self._rows = [
             _GenerationRow(
@@ -729,8 +728,7 @@ class GenerationBatch:
             next_chunk_end = (
                 chunks[next_chunk_idx].end
                 if next_chunk_idx < len(chunks)
-                else (chunks[-1].end if chunks else 0)
-                + save_state.prefix_chunk_size
+                else (chunks[-1].end if chunks else 0) + save_state.prefix_chunk_size
             )
             if current_len < next_chunk_end:
                 return
@@ -975,7 +973,8 @@ class _PromptPrefill:
             # Opaque state caches are restorable only at exact saved boundaries.
             max_reusable_prefix_len = self._processed_prefix_len + remaining_tokens - 1
             target_prefix_len = (
-                max_reusable_prefix_len // self._prefix_cache_save_state.prefix_chunk_size
+                max_reusable_prefix_len
+                // self._prefix_cache_save_state.prefix_chunk_size
             ) * self._prefix_cache_save_state.prefix_chunk_size
             if target_prefix_len > self._processed_prefix_len:
                 return target_prefix_len - self._processed_prefix_len

@@ -84,14 +84,22 @@ def build_request_specs(args: argparse.Namespace) -> list[HarnessRequest]:
         HarnessRequest(
             request_id="concurrent-a",
             prompt=args.prompt_a,
-            expected_substring=None if args.skip_output_substring_check else args.expect_a,
-            forbidden_substring=None if args.skip_output_substring_check else args.forbid_a,
+            expected_substring=None
+            if args.skip_output_substring_check
+            else args.expect_a,
+            forbidden_substring=None
+            if args.skip_output_substring_check
+            else args.forbid_a,
         ),
         HarnessRequest(
             request_id="concurrent-b",
             prompt=args.prompt_b,
-            expected_substring=None if args.skip_output_substring_check else args.expect_b,
-            forbidden_substring=None if args.skip_output_substring_check else args.forbid_b,
+            expected_substring=None
+            if args.skip_output_substring_check
+            else args.expect_b,
+            forbidden_substring=None
+            if args.skip_output_substring_check
+            else args.forbid_b,
         ),
     ]
 

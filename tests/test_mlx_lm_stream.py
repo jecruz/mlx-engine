@@ -36,7 +36,9 @@ def test_prepare_stream_defaults_to_thread_local(monkeypatch):
     monkeypatch.delenv("MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM", raising=False)
     monkeypatch.setattr(mlx_lm_stream.threading, "current_thread", lambda: fake_thread)
     monkeypatch.setattr(mlx_lm_stream.mx, "default_device", lambda: fake_device)
-    monkeypatch.setattr(mlx_lm_stream.mx, "default_stream", lambda _device: default_stream)
+    monkeypatch.setattr(
+        mlx_lm_stream.mx, "default_stream", lambda _device: default_stream
+    )
     monkeypatch.setattr(
         mlx_lm_stream.mx,
         "new_thread_local_stream",
@@ -79,7 +81,9 @@ def test_prepare_stream_uses_toggle_file_when_env_is_unset(monkeypatch, tmp_path
         lambda: SimpleNamespace(name="worker-a", ident=101),
     )
     monkeypatch.setattr(mlx_lm_stream.mx, "default_device", lambda: fake_device)
-    monkeypatch.setattr(mlx_lm_stream.mx, "default_stream", lambda _device: default_stream)
+    monkeypatch.setattr(
+        mlx_lm_stream.mx, "default_stream", lambda _device: default_stream
+    )
     monkeypatch.setattr(
         mlx_lm_stream.mx,
         "new_thread_unsafe_stream",
@@ -89,7 +93,9 @@ def test_prepare_stream_uses_toggle_file_when_env_is_unset(monkeypatch, tmp_path
     monkeypatch.setattr(
         mlx_lm_stream.mx,
         "new_thread_local_stream",
-        lambda _device: (_ for _ in ()).throw(AssertionError("unexpected local stream")),
+        lambda _device: (_ for _ in ()).throw(
+            AssertionError("unexpected local stream")
+        ),
         raising=False,
     )
 
@@ -100,7 +106,9 @@ def test_prepare_stream_uses_toggle_file_when_env_is_unset(monkeypatch, tmp_path
     assert mlx_lm_stream.mlx_lm_generate.generation_stream is unsafe_stream
 
 
-def test_describe_stream_configuration_reports_toggle_and_runtime(monkeypatch, tmp_path):
+def test_describe_stream_configuration_reports_toggle_and_runtime(
+    monkeypatch, tmp_path
+):
     """The stream description should expose the live selection inputs."""
     from mlx_engine.utils import mlx_lm_stream
 
@@ -141,7 +149,9 @@ def test_prepare_stream_uses_shared_thread_unsafe_stream_when_enabled(monkeypatc
     monkeypatch.setenv("MLX_ENGINE_EXPERIMENTAL_THREAD_UNSAFE_STREAM", "1")
     monkeypatch.setattr(mlx_lm_stream, "_global_thread_unsafe_streams", {})
     monkeypatch.setattr(mlx_lm_stream.mx, "default_device", lambda: fake_device)
-    monkeypatch.setattr(mlx_lm_stream.mx, "default_stream", lambda _device: default_stream)
+    monkeypatch.setattr(
+        mlx_lm_stream.mx, "default_stream", lambda _device: default_stream
+    )
     monkeypatch.setattr(
         mlx_lm_stream.mx,
         "new_thread_unsafe_stream",
@@ -151,7 +161,9 @@ def test_prepare_stream_uses_shared_thread_unsafe_stream_when_enabled(monkeypatc
     monkeypatch.setattr(
         mlx_lm_stream.mx,
         "new_thread_local_stream",
-        lambda _device: (_ for _ in ()).throw(AssertionError("unexpected local stream")),
+        lambda _device: (_ for _ in ()).throw(
+            AssertionError("unexpected local stream")
+        ),
         raising=False,
     )
 
@@ -195,7 +207,9 @@ def test_prepare_stream_falls_back_when_runtime_lacks_thread_unsafe_api(monkeypa
         lambda: SimpleNamespace(name="worker-a", ident=101),
     )
     monkeypatch.setattr(mlx_lm_stream.mx, "default_device", lambda: fake_device)
-    monkeypatch.setattr(mlx_lm_stream.mx, "default_stream", lambda _device: default_stream)
+    monkeypatch.setattr(
+        mlx_lm_stream.mx, "default_stream", lambda _device: default_stream
+    )
     monkeypatch.setattr(
         mlx_lm_stream.mx,
         "new_thread_local_stream",
@@ -226,17 +240,23 @@ def test_prepare_stream_keeps_default_stream_for_distributed_paths(monkeypatch):
         lambda: SimpleNamespace(name="worker-a", ident=101),
     )
     monkeypatch.setattr(mlx_lm_stream.mx, "default_device", lambda: fake_device)
-    monkeypatch.setattr(mlx_lm_stream.mx, "default_stream", lambda _device: default_stream)
+    monkeypatch.setattr(
+        mlx_lm_stream.mx, "default_stream", lambda _device: default_stream
+    )
     monkeypatch.setattr(
         mlx_lm_stream.mx,
         "new_thread_unsafe_stream",
-        lambda _device: (_ for _ in ()).throw(AssertionError("unexpected unsafe stream")),
+        lambda _device: (_ for _ in ()).throw(
+            AssertionError("unexpected unsafe stream")
+        ),
         raising=False,
     )
     monkeypatch.setattr(
         mlx_lm_stream.mx,
         "new_thread_local_stream",
-        lambda _device: (_ for _ in ()).throw(AssertionError("unexpected local stream")),
+        lambda _device: (_ for _ in ()).throw(
+            AssertionError("unexpected local stream")
+        ),
         raising=False,
     )
 

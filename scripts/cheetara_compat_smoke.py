@@ -175,7 +175,10 @@ def _stream_sse(
     """
     url = f"{base_url.rstrip('/')}{path}"
     encoded = json.dumps(payload).encode("utf-8")
-    request_headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+    request_headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
     request_headers.update(headers or {})
     request = urllib.request.Request(
         url, data=encoded, method="POST", headers=request_headers
@@ -351,9 +354,7 @@ def _run_health(base_url: str, model: str) -> dict[str, Any]:
             "details": {
                 "http_status": status,
                 "elapsed_s": elapsed_s,
-                "reason": (
-                    f"/health returned status={health_status!r}; expected 'ok'"
-                ),
+                "reason": (f"/health returned status={health_status!r}; expected 'ok'"),
                 "body": body,
             },
         }
@@ -370,13 +371,9 @@ def _run_health(base_url: str, model: str) -> dict[str, Any]:
         models_data = (models_body or {}).get("data") or []
         if isinstance(models_data, list):
             model_ids = [
-                entry.get("id")
-                for entry in models_data
-                if isinstance(entry, dict)
+                entry.get("id") for entry in models_data if isinstance(entry, dict)
             ]
-            consistency_check["models_requested_model_present"] = (
-                model in model_ids
-            )
+            consistency_check["models_requested_model_present"] = model in model_ids
             consistency_check["models_consistent"] = (
                 isinstance(served_model, str)
                 and served_model in model_ids
@@ -389,16 +386,16 @@ def _run_health(base_url: str, model: str) -> dict[str, Any]:
             "details": {
                 "http_status": status,
                 "elapsed_s": elapsed_s,
-                "reason": (
-                    "served_model mismatch between /health and /v1/models"
-                ),
+                "reason": ("served_model mismatch between /health and /v1/models"),
                 "served_model": served_model,
                 "model_path": body.get("model_path"),
                 "model_type": body.get("model_type"),
                 "supports_vision": body.get("supports_vision"),
                 "started_at": started_at,
                 "now": now,
-                "uptime_s": (now - started_at) if isinstance(now, int) and isinstance(started_at, int) else None,
+                "uptime_s": (now - started_at)
+                if isinstance(now, int) and isinstance(started_at, int)
+                else None,
                 "consistency_check": consistency_check,
                 "headers": dict(headers),
                 "body": body,
@@ -416,7 +413,9 @@ def _run_health(base_url: str, model: str) -> dict[str, Any]:
             "supports_vision": body.get("supports_vision"),
             "started_at": started_at,
             "now": now,
-            "uptime_s": (now - started_at) if isinstance(now, int) and isinstance(started_at, int) else None,
+            "uptime_s": (now - started_at)
+            if isinstance(now, int) and isinstance(started_at, int)
+            else None,
             "consistency_check": consistency_check,
             "headers": dict(headers),
             "body": body,
@@ -817,7 +816,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument(
         "--image-path",
         type=Path,
-        default=Path("/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/demo-data/toucan.jpeg"),
+        default=Path(
+            "/Users/jeffreycruz/Development/LLM_INFERENCE/mlx-engine/demo-data/toucan.jpeg"
+        ),
         help="Image to use for the image-attachment smoke (default: demo-data/toucan.jpeg)",
     )
     parser.add_argument(

@@ -51,8 +51,11 @@ class DFlashSnapshotError(ValueError):
     def __init__(self, model_path: Path, blockers: list[str]):
         self.model_path = model_path
         self.blockers = tuple(blockers)
-        message = "DFlash snapshot invalid at " + str(model_path) + ": " + "; ".join(
-            self.blockers
+        message = (
+            "DFlash snapshot invalid at "
+            + str(model_path)
+            + ": "
+            + "; ".join(self.blockers)
         )
         super().__init__(message)
 
@@ -79,7 +82,9 @@ def _parse_json_file(path: Path, blockers: list[str]) -> dict[str, Any]:
     return data
 
 
-def _collect_safetensors_paths(model_path: Path, blockers: list[str]) -> tuple[Path, ...]:
+def _collect_safetensors_paths(
+    model_path: Path, blockers: list[str]
+) -> tuple[Path, ...]:
     if not model_path.exists():
         blockers.append(f"DFlash snapshot path does not exist: {model_path}")
         return ()
@@ -121,15 +126,21 @@ def _collect_tensor_header(
                     for name in names
                 )
         except Exception as exc:  # pragma: no cover - defensive snapshot probe
-            blockers.append(f"Failed to read safetensors header {safetensors_path}: {exc}")
+            blockers.append(
+                f"Failed to read safetensors header {safetensors_path}: {exc}"
+            )
 
     return tuple(safetensors_formats), tuple(tensor_names), tuple(tensor_dtypes)
 
 
-def _parse_config_fields(config: dict[str, Any], blockers: list[str]) -> tuple[Any, ...]:
+def _parse_config_fields(
+    config: dict[str, Any], blockers: list[str]
+) -> tuple[Any, ...]:
     architectures = config.get("architectures")
-    if not isinstance(architectures, list) or not architectures or not all(
-        isinstance(item, str) for item in architectures
+    if (
+        not isinstance(architectures, list)
+        or not architectures
+        or not all(isinstance(item, str) for item in architectures)
     ):
         blockers.append("DFlash config.architectures must be a non-empty string list")
         architectures_tuple: tuple[str, ...] = ()
@@ -244,15 +255,17 @@ def load_dflash_snapshot_profile(model_path: Path) -> DFlashSnapshotProfile:
             f"{DFLASH_EXPECTED_SAFETENSORS_FORMAT!r}"
         )
 
-    safetensors_formats = tuple(sorted({format_name for format_name in safetensors_formats if format_name}))
-    tensor_dtypes = tuple(sorted({tensor_dtype for tensor_dtype in tensor_dtypes if tensor_dtype}))
+    safetensors_formats = tuple(
+        sorted({format_name for format_name in safetensors_formats if format_name})
+    )
+    tensor_dtypes = tuple(
+        sorted({tensor_dtype for tensor_dtype in tensor_dtypes if tensor_dtype})
+    )
 
     if tensor_dtypes and any(
         tensor_dtype != DFLASH_EXPECTED_DTYPE for tensor_dtype in tensor_dtypes
     ):
-        blockers.append(
-            f"DFlash weights must all use {DFLASH_EXPECTED_DTYPE!r} dtype"
-        )
+        blockers.append(f"DFlash weights must all use {DFLASH_EXPECTED_DTYPE!r} dtype")
 
     layer_indices = sorted(
         {

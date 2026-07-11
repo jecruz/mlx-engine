@@ -142,7 +142,12 @@ def branch_summary(
         ["rev-list", "--left-right", "--count", f"{upstream_main}...{branch}"]
     )
     commits = git_runner(
-        ["log", "--oneline", f"--max-count={recent_commit_limit}", f"{upstream_main}..{branch}"]
+        [
+            "log",
+            "--oneline",
+            f"--max-count={recent_commit_limit}",
+            f"{upstream_main}..{branch}",
+        ]
     )
     diffstat = git_runner(["diff", "--stat", f"{upstream_main}..{branch}"])
     names = git_runner(["diff", "--name-status", f"{upstream_main}..{branch}"])

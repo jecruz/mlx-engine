@@ -124,7 +124,9 @@ def _patched_vlm_qwen3_5_get_rope_index(
         attention_mask=active_attention_mask,
     )
 
-    inactive_position = mx.ones((3, 1, input_ids.shape[1]), dtype=active_position_ids.dtype)
+    inactive_position = mx.ones(
+        (3, 1, input_ids.shape[1]), dtype=active_position_ids.dtype
+    )
     position_rows = []
     delta_rows = []
     active_row = 0
@@ -350,9 +352,7 @@ def _patched_vlm_qwen3_5_model_call(
                         current_cache.append(None)
                     else:
                         current_cache.append(
-                            vlm_qwen3_5_language._extract_row_cache(
-                                cache_entry, row
-                            )
+                            vlm_qwen3_5_language._extract_row_cache(cache_entry, row)
                         )
 
                 if pad == h.shape[1]:
@@ -428,10 +428,7 @@ class PatchedDecoderLayer(DecoderLayer):
             mrope_section = rope_params.get("mrope_section")
             if mrope_section is not None:
                 self._mrope = Qwen3_5RotaryEmbedding(
-                    int(
-                        self.self_attn.head_dim
-                        * rope_params["partial_rotary_factor"]
-                    ),
+                    int(self.self_attn.head_dim * rope_params["partial_rotary_factor"]),
                     max_position_embeddings=args.max_position_embeddings,
                     base=rope_params["rope_theta"],
                     mrope_section=mrope_section,
@@ -706,7 +703,11 @@ def _qwen3_5_dflash_arrays_cache_rollback(
     # pre-verify state from the gdn_sink tuple.
     if accepted < 0:
         cache_list[1] = initial_state
-        if conv_input.ndim == 3 and conv_window > 0 and conv_input.shape[1] >= conv_window:
+        if (
+            conv_input.ndim == 3
+            and conv_window > 0
+            and conv_input.shape[1] >= conv_window
+        ):
             cache_list[0] = mx.contiguous(conv_input[:, :conv_window, :])
         return True
 
@@ -725,12 +726,20 @@ def _qwen3_5_dflash_arrays_cache_rollback(
     if live_state is None or not hasattr(live_state, "shape"):
         # Defensive: nothing to restore against.
         cache_list[1] = initial_state
-        if conv_input.ndim == 3 and conv_window > 0 and conv_input.shape[1] >= conv_window:
+        if (
+            conv_input.ndim == 3
+            and conv_window > 0
+            and conv_input.shape[1] >= conv_window
+        ):
             cache_list[0] = mx.contiguous(conv_input[:, :conv_window, :])
         return True
 
     if live_conv is None or not hasattr(live_conv, "shape"):
-        if conv_input.ndim == 3 and conv_window > 0 and conv_input.shape[1] >= conv_window:
+        if (
+            conv_input.ndim == 3
+            and conv_window > 0
+            and conv_input.shape[1] >= conv_window
+        ):
             live_conv = mx.zeros(
                 (conv_input.shape[0], conv_window, conv_input.shape[2]),
                 dtype=conv_input.dtype,
@@ -809,16 +818,9 @@ def _qwen3_5_dflash_rollback_rewind_layer(
 
     keys = getattr(cache_layer, "keys", None)
     values = getattr(cache_layer, "values", None)
-    if (
-        keys is not None
-        and values is not None
-        and hasattr(keys, "shape")
-        and keep >= 0
-    ):
+    if keys is not None and values is not None and hasattr(keys, "shape") and keep >= 0:
         seq_axis = -2 if keys.ndim >= 3 else 1
-        current_offset = (
-            original_offset if isinstance(original_offset, int) else None
-        )
+        current_offset = original_offset if isinstance(original_offset, int) else None
         if current_offset is not None and current_offset > keep:
             if seq_axis == -2:
                 cache_layer.keys = keys[..., :keep, :]
@@ -838,16 +840,13 @@ def _qwen3_5_dflash_rollback_rewind_layer(
     if lengths is not None and hasattr(lengths, "shape") and keep >= 0:
         try:
             broadcast_shape = tuple(
-                1 if axis == 0 else lengths.shape[axis]
-                for axis in range(lengths.ndim)
+                1 if axis == 0 else lengths.shape[axis] for axis in range(lengths.ndim)
             )
             floor = mx.full(broadcast_shape, keep, dtype=lengths.dtype)
             cache_layer.lengths = mx.minimum(lengths, floor)
         except Exception:
             try:
-                cache_layer.lengths = mx.full(
-                    lengths.shape, keep, dtype=lengths.dtype
-                )
+                cache_layer.lengths = mx.full(lengths.shape, keep, dtype=lengths.dtype)
             except Exception:
                 pass
 
@@ -887,13 +886,14 @@ def _qwen3_5_dflash_rollback(
                 cache_layer, layer_gdn_state, accepted, block_size
             )
             continue
-        base_history_len = _qwen3_5_dflash_rollback_base_history_len(
-            layer_gdn_state
-        )
+        base_history_len = _qwen3_5_dflash_rollback_base_history_len(layer_gdn_state)
         keep = base_history_len + keep_extra
         _qwen3_5_dflash_rollback_rewind_layer(
-            cache_layer, keep, gdn_state=layer_gdn_state,
-            accepted=accepted, block_size=block_size,
+            cache_layer,
+            keep,
+            gdn_state=layer_gdn_state,
+            accepted=accepted,
+            block_size=block_size,
         )
 
 
@@ -1027,7 +1027,9 @@ class PatchedQwen3_5TextModel(Qwen3_5TextModel):
         ``Qwen3_5TextModel.__call__``.
         """
         capture_requested = (
-            capture_layer_ids is not None or hidden_sink is not None or gdn_sink is not None
+            capture_layer_ids is not None
+            or hidden_sink is not None
+            or gdn_sink is not None
         )
         if capture_requested and hidden_sink is None:
             hidden_sink = []
@@ -1051,7 +1053,11 @@ class PatchedQwen3_5TextModel(Qwen3_5TextModel):
             hidden_states = layer(
                 hidden_states, mask=mask, cache=layer_cache, position_ids=position_ids
             )
-            if hidden_sink is not None and capture_layer_ids is not None and i in capture_set:
+            if (
+                hidden_sink is not None
+                and capture_layer_ids is not None
+                and i in capture_set
+            ):
                 hidden_sink.append(hidden_states)
 
         return self.norm(hidden_states)

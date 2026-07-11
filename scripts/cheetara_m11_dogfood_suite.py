@@ -67,7 +67,9 @@ class TaskSpec:
                 fields.append(field)
         return tuple(fields)
 
-    def missing_prior_output_keys(self, prior_outputs: dict[str, str]) -> tuple[str, ...]:
+    def missing_prior_output_keys(
+        self, prior_outputs: dict[str, str]
+    ) -> tuple[str, ...]:
         return tuple(
             key for key in self.required_prior_output_keys() if key not in prior_outputs
         )
@@ -167,7 +169,10 @@ def _stream_sse(
 ) -> dict[str, Any]:
     url = f"{base_url.rstrip('/')}{path}"
     encoded = json.dumps(payload).encode("utf-8")
-    request_headers = {"Content-Type": "application/json", "Accept": "text/event-stream"}
+    request_headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
     request_headers.update(headers or {})
     request = urllib.request.Request(
         url, data=encoded, method="POST", headers=request_headers
@@ -555,9 +560,7 @@ def _build_skipped_task_result(
         "content_text": "",
         "raw_excerpt": "",
         "status": "skipped",
-        "reason": (
-            "missing prerequisite outputs: " + ", ".join(missing_prior_outputs)
-        ),
+        "reason": ("missing prerequisite outputs: " + ", ".join(missing_prior_outputs)),
     }
 
 

@@ -8,7 +8,9 @@ import sys
 from pathlib import Path
 
 SCRIPT_PATH = (
-    Path(__file__).resolve().parent.parent / "scripts" / "upstream_candidate_scan_diff.py"
+    Path(__file__).resolve().parent.parent
+    / "scripts"
+    / "upstream_candidate_scan_diff.py"
 )
 
 
@@ -77,8 +79,13 @@ def test_render_scan_diff_includes_branch_status_and_counts():
 
     assert "# Scan Diff" in markdown
     assert "- Baseline head: `aaa1111`" in markdown
-    assert "| `upstream/old` | `old0001` | `old0002` | changed | small | 1 | 2 | 0 | 1 |" in markdown
-    assert "| `upstream/new` | `` | `new0001` | new | small | 0 | 1 | 0 | 0 |" in markdown
+    assert (
+        "| `upstream/old` | `old0001` | `old0002` | changed | small | 1 | 2 | 0 | 1 |"
+        in markdown
+    )
+    assert (
+        "| `upstream/new` | `` | `new0001` | new | small | 0 | 1 | 0 | 0 |" in markdown
+    )
 
 
 def test_main_writes_markdown(tmp_path, monkeypatch):

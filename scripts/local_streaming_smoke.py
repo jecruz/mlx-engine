@@ -293,9 +293,7 @@ def _run_health(base_url: str, model: str) -> dict[str, Any]:
             "details": {
                 "http_status": status,
                 "elapsed_s": elapsed_s,
-                "reason": (
-                    f"/health returned status={health_status!r}; expected 'ok'"
-                ),
+                "reason": (f"/health returned status={health_status!r}; expected 'ok'"),
                 "body": body,
             },
         }
@@ -311,9 +309,7 @@ def _run_health(base_url: str, model: str) -> dict[str, Any]:
             model_ids = [
                 entry.get("id") for entry in models_data if isinstance(entry, dict)
             ]
-            consistency_check["models_requested_model_present"] = (
-                model in model_ids
-            )
+            consistency_check["models_requested_model_present"] = model in model_ids
             consistency_check["models_consistent"] = (
                 isinstance(served_model, str)
                 and served_model in model_ids
@@ -333,7 +329,9 @@ def _run_health(base_url: str, model: str) -> dict[str, Any]:
                 "supports_vision": body.get("supports_vision"),
                 "started_at": started_at,
                 "now": now,
-                "uptime_s": (now - started_at) if isinstance(now, int) and isinstance(started_at, int) else None,
+                "uptime_s": (now - started_at)
+                if isinstance(now, int) and isinstance(started_at, int)
+                else None,
                 "consistency_check": consistency_check,
                 "headers": dict(headers),
                 "body": body,
@@ -351,7 +349,9 @@ def _run_health(base_url: str, model: str) -> dict[str, Any]:
             "supports_vision": body.get("supports_vision"),
             "started_at": started_at,
             "now": now,
-            "uptime_s": (now - started_at) if isinstance(now, int) and isinstance(started_at, int) else None,
+            "uptime_s": (now - started_at)
+            if isinstance(now, int) and isinstance(started_at, int)
+            else None,
             "consistency_check": consistency_check,
             "headers": dict(headers),
             "body": body,
@@ -519,9 +519,7 @@ def _run_responses(
                 "content_text": content_text,
             },
         }
-    event_types = [
-        event.get("_event_type") for event in capture["typed_events"]
-    ]
+    event_types = [event.get("_event_type") for event in capture["typed_events"]]
     expected_prefix = [
         "response.created",
         "response.output_item.added",
@@ -545,7 +543,7 @@ def _run_responses(
         "response.output_item.done",
         "response.completed",
     ]
-    if event_types[-len(expected_suffix):] != expected_suffix:
+    if event_types[-len(expected_suffix) :] != expected_suffix:
         return {
             "status": "fail",
             "details": {
@@ -559,7 +557,8 @@ def _run_responses(
             },
         }
     delta_events = [
-        event for event in capture["typed_events"]
+        event
+        for event in capture["typed_events"]
         if event.get("_event_type") == "response.output_text.delta"
     ]
     if not delta_events:

@@ -299,7 +299,9 @@ class DistributedModelKit:
         self._shutdown = threading.Event()
         self.prefill_step_size = prefill_step_size
         self.max_kv_size = max_kv_size
-        self.max_seq_nums = 1 if max_seq_nums is None or max_seq_nums < 1 else max_seq_nums
+        self.max_seq_nums = (
+            1 if max_seq_nums is None or max_seq_nums < 1 else max_seq_nums
+        )
         self.kv_bits = None
         self.kv_group_size = None
         self.quantized_kv_start = None
@@ -876,7 +878,9 @@ class DistributedModelKit:
                     name="mlx-distributed-batched-scheduler",
                 )
                 self._generation_thread.start()
-        logger.info("Distributed model start synchronized on rank %s", self.group.rank())
+        logger.info(
+            "Distributed model start synchronized on rank %s", self.group.rank()
+        )
 
     def uses_distributed_batching(self) -> bool:
         return self.max_seq_nums > 1
@@ -1074,7 +1078,12 @@ class DistributedModelKit:
 
     def _get_local_scheduler_item(
         self, timeout: None | float
-    ) -> DistributedSchedulerGenerationRequest | CancelGenerationRequest | DistributedSchedulerShutdownRequest | None:
+    ) -> (
+        DistributedSchedulerGenerationRequest
+        | CancelGenerationRequest
+        | DistributedSchedulerShutdownRequest
+        | None
+    ):
         try:
             if timeout is not None:
                 return self._requests.get(timeout=timeout)
@@ -1084,7 +1093,12 @@ class DistributedModelKit:
 
     def _next_scheduler_item(
         self, timeout: None | float
-    ) -> DistributedSchedulerGenerationRequest | CancelGenerationRequest | DistributedSchedulerShutdownRequest | None:
+    ) -> (
+        DistributedSchedulerGenerationRequest
+        | CancelGenerationRequest
+        | DistributedSchedulerShutdownRequest
+        | None
+    ):
         local_item = None
         if self.group.rank() == 0:
             local_item = self._get_local_scheduler_item(timeout)
@@ -1150,7 +1164,12 @@ class DistributedModelKit:
 
     def _scheduler_message_to_worker_item(
         self, message: dict[str, Any] | None
-    ) -> DistributedSchedulerGenerationRequest | CancelGenerationRequest | DistributedSchedulerShutdownRequest | None:
+    ) -> (
+        DistributedSchedulerGenerationRequest
+        | CancelGenerationRequest
+        | DistributedSchedulerShutdownRequest
+        | None
+    ):
         if message is None:
             return None
         message_type = message["type"]
@@ -1159,7 +1178,9 @@ class DistributedModelKit:
         if message_type == SCHEDULER_MESSAGE_CANCEL:
             return CancelGenerationRequest(message["requestId"])
         if message_type != SCHEDULER_MESSAGE_GENERATE:
-            raise ValueError(f"Unsupported distributed scheduler message type {message_type}")
+            raise ValueError(
+                f"Unsupported distributed scheduler message type {message_type}"
+            )
 
         sampling = message["sampling"]
         from mlx_engine.utils.generation_helpers import (
@@ -1221,7 +1242,9 @@ class DistributedModelKit:
         data = mx.distributed.all_sum(data)
         return json.loads(bytes(data.tolist()).decode("utf-8"))
 
-    def _cancel_scheduler_request(self, batch_generator: BatchGenerator, request_id: str) -> None:
+    def _cancel_scheduler_request(
+        self, batch_generator: BatchGenerator, request_id: str
+    ) -> None:
         found_request_id = False
         for uid, entry in list(self._batch_results.items()):
             if entry.get("request_id") == request_id:

@@ -105,7 +105,9 @@ def _make_record_key(
     return f"{base_key}:span:{chunk_start}:{chunk_end}"
 
 
-def _chunk_span_from_metadata(metadata: PromptCacheRecordMetadata) -> tuple[int, int] | None:
+def _chunk_span_from_metadata(
+    metadata: PromptCacheRecordMetadata,
+) -> tuple[int, int] | None:
     span = metadata.chunk_span
     if not span or len(span) != 2:
         return None
@@ -238,9 +240,9 @@ def _restore_rotating_cost_model(
     """Summarize restore diagnostics into a rotating-delta cost model."""
     rotating_record_count = record_count_by_kind[RECORD_KIND_ROTATING_DELTA]
     rotating_record_bytes = record_bytes_by_kind[RECORD_KIND_ROTATING_DELTA]
-    rotating_eval_target_count = materialization_counters[
-        "eval_target_count_by_kind"
-    ][RECORD_KIND_ROTATING_DELTA]
+    rotating_eval_target_count = materialization_counters["eval_target_count_by_kind"][
+        RECORD_KIND_ROTATING_DELTA
+    ]
     rotating_materialized_bytes = materialization_counters[
         "materialized_bytes_by_kind"
     ][RECORD_KIND_ROTATING_DELTA]
@@ -323,9 +325,7 @@ class VlmPromptCacheStore:
         self._cache_namespace = cache_namespace
         if min_save_tokens is None:
             min_save_tokens = (
-                _DEFAULT_PERSISTENT_MIN_SAVE_TOKENS
-                if storage_root is not None
-                else 0
+                _DEFAULT_PERSISTENT_MIN_SAVE_TOKENS if storage_root is not None else 0
             )
         self._min_save_tokens = max(0, min_save_tokens)
         self._prefix_chunk_size = max(1, prefix_chunk_size)
@@ -363,9 +363,9 @@ class VlmPromptCacheStore:
             "cleanup=%s min_save_tokens=%s",
             storage_lifetime,
             storage_mode,
-            "manual_or_budget_eviction" if storage_root is not None else (
-                "model_unload_or_process_exit"
-            ),
+            "manual_or_budget_eviction"
+            if storage_root is not None
+            else ("model_unload_or_process_exit"),
             self._min_save_tokens,
         )
 
@@ -456,9 +456,11 @@ class VlmPromptCacheStore:
             for record_key in record_keys:
                 record_metadata = self._record_metadata_by_key[record_key]
                 record_count_by_kind[record_metadata.record_kind] += 1
-                record_bytes_by_kind[record_metadata.record_kind] += self._key_sizes.get(
-                    record_key,
-                    0,
+                record_bytes_by_kind[record_metadata.record_kind] += (
+                    self._key_sizes.get(
+                        record_key,
+                        0,
+                    )
                 )
             prompt_cache = self._load_one_chunk(
                 record_keys,
@@ -483,15 +485,13 @@ class VlmPromptCacheStore:
         # just cache state payloads, which can reduce materialization work.
         eval_start = perf_counter() if timing_enabled else None
         eval_collect_start = perf_counter() if timing_enabled else None
-        eval_targets, materialization_counters = (
-            _restore_eval_materialization_counters(
-                prompt_cache,
-                layout,
-                state_only=(
-                    os.environ.get(_RESTORE_EVAL_STATE_ONLY_ENV, "").lower()
-                    in {"1", "true", "yes", "on"}
-                ),
-            )
+        eval_targets, materialization_counters = _restore_eval_materialization_counters(
+            prompt_cache,
+            layout,
+            state_only=(
+                os.environ.get(_RESTORE_EVAL_STATE_ONLY_ENV, "").lower()
+                in {"1", "true", "yes", "on"}
+            ),
         )
         eval_collect_ms = elapsed_ms(eval_collect_start) if timing_enabled else 0.0
         eval_barrier_start = perf_counter() if timing_enabled else None
@@ -686,10 +686,7 @@ class VlmPromptCacheStore:
             )
 
             if kv_span_start is None:
-                chunk_record_caches = [
-                    record_caches[idx]
-                    for idx in layer_indices
-                ]
+                chunk_record_caches = [record_caches[idx] for idx in layer_indices]
                 records.append(
                     self._prepare_record_save(
                         chunk_key=chunk.key,
@@ -697,9 +694,7 @@ class VlmPromptCacheStore:
                         layer_indices=layer_indices,
                         record_cache=chunk_record_caches,
                         chunk_start=(
-                            chunk.start
-                            if record_kind == RECORD_KIND_KV_DELTA
-                            else None
+                            chunk.start if record_kind == RECORD_KIND_KV_DELTA else None
                         ),
                         chunk_end=(
                             chunk.end if record_kind == RECORD_KIND_KV_DELTA else None
@@ -893,13 +888,18 @@ class VlmPromptCacheStore:
         self._blob_store.close()
 
     def _load_persistent_index(self) -> None:
-        if self._persistent_index_path is None or not self._persistent_index_path.exists():
+        if (
+            self._persistent_index_path is None
+            or not self._persistent_index_path.exists()
+        ):
             return
 
         try:
             data = json.loads(self._persistent_index_path.read_text())
         except Exception:
-            logger.warning("Failed to read persistent VLM prompt cache index.", exc_info=True)
+            logger.warning(
+                "Failed to read persistent VLM prompt cache index.", exc_info=True
+            )
             return
 
         if data.get("format_version") not in _READABLE_PERSISTENT_CACHE_FORMAT_VERSIONS:
@@ -939,12 +939,8 @@ class VlmPromptCacheStore:
                     chunk_key=metadata["chunk_key"],
                     record_kind=metadata["record_kind"],
                     layer_indices=list(metadata["layer_indices"]),
-                    chunk_span=(
-                        metadata.get(_RECORD_SPAN_KEY)
-                    ),
-                    is_terminal_packed=bool(
-                        metadata.get(_TERMINAL_PACKED_KEY, False)
-                    ),
+                    chunk_span=(metadata.get(_RECORD_SPAN_KEY)),
+                    is_terminal_packed=bool(metadata.get(_TERMINAL_PACKED_KEY, False)),
                 )
                 self._key_sizes[record_key] = self._blob_store.size(record_key)
             except Exception:
@@ -1009,9 +1005,7 @@ class VlmPromptCacheStore:
                 key: asdict(metadata)
                 for key, metadata in self._prepared_prompt_metadata_by_key.items()
             },
-            "lru_keys": [
-                key for key in self._lru_keys.keys() if key in records
-            ],
+            "lru_keys": [key for key in self._lru_keys.keys() if key in records],
             "max_bytes": self._max_cache_store_bytes,
         }
         tmp_path = self._persistent_index_path.with_suffix(".json.tmp")

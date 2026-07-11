@@ -95,7 +95,9 @@ def validate_suffix_decoding_compatibility(
         return
 
     if images_b64 is not None and len(images_b64) > 0:
-        raise ValueError("SuffixDecoding is only supported for sequential text generation")
+        raise ValueError(
+            "SuffixDecoding is only supported for sequential text generation"
+        )
 
     if specprefill_toggle is True:
         raise ValueError("SuffixDecoding cannot be combined with SpecPrefill yet")
@@ -111,12 +113,16 @@ def validate_suffix_decoding_compatibility(
         )
 
     if isinstance(model_kit, DistributedModelKit):
-        raise ValueError("SuffixDecoding is only supported for sequential text generation")
+        raise ValueError(
+            "SuffixDecoding is only supported for sequential text generation"
+        )
 
     if hasattr(model_kit, "uses_distributed_batching") and (
         model_kit.uses_distributed_batching()
     ):
-        raise ValueError("SuffixDecoding is only supported for sequential text generation")
+        raise ValueError(
+            "SuffixDecoding is only supported for sequential text generation"
+        )
 
 
 def suffix_stream_generate(
@@ -157,8 +163,7 @@ def suffix_stream_generate(
     if not mlx_cache.can_trim_prompt_cache(prompt_cache):
         types = {type(c).__name__ for c in prompt_cache if not c.is_trimmable()}
         raise ValueError(
-            "SuffixDecoding requires a trimmable prompt cache "
-            f"(got {types})."
+            f"SuffixDecoding requires a trimmable prompt cache (got {types})."
         )
 
     detokenizer = tokenizer.detokenizer
@@ -198,20 +203,24 @@ def suffix_stream_generate(
                         if prev_tokens is not None
                         else input_tokens[i : i + 1]
                     )
-                    y_i, logprobs_i = _process_and_sample(
-                        prev_tokens, logits[:, i, :]
-                    )
+                    y_i, logprobs_i = _process_and_sample(prev_tokens, logits[:, i, :])
                     out_y.append(y_i)
                     out_logprobs.append(logprobs_i)
-                return mx.concatenate(out_y, axis=0), mx.concatenate(out_logprobs, axis=0)
+                return mx.concatenate(out_y, axis=0), mx.concatenate(
+                    out_logprobs, axis=0
+                )
             if n_predict > 1:
                 out_y, out_logprobs = [], []
                 for i in range(n_predict):
                     logits_i = logits[:, i, :]
-                    logprobs_i = logits_i - mx.logsumexp(logits_i, axis=-1, keepdims=True)
+                    logprobs_i = logits_i - mx.logsumexp(
+                        logits_i, axis=-1, keepdims=True
+                    )
                     out_y.append(sampler(logprobs_i))
                     out_logprobs.append(logprobs_i)
-                return mx.concatenate(out_y, axis=0), mx.concatenate(out_logprobs, axis=0)
+                return mx.concatenate(out_y, axis=0), mx.concatenate(
+                    out_logprobs, axis=0
+                )
             if logits_processors:
                 prev_tokens = (
                     mx.concatenate([prev_tokens, input_tokens])
@@ -292,7 +301,9 @@ def suffix_stream_generate(
                         break
                     emitted_history.append(tn)
                     if not prompt_progress_emitted:
-                        prompt_progress_callback(total_prompt_tokens, total_prompt_tokens)
+                        prompt_progress_callback(
+                            total_prompt_tokens, total_prompt_tokens
+                        )
                         prompt_progress_emitted = True
                     n += 1
                     yield tn, lpn, True

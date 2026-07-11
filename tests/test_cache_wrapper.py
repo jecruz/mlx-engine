@@ -256,9 +256,9 @@ class TestCacheWrapper(unittest.TestCase):
         expected_calls = [
             checkpoint_prefix_len,
             min(chunk_size, prefillable_tokens - checkpoint_prefix_len),
-            prefillable_tokens - checkpoint_prefix_len - min(
-                chunk_size, prefillable_tokens - checkpoint_prefix_len
-            ),
+            prefillable_tokens
+            - checkpoint_prefix_len
+            - min(chunk_size, prefillable_tokens - checkpoint_prefix_len),
         ]
         expected_calls = [count for count in expected_calls if count > 0]
 

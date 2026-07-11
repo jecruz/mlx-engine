@@ -196,7 +196,8 @@ def summarize_samples(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "all_followups_small_prefill": bool(samples)
         and row_errors == 0
         and all(
-            row.get("prefill_tokens_processed", 10**9) < row.get("total_prompt_tokens", 0)
+            row.get("prefill_tokens_processed", 10**9)
+            < row.get("total_prompt_tokens", 0)
             for row in followups
         ),
         "all_outputs_preserve_name": bool(samples)

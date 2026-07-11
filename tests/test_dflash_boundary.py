@@ -34,6 +34,7 @@ def _dflash_snapshot():
 
     return dflash_snapshot
 
+
 REAL_DFLASH_TARGET = Path(
     "/Volumes/StudioStackSSD4TB/Development/LLM/lmstudio/lmstudio-community/Qwen3.6-27B-MLX-8bit"
 )
@@ -277,8 +278,7 @@ def _build_dflash_config(
         "dflash_config": {
             "block_size": block_size,
             "mask_token_id": mask_token_id,
-            "target_layer_ids": target_layer_ids
-            or [1, 10, 18, 27, 35, 44, 52, 61],
+            "target_layer_ids": target_layer_ids or [1, 10, 18, 27, 35, 44, 52, 61],
         },
     }
     if dflash_config is not None:
@@ -320,7 +320,9 @@ def _write_dflash_snapshot(
             (2, 2),
             dtype=tensor_dtype,
         )
-    mx.save_safetensors(snapshot_dir / "model.safetensors", arrays, {"format": metadata_format})
+    mx.save_safetensors(
+        snapshot_dir / "model.safetensors", arrays, {"format": metadata_format}
+    )
     return snapshot_dir
 
 
@@ -522,7 +524,9 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
         self.assertEqual(profile.safetensors_formats, ("pt",))
         self.assertEqual(profile.tensor_dtypes, ("bfloat16",))
         self.assertEqual(profile.tensor_layer_count, DFLASH_EXPECTED_LAYER_COUNT)
-        self.assertEqual(profile.safetensors_paths, (snapshot_dir / "model.safetensors",))
+        self.assertEqual(
+            profile.safetensors_paths, (snapshot_dir / "model.safetensors",)
+        )
 
     def test_rejects_non_dflash_snapshot(self):
         snapshot = _dflash_snapshot()
@@ -574,15 +578,19 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
             )
             drafter_dir = _write_dflash_snapshot(temp_dir, "drafter")
 
-            with patch(
-                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
-                return_value=(True, ()),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._probe_reserved_port_conflicts",
-                return_value=(),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
-                return_value=256 * 1024 * 1024 * 1024,
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                    return_value=(True, ()),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._probe_reserved_port_conflicts",
+                    return_value=(),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                    return_value=256 * 1024 * 1024 * 1024,
+                ),
             ):
                 report = boundary.probe_dflash_readiness(
                     boundary.DFlashBoundaryOptions(
@@ -632,7 +640,10 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
                 )
 
         self.assertTrue(
-            any("bfloat16" in blocker or "block_size" in blocker for blocker in report.blockers),
+            any(
+                "bfloat16" in blocker or "block_size" in blocker
+                for blocker in report.blockers
+            ),
             msg=f"expected validation blocker details, got: {report.blockers}",
         )
 
@@ -668,12 +679,15 @@ class TestDFlashSnapshotLoader(unittest.TestCase):
 class TestDFlashRealPairPreflight(unittest.TestCase):
     def test_real_pair_preflight_accepts_target_and_drafter_metadata(self):
         boundary = _dflash_boundary()
-        with patch(
-            "mlx_engine.utils.dflash_boundary._probe_reserved_port_conflicts",
-            return_value=(),
-        ), patch(
-            "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
-            return_value=256 * 1024 * 1024 * 1024,
+        with (
+            patch(
+                "mlx_engine.utils.dflash_boundary._probe_reserved_port_conflicts",
+                return_value=(),
+            ),
+            patch(
+                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                return_value=256 * 1024 * 1024 * 1024,
+            ),
         ):
             report = boundary.validate_dflash_preload_compatibility(
                 options=boundary.DFlashBoundaryOptions(
@@ -700,15 +714,20 @@ class TestDFlashRealPairPreflight(unittest.TestCase):
         self.assertEqual(report.target_profile.vocab_size, DFLASH_EXPECTED_VOCAB_SIZE)
         self.assertGreater(report.target_profile.tokenizer_vocab_size, 0)
         self.assertLessEqual(
-            report.target_profile.vocab_size - report.target_profile.tokenizer_vocab_size,
+            report.target_profile.vocab_size
+            - report.target_profile.tokenizer_vocab_size,
             1024,
         )
         self.assertEqual(report.drafter_family, "qwen")
         self.assertEqual(report.target_family, "qwen")
-        self.assertGreater(report.target_profile.num_hidden_layers, max(DFLASH_EXPECTED_TARGET_LAYER_IDS))
+        self.assertGreater(
+            report.target_profile.num_hidden_layers,
+            max(DFLASH_EXPECTED_TARGET_LAYER_IDS),
+        )
 
     def test_load_model_fails_fast_before_heavy_model_creation(self):
         from mlx_engine import generate
+
         boundary = _dflash_boundary()
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -888,9 +907,7 @@ class TestDFlashArraysCacheShapeStrict(unittest.TestCase):
         the KVCache count cannot widen the DFlash runtime surface.
         """
         boundary = _dflash_boundary()
-        prompt_cache = [
-            ArraysCache(layer_id=index) for index in range(48)
-        ]
+        prompt_cache = [ArraysCache(layer_id=index) for index in range(48)]
         kit = _runtime_model_kit(prompt_cache)
 
         blockers = boundary.validate_dflash_runtime_compatibility(kit)
@@ -927,8 +944,7 @@ class TestDFlashArraysCacheShapeStrict(unittest.TestCase):
                 for blocker in blockers
             ),
             msg=(
-                "16 KVCache + 16 ArraysCache layout must fail closed; "
-                f"got: {blockers}"
+                f"16 KVCache + 16 ArraysCache layout must fail closed; got: {blockers}"
             ),
         )
 
@@ -953,8 +969,7 @@ class TestDFlashArraysCacheShapeStrict(unittest.TestCase):
                 for blocker in blockers
             ),
             msg=(
-                "8 KVCache + 48 ArraysCache layout must fail closed; "
-                f"got: {blockers}"
+                f"8 KVCache + 48 ArraysCache layout must fail closed; got: {blockers}"
             ),
         )
 
@@ -1071,10 +1086,7 @@ class TestDFlashArraysCacheShapeStrict(unittest.TestCase):
 
         self.assertTrue(
             any("rotating" in blocker for blocker in blockers),
-            msg=(
-                "RotatingKVCache must remain fail-closed; "
-                f"got: {blockers}"
-            ),
+            msg=(f"RotatingKVCache must remain fail-closed; got: {blockers}"),
         )
 
 
@@ -1346,30 +1358,35 @@ class TestDFlashLLMDYNAMIXListenerClassification(unittest.TestCase):
                     },
                 ],
             )
-            with patch(
-                "mlx_engine.utils.dflash_boundary._port_is_listening",
-                return_value=True,
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
-                return_value=9001,
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._lookup_process_command",
-                return_value=(
-                    "llmdynamix",
-                    "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary._port_is_listening",
+                    return_value=True,
                 ),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
-                return_value=(
-                    (
-                        9001,
+                patch(
+                    "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
+                    return_value=9001,
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._lookup_process_command",
+                    return_value=(
+                        "llmdynamix",
                         "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
                     ),
-                    (
-                        9002,
-                        "/Applications/LLM Dynamix.app/Contents/Resources/"
-                        "llmdynamix-engine "
-                        f"-config {config_path}",
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
+                    return_value=(
+                        (
+                            9001,
+                            "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+                        ),
+                        (
+                            9002,
+                            "/Applications/LLM Dynamix.app/Contents/Resources/"
+                            "llmdynamix-engine "
+                            f"-config {config_path}",
+                        ),
                     ),
                 ),
             ):
@@ -1412,38 +1429,44 @@ class TestDFlashLLMDYNAMIXListenerClassification(unittest.TestCase):
                     },
                 ],
             )
-            with patch(
-                "mlx_engine.utils.dflash_boundary._port_is_listening",
-                side_effect=lambda port: port in {12444, 11434},
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
-                return_value=9100,
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._lookup_process_command",
-                return_value=(
-                    "llmdynamix",
-                    "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary._port_is_listening",
+                    side_effect=lambda port: port in {12444, 11434},
                 ),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
-                return_value=(
-                    (
-                        9100,
+                patch(
+                    "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
+                    return_value=9100,
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._lookup_process_command",
+                    return_value=(
+                        "llmdynamix",
                         "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
                     ),
-                    (
-                        9101,
-                        "/Applications/LLM Dynamix.app/Contents/Resources/"
-                        "llmdynamix-engine "
-                        f"-config {config_path}",
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
+                    return_value=(
+                        (
+                            9100,
+                            "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+                        ),
+                        (
+                            9101,
+                            "/Applications/LLM Dynamix.app/Contents/Resources/"
+                            "llmdynamix-engine "
+                            f"-config {config_path}",
+                        ),
                     ),
                 ),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._http_get_json",
-                side_effect=[
-                    {"models": []},
-                    {"data": []},
-                ],
+                patch(
+                    "mlx_engine.utils.dflash_boundary._http_get_json",
+                    side_effect=[
+                        {"models": []},
+                        {"data": []},
+                    ],
+                ),
             ):
                 evidence = boundary.probe_listener_evidence(port=12444)
 
@@ -1453,7 +1476,9 @@ class TestDFlashLLMDYNAMIXListenerClassification(unittest.TestCase):
         )
         self.assertTrue(evidence.is_allowed())
         self.assertTrue(
-            any("live probing shows no loaded models" in note for note in evidence.notes),
+            any(
+                "live probing shows no loaded models" in note for note in evidence.notes
+            ),
             msg=f"expected live-probing note, got: {evidence.notes}",
         )
 
@@ -1476,39 +1501,45 @@ class TestDFlashLLMDYNAMIXListenerClassification(unittest.TestCase):
                     },
                 ],
             )
-            with patch(
-                "mlx_engine.utils.dflash_boundary._port_is_listening",
-                side_effect=lambda port: port in {12444, 11434},
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
-                return_value=9200,
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._lookup_process_command",
-                return_value=(
-                    "llmdynamix",
-                    "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary._port_is_listening",
+                    side_effect=lambda port: port in {12444, 11434},
                 ),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
-                return_value=(
-                    (
-                        9200,
+                patch(
+                    "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
+                    return_value=9200,
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._lookup_process_command",
+                    return_value=(
+                        "llmdynamix",
                         "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
                     ),
-                    (
-                        9201,
-                        "/Applications/LLM Dynamix.app/Contents/Resources/"
-                        "llmdynamix-engine "
-                        f"-config {config_path}",
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
+                    return_value=(
+                        (
+                            9200,
+                            "/Applications/LLM Dynamix.app/Contents/MacOS/llmdynamix",
+                        ),
+                        (
+                            9201,
+                            "/Applications/LLM Dynamix.app/Contents/Resources/"
+                            "llmdynamix-engine "
+                            f"-config {config_path}",
+                        ),
                     ),
                 ),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._http_get_json",
-                return_value={
-                    "models": [
-                        {"name": "qwen3.6-27b", "size": 27_000_000_000},
-                    ]
-                },
+                patch(
+                    "mlx_engine.utils.dflash_boundary._http_get_json",
+                    return_value={
+                        "models": [
+                            {"name": "qwen3.6-27b", "size": 27_000_000_000},
+                        ]
+                    },
+                ),
             ):
                 evidence = boundary.probe_listener_evidence(port=12444)
 
@@ -1524,18 +1555,23 @@ class TestDFlashLLMDYNAMIXListenerClassification(unittest.TestCase):
 
     def test_unknown_listener_process_is_blocked(self):
         boundary = _dflash_boundary()
-        with patch(
-            "mlx_engine.utils.dflash_boundary._port_is_listening",
-            return_value=True,
-        ), patch(
-            "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
-            return_value=9300,
-        ), patch(
-            "mlx_engine.utils.dflash_boundary._lookup_process_command",
-            return_value=("node", "node /tmp/random-server.js"),
-        ), patch(
-            "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
-            return_value=(),
+        with (
+            patch(
+                "mlx_engine.utils.dflash_boundary._port_is_listening",
+                return_value=True,
+            ),
+            patch(
+                "mlx_engine.utils.dflash_boundary._lookup_listener_pid",
+                return_value=9300,
+            ),
+            patch(
+                "mlx_engine.utils.dflash_boundary._lookup_process_command",
+                return_value=("node", "node /tmp/random-server.js"),
+            ),
+            patch(
+                "mlx_engine.utils.dflash_boundary._list_llmdynamix_process_commands",
+                return_value=(),
+            ),
         ):
             evidence = boundary.probe_listener_evidence(port=12444)
 
@@ -1590,15 +1626,19 @@ class TestDFlashLLMDYNAMIXListenerClassification(unittest.TestCase):
                 pid=9001,
                 notes=("synthetic cloud-only listener",),
             )
-            with patch(
-                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
-                return_value=(True, ()),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
-                return_value=(fake_evidence,),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
-                return_value=256 * 1024 * 1024 * 1024,
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                    return_value=(True, ()),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                    return_value=(fake_evidence,),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                    return_value=256 * 1024 * 1024 * 1024,
+                ),
             ):
                 report = boundary.probe_dflash_readiness(
                     boundary.DFlashBoundaryOptions(
@@ -1619,15 +1659,19 @@ class TestDFlashLLMDYNAMIXListenerClassification(unittest.TestCase):
             classification=boundary.ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
             notes=("synthetic cloud-only listener",),
         )
-        with patch(
-            "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
-            return_value=(True, ()),
-        ), patch(
-            "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
-            return_value=(fake_evidence,),
-        ), patch(
-            "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
-            return_value=256 * 1024 * 1024 * 1024,
+        with (
+            patch(
+                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                return_value=(True, ()),
+            ),
+            patch(
+                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                return_value=(fake_evidence,),
+            ),
+            patch(
+                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                return_value=256 * 1024 * 1024 * 1024,
+            ),
         ):
             report = boundary.validate_dflash_preload_compatibility(
                 options=boundary.DFlashBoundaryOptions(
@@ -1671,9 +1715,7 @@ class TestDFlashPhaseAwareMemoryAccounting(unittest.TestCase):
     REALISTIC_TARGET_BYTES = 27 * 1024 * 1024 * 1024
     REALISTIC_DRAFTER_BYTES = 4 * 1024 * 1024 * 1024
 
-    def _build_options(
-        self, target_dir: Path, drafter_dir: Path
-    ):
+    def _build_options(self, target_dir: Path, drafter_dir: Path):
         boundary = _dflash_boundary()
         return boundary.DFlashBoundaryOptions(
             enabled=True,
@@ -1742,23 +1784,26 @@ class TestDFlashPhaseAwareMemoryAccounting(unittest.TestCase):
                     return 0
                 first_path = paths[0]
                 if "target" in str(first_path):
-                    return self._estimate_safetensors_bytes(
-                        paths, target_bytes
-                    )
+                    return self._estimate_safetensors_bytes(paths, target_bytes)
                 return self._estimate_safetensors_bytes(paths, drafter_bytes)
 
-            with patch(
-                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
-                return_value=(True, ()),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
-                return_value=(),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._estimate_snapshot_bytes",
-                side_effect=_estimate,
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
-                return_value=available,
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                    return_value=(True, ()),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                    return_value=(),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._estimate_snapshot_bytes",
+                    side_effect=_estimate,
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                    return_value=available,
+                ),
             ):
                 preload_report = boundary.probe_dflash_readiness(
                     self._build_options(target_dir, drafter_dir),
@@ -1835,18 +1880,23 @@ class TestDFlashPhaseAwareMemoryAccounting(unittest.TestCase):
                     return self._estimate_safetensors_bytes(paths, target_bytes)
                 return self._estimate_safetensors_bytes(paths, drafter_bytes)
 
-            with patch(
-                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
-                return_value=(True, ()),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
-                return_value=(),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._estimate_snapshot_bytes",
-                side_effect=_estimate,
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
-                return_value=available,
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                    return_value=(True, ()),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                    return_value=(),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._estimate_snapshot_bytes",
+                    side_effect=_estimate,
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                    return_value=available,
+                ),
             ):
                 preload_report = boundary.probe_dflash_readiness(
                     self._build_options(target_dir, drafter_dir),
@@ -1865,10 +1915,7 @@ class TestDFlashPhaseAwareMemoryAccounting(unittest.TestCase):
                     and "real-pair DFlash preflight" in blocker
                     for blocker in preload_report.blockers
                 ),
-                msg=(
-                    "pre-load must block; got: "
-                    f"{preload_report.blockers}"
-                ),
+                msg=(f"pre-load must block; got: {preload_report.blockers}"),
             )
             # On the realistic post-load residual the drafter+headroom fits.
             self.assertEqual(postload_report.blockers, ())
@@ -1897,15 +1944,19 @@ class TestDFlashPhaseAwareMemoryAccounting(unittest.TestCase):
                 pid=4444,
                 comm="ollama",
             )
-            with patch(
-                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
-                return_value=(True, ()),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
-                return_value=(heavy_evidence,),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
-                return_value=256 * 1024 * 1024 * 1024,
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                    return_value=(True, ()),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                    return_value=(heavy_evidence,),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                    return_value=256 * 1024 * 1024 * 1024,
+                ),
             ):
                 with self.assertRaisesRegex(
                     boundary.DFlashUnavailableError,
@@ -1925,15 +1976,19 @@ class TestDFlashPhaseAwareMemoryAccounting(unittest.TestCase):
                         vlm_prompt_cache_min_save_tokens=None,
                     )
 
-            with patch(
-                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
-                return_value=(True, ()),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
-                return_value=(),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
-                return_value=256 * 1024 * 1024 * 1024,
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                    return_value=(True, ()),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                    return_value=(),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                    return_value=256 * 1024 * 1024 * 1024,
+                ),
             ):
                 with self.assertRaisesRegex(
                     boundary.DFlashUnavailableError,
@@ -1973,15 +2028,19 @@ class TestDFlashPhaseAwareMemoryAccounting(unittest.TestCase):
                 classification=boundary.ListenerClassification.CLOUD_ONLY_LLMDYNAMIX,
                 notes=("synthetic cloud-only listener",),
             )
-            with patch(
-                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
-                return_value=(True, ()),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
-                return_value=(fake_evidence,),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
-                return_value=256 * 1024 * 1024 * 1024,
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                    return_value=(True, ()),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                    return_value=(fake_evidence,),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                    return_value=256 * 1024 * 1024 * 1024,
+                ),
             ):
                 report = boundary.validate_dflash_postload_compatibility(
                     options=options,
@@ -2024,18 +2083,23 @@ class TestDFlashPhaseAwareMemoryAccounting(unittest.TestCase):
                 )
 
             tiny_available = 256 * 1024 * 1024  # 256 MiB
-            with patch(
-                "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
-                return_value=(True, ()),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
-                return_value=(),
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._estimate_snapshot_bytes",
-                side_effect=_estimate,
-            ), patch(
-                "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
-                return_value=tiny_available,
+            with (
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_dflash_dependency",
+                    return_value=(True, ()),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary.probe_all_listener_evidence",
+                    return_value=(),
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._estimate_snapshot_bytes",
+                    side_effect=_estimate,
+                ),
+                patch(
+                    "mlx_engine.utils.dflash_boundary._probe_available_memory_bytes",
+                    return_value=tiny_available,
+                ),
             ):
                 with self.assertRaisesRegex(
                     boundary.DFlashUnavailableError,

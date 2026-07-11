@@ -165,7 +165,9 @@ def resolve_specprefill_options(
             if specprefill_threshold is None
             else specprefill_threshold
         ),
-        system_tokens=0 if specprefill_system_tokens is None else specprefill_system_tokens,
+        system_tokens=0
+        if specprefill_system_tokens is None
+        else specprefill_system_tokens,
     )
 
 
@@ -250,8 +252,8 @@ def _gemma4_extract_queries(attn, x, cache=None, offset=None, **kwargs):
 def _nemotron_h_extract_queries(attn, x, cache=None, **kwargs):
     """Extract Nemotron-H queries for content-only attention layers."""
     batch, length, _ = x.shape
-    return attn.q_proj(x).reshape(batch, length, attn.num_heads, -1).transpose(
-        0, 2, 1, 3
+    return (
+        attn.q_proj(x).reshape(batch, length, attn.num_heads, -1).transpose(0, 2, 1, 3)
     )
 
 
@@ -472,7 +474,9 @@ def _compute_importance(
 ):
     """Compute per-token importance from captured lookahead queries and KV keys."""
     if n_attn_heads is None:
-        raise RuntimeError("Cannot compute SpecPrefill importance without attention heads")
+        raise RuntimeError(
+            "Cannot compute SpecPrefill importance without attention heads"
+        )
     n_kv_heads = n_attn_heads if n_kv_heads is None else n_kv_heads
     heads_per_group = max(1, n_attn_heads // n_kv_heads)
     all_scores = []

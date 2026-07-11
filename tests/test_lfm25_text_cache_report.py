@@ -31,7 +31,11 @@ REPORT = _load_report_module()
 def _benchmark_fixture():
     return {
         "model_path": "/models/LFM2.5",
-        "config": {"prefill_step_size": 512, "story_tokens": 512, "followup_tokens": 64},
+        "config": {
+            "prefill_step_size": 512,
+            "story_tokens": 512,
+            "followup_tokens": 64,
+        },
         "summary": {
             "sample_count": 1,
             "row_errors": 0,
@@ -107,7 +111,10 @@ def test_render_comparison_includes_checks_and_metric_deltas():
     assert "## Comparison `compare.json`" in markdown
     assert "- Status: `pass`" in markdown
     assert "| candidate_row_errors | pass | 0 | 0 |" in markdown
-    assert "| followup_ttft_s_avg | 0.030000 | 0.020000 | -0.010000 | -33.333300 |" in markdown
+    assert (
+        "| followup_ttft_s_avg | 0.030000 | 0.020000 | -0.010000 | -33.333300 |"
+        in markdown
+    )
 
 
 def test_main_writes_combined_markdown(tmp_path, monkeypatch):

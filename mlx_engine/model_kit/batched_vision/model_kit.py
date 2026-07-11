@@ -474,13 +474,9 @@ class BatchedVisionModelKit:
             request.prompt_tokens,
             request.images_b64,
         )
-        metadata = self._prompt_cache_store.lookup_prepared_prompt_metadata(
-            request_key
-        )
+        metadata = self._prompt_cache_store.lookup_prepared_prompt_metadata(request_key)
         prepared_prompt = (
-            prepared_prompt_from_metadata(metadata)
-            if metadata is not None
-            else None
+            prepared_prompt_from_metadata(metadata) if metadata is not None else None
         )
         metadata_hit = prepared_prompt is not None
         prepare_inputs_ms = 0.0
@@ -493,7 +489,9 @@ class BatchedVisionModelKit:
                 processor=self.processor,
                 config=self.config,
             )
-            prepare_inputs_ms = elapsed_ms(prepare_inputs_start) if timing_enabled else 0.0
+            prepare_inputs_ms = (
+                elapsed_ms(prepare_inputs_start) if timing_enabled else 0.0
+            )
         prefix_chunks = build_prefix_cache_chunks(
             prepared_prompt.prompt_input_ids,
             prepared_prompt.image_spans,
@@ -545,7 +543,9 @@ class BatchedVisionModelKit:
                 prefix_chunks=prefix_chunks,
             )
         if timing_enabled:
-            cached_prefix_len = restored.cached_prefix_len if restored is not None else 0
+            cached_prefix_len = (
+                restored.cached_prefix_len if restored is not None else 0
+            )
             log_batched_timing(
                 logger,
                 "vlm_request_prepare",
@@ -681,9 +681,7 @@ class BatchedVisionModelKit:
         timing_enabled = batched_timing_enabled()
         insert_start = time.perf_counter() if timing_enabled else None
         ready_to_insert_ms = (
-            elapsed_ms(prepared_insert.prepared_at)
-            if timing_enabled
-            else 0.0
+            elapsed_ms(prepared_insert.prepared_at) if timing_enabled else 0.0
         )
         uid = batch_generator.insert(
             prompt_input_ids,

@@ -86,16 +86,11 @@ class PromptCacheRestorePlanner:
             kv_record_key_by_chunk_key[chunk.key] = kv_record_key
             metadata = self._record_metadata_by_key[kv_record_key]
             metadata_span_start, _ = self._metadata_span(metadata)
-            if (
-                metadata_span_start is not None
-                and metadata_span_start < chunk.start
-            ):
+            if metadata_span_start is not None and metadata_span_start < chunk.start:
                 span_start_index = chunk_index_by_start.get(metadata_span_start)
                 if span_start_index is None:
                     return None
-                covered_kv_chunk_indices.update(
-                    range(span_start_index, idx)
-                )
+                covered_kv_chunk_indices.update(range(span_start_index, idx))
 
         record_keys_by_chunk_key: dict[str, list[str]] = {}
         for idx, chunk in chunk_indices:
@@ -103,7 +98,10 @@ class PromptCacheRestorePlanner:
             for record_kind in RECORD_WRITE_ORDER:
                 if not self._layout.layer_indices_by_kind.get(record_kind):
                     continue
-                if record_kind == RECORD_KIND_KV_DELTA and idx in covered_kv_chunk_indices:
+                if (
+                    record_kind == RECORD_KIND_KV_DELTA
+                    and idx in covered_kv_chunk_indices
+                ):
                     continue
                 if record_kind == RECORD_KIND_STATE_CHECKPOINT:
                     # Opaque state caches are exact-boundary checkpoints.

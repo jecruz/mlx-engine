@@ -303,7 +303,9 @@ def _build_app(
     return app
 
 
-async def _validate_and_dispatch(raw_body: dict[str, Any], state: _AdapterState) -> None:
+async def _validate_and_dispatch(
+    raw_body: dict[str, Any], state: _AdapterState
+) -> None:
     """Validate the request, raise HTTPException on user errors."""
     if not isinstance(raw_body.get("messages"), list) or len(raw_body["messages"]) == 0:
         raise HTTPException(
@@ -408,9 +410,7 @@ def _normalize_responses_input(raw_input: Any) -> list[dict[str, Any]]:
                 status_code=400,
                 detail={
                     "error": {
-                        "message": (
-                            f"input[{index}].role {role!r} is not supported"
-                        ),
+                        "message": (f"input[{index}].role {role!r} is not supported"),
                     }
                 },
             )
@@ -468,9 +468,7 @@ def _normalize_responses_input(raw_input: Any) -> list[dict[str, Any]]:
             status_code=400,
             detail={
                 "error": {
-                    "message": (
-                        f"input[{index}].content must be a string or an array"
-                    ),
+                    "message": (f"input[{index}].content must be a string or an array"),
                 }
             },
         )
@@ -583,17 +581,13 @@ def _validate_sampling_fields(body: dict[str, Any]) -> None:
     # ``False`` never coerce to ``1`` / ``0`` silently.
     for float_field in ("temperature", "top_p", "min_p", "repetition_penalty"):
         if not _is_optional_number(body.get(float_field)):
-            raise ValueError(
-                f"{float_field} must be a number or null"
-            )
+            raise ValueError(f"{float_field} must be a number or null")
     # ``top_k`` / ``repetition_context_size`` / ``seed`` accept ints or
     # None. ``bool`` is a subclass of ``int`` in Python so we exclude it
     # explicitly to keep the contract strict.
     for int_field in ("top_k", "repetition_context_size", "seed"):
         if not _is_optional_int(body.get(int_field)):
-            raise ValueError(
-                f"{int_field} must be an integer or null"
-            )
+            raise ValueError(f"{int_field} must be an integer or null")
 
 
 def _is_optional_number(value: Any) -> bool:
@@ -813,7 +807,9 @@ def _build_chat_request(
         body.get("chat_template_kwargs"),
     )
     if state.supports_vision and images_b64:
-        renderer = getattr(state.model_kit, "processor", None) or state.model_kit.tokenizer
+        renderer = (
+            getattr(state.model_kit, "processor", None) or state.model_kit.tokenizer
+        )
         if (
             hasattr(renderer, "apply_chat_template")
             and getattr(renderer, "chat_template", None) is None
@@ -861,9 +857,7 @@ def _build_chat_request(
         # ``_sequential_generation`` call; surface that default here so
         # requests that set ``repetition_penalty`` without an explicit
         # context size do not break the logits-processor init.
-        "repetition_context_size": optional_int(
-            body.get("repetition_context_size")
-        )
+        "repetition_context_size": optional_int(body.get("repetition_context_size"))
         or 20,
         "max_tokens": max_tokens_from_value(body.get("max_tokens")),
         "stop_strings": normalize_stop(body.get("stop")),
@@ -945,7 +939,11 @@ def _serialize_responses_terminal(data_event: Optional[str] = None) -> bytes:
 
 
 def _serialize_sse(payload: dict[str, Any]) -> bytes:
-    return f"data: {__import__('json').dumps(payload, separators=(',', ':'))}\n\n".encode("utf-8")
+    return (
+        f"data: {__import__('json').dumps(payload, separators=(',', ':'))}\n\n".encode(
+            "utf-8"
+        )
+    )
 
 
 def _to_openai_chunk(
@@ -984,7 +982,9 @@ async def _stream_chat_completion(
             {
                 "error": {
                     "message": str(
-                        http_exc.detail.get("error", {}).get("message", "Invalid request")
+                        http_exc.detail.get("error", {}).get(
+                            "message", "Invalid request"
+                        )
                     ),
                     "type": "invalid_request_error",
                 }
@@ -1354,9 +1354,7 @@ async def _stream_responses(
                         "type": "error",
                         "error": {
                             "message": str(
-                                http_exc.detail.get("error", {}).get(
-                                    "message", ""
-                                )
+                                http_exc.detail.get("error", {}).get("message", "")
                             ),
                             "type": "server_error",
                         },
@@ -1386,9 +1384,7 @@ async def _stream_responses(
             if next_finish_reason == _FINISH_REASON_LENGTH:
                 status = "incomplete"
     except Exception as exc:
-        logger.exception(
-            "Adapter Responses streaming failed request_id=%s", request_id
-        )
+        logger.exception("Adapter Responses streaming failed request_id=%s", request_id)
         yield _serialize_responses_event(
             "error",
             {
@@ -1567,7 +1563,9 @@ def _load_model_kit(args: argparse.Namespace) -> tuple[Any, str, bool]:
             args.vlm_prompt_cache_min_save_tokens
         )
     model_kit = load_model(args.model, **load_kwargs)
-    served_model_name = args.served_model_name or os.path.basename(args.model.rstrip("/"))
+    served_model_name = args.served_model_name or os.path.basename(
+        args.model.rstrip("/")
+    )
     supports_vision = _detect_vision_support(model_kit)
     return model_kit, served_model_name, supports_vision
 

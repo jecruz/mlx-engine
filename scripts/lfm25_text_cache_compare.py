@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -300,7 +299,11 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(comparison, indent=2))
     print(f"Wrote LFM2.5 text-cache comparison to {args.output}")
-    print(json.dumps({"status": comparison["status"], "checks": comparison["checks"]}, indent=2))
+    print(
+        json.dumps(
+            {"status": comparison["status"], "checks": comparison["checks"]}, indent=2
+        )
+    )
     return 0 if comparison["status"] == "pass" else 1
 
 

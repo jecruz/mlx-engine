@@ -12,4 +12,5 @@ def __getattr__(name: str):
         return BatchedVisionModelKit
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
+
 __all__ = ["BatchedVisionModelKit"]

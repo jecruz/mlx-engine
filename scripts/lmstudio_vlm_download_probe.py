@@ -71,8 +71,7 @@ def _tail_nonempty_lines(text: str, *, limit: int) -> list[str]:
 
 def _extract_progress(clean_output: str) -> dict[str, Any]:
     percents = [
-        float(match.group("percent"))
-        for match in PROGRESS_RE.finditer(clean_output)
+        float(match.group("percent")) for match in PROGRESS_RE.finditer(clean_output)
     ]
     return {
         "max_percent": max(percents) if percents else None,

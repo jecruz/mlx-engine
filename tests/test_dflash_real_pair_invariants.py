@@ -160,12 +160,8 @@ class ArraysCache:
         self.layer_id = layer_id
         self.conv_kernel_size = conv_kernel_size
         self.cache = [
-            mx.zeros(
-                (1, conv_kernel_size - 1, conv_dim), dtype=mx.bfloat16
-            ),
-            mx.zeros(
-                (1, num_v_heads, head_v_dim, head_k_dim), dtype=mx.float32
-            ),
+            mx.zeros((1, conv_kernel_size - 1, conv_dim), dtype=mx.bfloat16),
+            mx.zeros((1, num_v_heads, head_v_dim, head_k_dim), dtype=mx.float32),
         ]
         self.lengths = None
         self.left_padding = None
@@ -183,9 +179,7 @@ def _build_proven_layout_cache() -> list:
     for layer_id in range(proven_kv):
         layers.append(KVCache(layer_id=layer_id))
     for layer_id in range(proven_arrays):
-        layers.append(
-            ArraysCache(layer_id=layer_id + proven_kv)
-        )
+        layers.append(ArraysCache(layer_id=layer_id + proven_kv))
     return layers
 
 
@@ -232,10 +226,10 @@ def _build_arrays_cache_gdn_state(
         mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # v placeholder
         mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # a placeholder
         mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # b placeholder
-        mx.zeros((1,), dtype=mx.bfloat16),      # A_log placeholder
-        mx.zeros((1,), dtype=mx.bfloat16),      # dt_bias placeholder
+        mx.zeros((1,), dtype=mx.bfloat16),  # A_log placeholder
+        mx.zeros((1,), dtype=mx.bfloat16),  # dt_bias placeholder
         initial_state,
-        None,                                    # mask placeholder
+        None,  # mask placeholder
         conv_input,
         conv_kernel_size,
         intermediate_states,
@@ -361,9 +355,7 @@ class _ForceRejectionTargetModel:
                     )
                 )
             else:
-                gdn_states.append(
-                    SimpleNamespace(base_history_len=base_history_len)
-                )
+                gdn_states.append(SimpleNamespace(base_history_len=base_history_len))
         return SimpleNamespace(
             logits=logits, hidden_states=hidden, gdn_states=gdn_states
         )
@@ -397,8 +389,7 @@ class _ForceRejectionDraftModel:
 
     def reset(self, model):
         return [
-            SimpleNamespace(lengths=mx.array([0]))
-            for _ in self.config.target_layer_ids
+            SimpleNamespace(lengths=mx.array([0])) for _ in self.config.target_layer_ids
         ]
 
     def draft_block(self, last_bonus, hidden, cache, block_size, sampler, token_dtype):
@@ -537,7 +528,8 @@ class TestRealPairCappedSmokeTelemetryInvariants(unittest.TestCase):
         # matches the number of drafter proposals emitted by the
         # spec loop, which is bounded by ``max_tokens - bonus``.
         self.assertEqual(
-            telemetry["accepted_proposal_tokens"] + telemetry["rejected_proposal_tokens"],
+            telemetry["accepted_proposal_tokens"]
+            + telemetry["rejected_proposal_tokens"],
             15,
             msg=(
                 "capped smoke accepted (1) + rejected (14) must equal "
@@ -591,9 +583,15 @@ class TestRealPairCappedSmokeTelemetryInvariants(unittest.TestCase):
         """The structured evidence JSON records all five phase observations."""
         progress = self.evidence["phase_progress"]
         self.assertTrue(progress["phase_1_preflight_passed"]["observation"])
-        self.assertTrue(progress["phase_2_target_loaded_warmup_completed"]["observation"])
-        self.assertTrue(progress["phase_3_reached_dflash_stream_generate"]["observation"])
-        self.assertTrue(progress["phase_4_drafter_loaded_target_verify_succeeded"]["observation"])
+        self.assertTrue(
+            progress["phase_2_target_loaded_warmup_completed"]["observation"]
+        )
+        self.assertTrue(
+            progress["phase_3_reached_dflash_stream_generate"]["observation"]
+        )
+        self.assertTrue(
+            progress["phase_4_drafter_loaded_target_verify_succeeded"]["observation"]
+        )
         # Phase 5 is the invariant evidence itself: real draft/verify/rollback
         # was exercised with concrete accepted/rejected counts.
         phase_5 = progress["phase_5_real_draft_verify_rollback_executed"]
@@ -965,9 +963,7 @@ class TestRejectedTokenCleanupFromLiveCache(unittest.TestCase):
     prompt_tokens = [1, 2, 3, 4]
     draft_tokens = [12, 13, 14]
 
-    def _drive_and_collect_cache_history(
-        self, accepted: int
-    ) -> list[list[int]]:
+    def _drive_and_collect_cache_history(self, accepted: int) -> list[list[int]]:
         # Build verify outputs that match drafts at [0..accepted-1]
         # and differ at [accepted], so _speculative_walk drives the
         # desired acceptance count.
@@ -1110,12 +1106,8 @@ class TestRealQwen36LayoutRollbackInvariants(unittest.TestCase):
         cache = _build_proven_layout_cache()
         for layer in cache:
             if isinstance(layer, ArraysCache):
-                layer.cache[1] = mx.full(
-                    layer.cache[1].shape, 99.0, dtype=mx.float32
-                )
-                layer.cache[0] = mx.full(
-                    layer.cache[0].shape, 88.0, dtype=mx.bfloat16
-                )
+                layer.cache[1] = mx.full(layer.cache[1].shape, 99.0, dtype=mx.float32)
+                layer.cache[0] = mx.full(layer.cache[0].shape, 88.0, dtype=mx.bfloat16)
         return cache
 
     def _build_aligned_gdn_states(self, cache: list) -> list:
@@ -1222,17 +1214,29 @@ class TestRealQwen36LayoutRollbackInvariants(unittest.TestCase):
         # compares each layer's identity/values to its OWN pre-rollback
         # snapshot (not a parallel index space).
         after_arrays = [
-            (id(layer.cache[1]), id(layer.cache[0]),
-             mx.array(layer.cache[1], dtype=mx.float32),
-             mx.array(layer.cache[0], dtype=mx.bfloat16))
+            (
+                id(layer.cache[1]),
+                id(layer.cache[0]),
+                mx.array(layer.cache[1], dtype=mx.float32),
+                mx.array(layer.cache[0], dtype=mx.bfloat16),
+            )
             for layer in cache
             if isinstance(layer, ArraysCache)
         ]
 
-        for layer_index, ((state_id_before, conv_id_before, state_before, conv_before),
-                            (state_id_after, conv_id_after, state_after, conv_after)) in enumerate(
+        for layer_index, (
+            (state_id_before, conv_id_before, state_before, conv_before),
+            (state_id_after, conv_id_after, state_after, conv_after),
+        ) in enumerate(
             zip(
-                list(zip(state_ids_before, conv_ids_before, state_values_before, conv_values_before)),
+                list(
+                    zip(
+                        state_ids_before,
+                        conv_ids_before,
+                        state_values_before,
+                        conv_values_before,
+                    )
+                ),
                 after_arrays,
             )
         ):
@@ -1281,7 +1285,9 @@ class TestRealQwen36LayoutRollbackInvariants(unittest.TestCase):
             kv_layer.offset = len(kv_layer.history)
             kv_layer._idx = len(kv_layer.history)
             kv_layer.lengths = mx.full(
-                kv_layer.lengths.shape, len(kv_layer.history), dtype=kv_layer.lengths.dtype
+                kv_layer.lengths.shape,
+                len(kv_layer.history),
+                dtype=kv_layer.lengths.dtype,
             )
 
         accepted = 1
@@ -1328,12 +1334,8 @@ class TestRealQwen36LayoutRollbackInvariants(unittest.TestCase):
         _qwen3_5_dflash_rollback([ragged], aligned, accepted=1, block_size=4)
 
         # Ragged cache stays untouched.
-        self.assertTrue(
-            bool(mx.all(mx.equal(ragged.cache[1], sentinel_state)).item())
-        )
-        self.assertTrue(
-            bool(mx.all(mx.equal(ragged.cache[0], sentinel_conv)).item())
-        )
+        self.assertTrue(bool(mx.all(mx.equal(ragged.cache[1], sentinel_state)).item()))
+        self.assertTrue(bool(mx.all(mx.equal(ragged.cache[0], sentinel_conv)).item()))
         self.assertIsNotNone(ragged.lengths)
         self.assertIsNotNone(ragged.left_padding)
 
@@ -1429,9 +1431,7 @@ class TestUnsupportedCacheModesRemainFailClosed(unittest.TestCase):
         self._assert_runtime_blocker(kit, "draft_model")
 
     def test_kv_quantization_is_fail_closed(self):
-        kit = _runtime_model_kit(
-            prompt_cache=_build_proven_layout_cache(), kv_bits=4
-        )
+        kit = _runtime_model_kit(prompt_cache=_build_proven_layout_cache(), kv_bits=4)
         self._assert_runtime_blocker(kit, "kv_bits")
 
     def test_kv_group_size_is_fail_closed(self):
@@ -1535,8 +1535,7 @@ class TestUnsupportedCacheModesRemainFailClosed(unittest.TestCase):
         # Filter out the (false) ``ragged`` blockers — none should
         # fire on the proven shape.
         layout_blockers = [
-            b for b in blockers
-            if "16 KVCache + 48 ArraysCache" in b or "ragged" in b
+            b for b in blockers if "16 KVCache + 48 ArraysCache" in b or "ragged" in b
         ]
         self.assertEqual(
             layout_blockers,

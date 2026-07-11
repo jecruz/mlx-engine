@@ -257,9 +257,7 @@ class DFlashAdaptiveScheduler:
         history_window: int = DEFAULT_DFLASH_SCHEDULER_HISTORY_WINDOW,
         grow_threshold: float = DEFAULT_DFLASH_SCHEDULER_GROW_THRESHOLD,
         shrink_threshold: float = DEFAULT_DFLASH_SCHEDULER_SHRINK_THRESHOLD,
-        low_acceptance_window: int = (
-            DEFAULT_DFLASH_FALLBACK_LOW_ACCEPTANCE_WINDOW
-        ),
+        low_acceptance_window: int = (DEFAULT_DFLASH_FALLBACK_LOW_ACCEPTANCE_WINDOW),
         low_acceptance_threshold: float = (
             DEFAULT_DFLASH_FALLBACK_LOW_ACCEPTANCE_THRESHOLD
         ),
@@ -292,9 +290,7 @@ class DFlashAdaptiveScheduler:
             raise ValueError("pathological_target_only_rounds must be >= 1")
 
         self._max_draft_tokens = int(max_draft_tokens)
-        self._initial_block_size = min(
-            int(initial_block_size), self._max_draft_tokens
-        )
+        self._initial_block_size = min(int(initial_block_size), self._max_draft_tokens)
         self._history_window = int(history_window)
         self._grow_threshold = float(grow_threshold)
         self._shrink_threshold = float(shrink_threshold)
@@ -311,9 +307,7 @@ class DFlashAdaptiveScheduler:
         self._low_acceptance_window = int(low_acceptance_window)
         self._low_acceptance_threshold = float(low_acceptance_threshold)
         self._low_acceptance_min_drafts = int(low_acceptance_min_drafts)
-        self._pathological_target_only_rounds = int(
-            pathological_target_only_rounds
-        )
+        self._pathological_target_only_rounds = int(pathological_target_only_rounds)
         self._fallback_engaged = False
         self._fallback_reason: Optional[str] = DFLASH_FALLBACK_REASON_NONE
         self._recent_drafts: deque[tuple[int, int]] = deque(
@@ -500,8 +494,7 @@ class DFlashAdaptiveScheduler:
                 ):
                     desired = self._current_block_size + 1
                 elif (
-                    last_ratio < self._shrink_threshold
-                    and self._current_block_size > 1
+                    last_ratio < self._shrink_threshold and self._current_block_size > 1
                 ):
                     desired = self._current_block_size - 1
 
@@ -550,9 +543,7 @@ class DFlashAdaptiveScheduler:
                 self._fallback_reason = DFLASH_FALLBACK_REASON_LOW_ACCEPTANCE
             elif decision.pathological_target_only_active:
                 self._fallback_engaged = True
-                self._fallback_reason = (
-                    DFLASH_FALLBACK_REASON_PATHOLOGICAL_TARGET_ONLY
-                )
+                self._fallback_reason = DFLASH_FALLBACK_REASON_PATHOLOGICAL_TARGET_ONLY
         if self._fallback_engaged:
             return DFlashFallbackDecision(
                 fallback_engaged=True,
@@ -563,9 +554,7 @@ class DFlashAdaptiveScheduler:
                 ),
                 low_acceptance_threshold=decision.low_acceptance_threshold,
                 low_acceptance_min_drafts=decision.low_acceptance_min_drafts,
-                low_acceptance_observed_mean=(
-                    decision.low_acceptance_observed_mean
-                ),
+                low_acceptance_observed_mean=(decision.low_acceptance_observed_mean),
                 pathological_target_only_active=(
                     decision.pathological_target_only_active
                 ),
@@ -588,9 +577,7 @@ def load_dflash_drafter_model(
     draft_model, resolved_kind = load_drafter(str(dflash_drafter_path), kind="dflash")
     validate_drafter_compatibility(target_model, draft_model, resolved_kind)
     if not isinstance(draft_model, DFlashDraftModel):
-        raise ValueError(
-            "DFlash drafter snapshot did not load as DFlashDraftModel"
-        )
+        raise ValueError("DFlash drafter snapshot did not load as DFlashDraftModel")
     return draft_model
 
 
@@ -761,12 +748,8 @@ def dflash_stream_generate(
     request_id: Optional[str] = None,
     dflash_options: DFlashBoundaryOptions,
     dflash_draft_model: Optional[DFlashDraftModel] = None,
-    proposal_observer: Optional[
-        Callable[[Sequence[int], Sequence[int]], None]
-    ] = None,
-    telemetry_collector: Optional[
-        Callable[[DFlashRoundTelemetry], None]
-    ] = None,
+    proposal_observer: Optional[Callable[[Sequence[int], Sequence[int]], None]] = None,
+    telemetry_collector: Optional[Callable[[DFlashRoundTelemetry], None]] = None,
 ) -> Iterator[GenerationResult]:
     """Stream DFlash draft/verify generation for sequential text.
 
@@ -861,7 +844,11 @@ def dflash_stream_generate(
         prompt_cache = _copy_prompt_cache(model_kit)
 
     target_model = getattr(model_kit, "model", model_kit)
-    lm = target_model.language_model if hasattr(target_model, "language_model") else target_model
+    lm = (
+        target_model.language_model
+        if hasattr(target_model, "language_model")
+        else target_model
+    )
 
     draft_model = (
         dflash_draft_model
@@ -895,7 +882,9 @@ def dflash_stream_generate(
     text = ""
     emitted_history: list[int] = []
 
-    def _emit_token(token: int, logprobs: mx.array, from_draft: bool) -> GenerationResult | None:
+    def _emit_token(
+        token: int, logprobs: mx.array, from_draft: bool
+    ) -> GenerationResult | None:
         nonlocal text, token_buffer, top_logprobs_buffer
         text += tokenizer.decode(token)
         if getattr(model_kit, "is_cross_prompt_cache_active", lambda: False)():
@@ -931,11 +920,7 @@ def dflash_stream_generate(
             return None
 
         should_yield, stop_condition = should_yield_token(text, token, tokenizer)
-        if (
-            stop_condition is None
-            and token_buffer
-            and len(token_buffer) >= max_tokens
-        ):
+        if stop_condition is None and token_buffer and len(token_buffer) >= max_tokens:
             should_yield = True
             stop_condition = GenerationStopCondition(
                 stop_reason="token_limit",
@@ -968,7 +953,9 @@ def dflash_stream_generate(
                 gdn_sink=[],
                 target_verify=True,
             )
-        initial_target_verify_elapsed_s = time.perf_counter() - initial_target_verify_start
+        initial_target_verify_elapsed_s = (
+            time.perf_counter() - initial_target_verify_start
+        )
         logits = _apply_logits_processors(
             logits_processors,
             prompt_tokens_array,
@@ -1045,11 +1032,7 @@ def dflash_stream_generate(
         # size, preserving M14 invariants and the default-off behavior.
         adaptive_scheduler: Optional[DFlashAdaptiveScheduler] = None
         if getattr(dflash_options, "adaptive_scheduling", False):
-            initial_block_size = (
-                2
-                if dflash_options.max_draft_tokens >= 2
-                else 1
-            )
+            initial_block_size = 2 if dflash_options.max_draft_tokens >= 2 else 1
             adaptive_scheduler = DFlashAdaptiveScheduler(
                 max_draft_tokens=dflash_options.max_draft_tokens,
                 initial_block_size=initial_block_size,
@@ -1133,9 +1116,7 @@ def dflash_stream_generate(
                 # after the first token, which caused
                 # ``completion_tokens=1`` and ``finish_reason=null`` on
                 # every prompt.
-                verify_input = mx.array(
-                    [[emitted_history[-1]]], dtype=mx.int32
-                )
+                verify_input = mx.array([[emitted_history[-1]]], dtype=mx.int32)
                 target_only_verify_start = time.perf_counter()
                 with mx.stream(generation_stream):
                     verify_out = target_model(

@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -144,10 +143,7 @@ def _model_dir_status(model_dir: Path) -> dict[str, Any]:
         "tokenizer.json",
         "tokenizer_config.json",
     ]
-    present = {
-        name: (model_dir / name).exists()
-        for name in required_files
-    }
+    present = {name: (model_dir / name).exists() for name in required_files}
     return {
         "path": str(model_dir),
         "exists": model_dir.exists(),
@@ -192,7 +188,9 @@ def main() -> int:
     args = _parse_args()
     commands = {
         "runtime_ls": _run_command(["lms", "runtime", "ls"], timeout=args.timeout),
-        "server_status": _run_command(["lms", "server", "status"], timeout=args.timeout),
+        "server_status": _run_command(
+            ["lms", "server", "status"], timeout=args.timeout
+        ),
         "loaded_models": _run_command(["lms", "ps"], timeout=args.timeout),
         "lms_ls_json": _run_command(["lms", "ls", "--json"], timeout=args.timeout),
     }

@@ -13,7 +13,10 @@ import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
-from mlx_engine.utils.dflash_snapshot import DFlashSnapshotError, load_dflash_snapshot_profile
+from mlx_engine.utils.dflash_snapshot import (
+    DFlashSnapshotError,
+    load_dflash_snapshot_profile,
+)
 
 
 DFLASH_ENV = "MLX_ENGINE_DFLASH"
@@ -332,10 +335,14 @@ def _parse_target_profile(
         blockers.append(f"DFlash target must be a Qwen-family snapshot: {model_path}")
 
     architectures = config.get("architectures")
-    if not isinstance(architectures, list) or not architectures or not all(
-        isinstance(item, str) for item in architectures
+    if (
+        not isinstance(architectures, list)
+        or not architectures
+        or not all(isinstance(item, str) for item in architectures)
     ):
-        blockers.append("DFlash target config.architectures must be a non-empty string list")
+        blockers.append(
+            "DFlash target config.architectures must be a non-empty string list"
+        )
         architectures_tuple: tuple[str, ...] = ()
     else:
         architectures_tuple = tuple(architectures)
@@ -380,12 +387,16 @@ def _parse_target_profile(
         try:
             tokenizer_vocab = json.loads(vocab_path.read_text())
         except json.JSONDecodeError as exc:
-            blockers.append(f"Invalid JSON in DFlash target vocab file {vocab_path}: {exc.msg}")
+            blockers.append(
+                f"Invalid JSON in DFlash target vocab file {vocab_path}: {exc.msg}"
+            )
             tokenizer_vocab = {}
         if isinstance(tokenizer_vocab, dict):
             tokenizer_vocab_size = len(tokenizer_vocab)
         else:
-            blockers.append(f"DFlash target vocab file must contain a JSON object: {vocab_path}")
+            blockers.append(
+                f"DFlash target vocab file must contain a JSON object: {vocab_path}"
+            )
         if tokenizer_vocab_size != -1 and vocab_size_int != -1:
             allowed_delta = max(1024, vocab_size_int // 100)
             if tokenizer_vocab_size > vocab_size_int:
@@ -772,8 +783,7 @@ def _classify_llmdynamix_router(
         command=listener_command,
         config_path=config_path,
         notes=(
-            f"LLMDYNAMIX config at {config_path} has no recognized backend "
-            "markers",
+            f"LLMDYNAMIX config at {config_path} has no recognized backend markers",
         ),
     )
 
@@ -794,9 +804,7 @@ def _classify_local_heavy_listener(
             pid=pid,
             comm=comm,
             command=command,
-            notes=(
-                "Listener process matches a local MLX/Metal-heavy marker",
-            ),
+            notes=("Listener process matches a local MLX/Metal-heavy marker",),
         )
     return ListenerEvidence(
         port=port,
@@ -804,9 +812,7 @@ def _classify_local_heavy_listener(
         pid=pid,
         comm=comm,
         command=command,
-        notes=(
-            "Listener process is not a recognized LLMDYNAMIX cloud-router",
-        ),
+        notes=("Listener process is not a recognized LLMDYNAMIX cloud-router",),
     )
 
 
@@ -932,7 +938,7 @@ def _estimate_snapshot_bytes(paths: tuple[Path, ...]) -> int:
 def _format_gib(size_in_bytes: int | None) -> str:
     if size_in_bytes is None:
         return "unknown"
-    return f"{size_in_bytes / (1024 ** 3):.2f} GiB"
+    return f"{size_in_bytes / (1024**3):.2f} GiB"
 
 
 def probe_dflash_readiness(
@@ -995,8 +1001,7 @@ def probe_dflash_readiness(
 
     if not dependency_available:
         blockers.append(
-            "Missing optional DFlash dependency modules: "
-            + ", ".join(missing_modules)
+            "Missing optional DFlash dependency modules: " + ", ".join(missing_modules)
         )
 
     if options.target_model_path is not None:
@@ -1056,9 +1061,7 @@ def probe_dflash_readiness(
     listener_evidence = probe_all_listener_evidence()
     port_blockers_list = [
         blocker
-        for blocker in (
-            build_port_blocker(evidence) for evidence in listener_evidence
-        )
+        for blocker in (build_port_blocker(evidence) for evidence in listener_evidence)
         if blocker is not None
     ]
     if port_blockers_list:
@@ -1160,7 +1163,10 @@ def validate_dflash_preload_compatibility(
     if not options.enabled:
         return readiness
 
-    if options.target_model_path is not None and loaded_model_path.resolve() != options.target_model_path.resolve():
+    if (
+        options.target_model_path is not None
+        and loaded_model_path.resolve() != options.target_model_path.resolve()
+    ):
         route_blockers.append(
             "DFlash target model path must match the loaded model path "
             f"({loaded_model_path} != {options.target_model_path})"
@@ -1172,7 +1178,9 @@ def validate_dflash_preload_compatibility(
     if distributed:
         route_blockers.append("DFlash cannot be combined with distributed loading yet")
     if max_seq_nums is not None and max_seq_nums > 1:
-        route_blockers.append("DFlash requires the sequential route (max_seq_nums <= 1)")
+        route_blockers.append(
+            "DFlash requires the sequential route (max_seq_nums <= 1)"
+        )
     if vlm_prompt_cache_storage_root is not None:
         route_blockers.append(
             "DFlash is not compatible with persistent VLM prompt-cache storage yet"
@@ -1185,7 +1193,9 @@ def validate_dflash_preload_compatibility(
     if kv_bits is not None:
         cache_mode_blockers.append("DFlash does not support kv_bits cache mode yet")
     if kv_group_size is not None:
-        cache_mode_blockers.append("DFlash does not support kv_group_size cache mode yet")
+        cache_mode_blockers.append(
+            "DFlash does not support kv_group_size cache mode yet"
+        )
     if quantized_kv_start is not None:
         cache_mode_blockers.append(
             "DFlash does not support quantized_kv_start cache mode yet"
@@ -1211,9 +1221,7 @@ def validate_dflash_preload_compatibility(
         listener_evidence=readiness.listener_evidence,
     )
     if blockers:
-        raise DFlashUnavailableError(
-            build_dflash_no_go_message(report)
-        )
+        raise DFlashUnavailableError(build_dflash_no_go_message(report))
     return report
 
 
@@ -1326,8 +1334,9 @@ def _summarize_prompt_cache_layout(
         cache_type_name = type(cache).__name__
         if cache_type_name == "KVCache":
             kv_count += 1
-        elif cache_type_name == "ArraysCache" or _cache_layer_is_qwen35_sequential_arrays_cache(
-            cache
+        elif (
+            cache_type_name == "ArraysCache"
+            or _cache_layer_is_qwen35_sequential_arrays_cache(cache)
         ):
             arrays_count += 1
         else:

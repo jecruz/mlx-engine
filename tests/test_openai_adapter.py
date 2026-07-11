@@ -294,7 +294,10 @@ def test_chat_completion_rejects_image_when_model_is_text_only(
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64,AAAA"},
+                        },
                         {"type": "text", "text": "describe this"},
                     ],
                 }
@@ -525,7 +528,10 @@ def _png_b64() -> str:
 
 def test_extract_image_payload_strips_data_url_prefix() -> None:
     payload = _extract_image_payload(
-        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{_png_b64()}"}}
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{_png_b64()}"},
+        }
     )
     assert payload == _png_b64()
 
@@ -549,7 +555,10 @@ def test_extract_text_and_images_handles_mixed_content_array() -> None:
         {
             "role": "user",
             "content": [
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{_png_b64()}"}},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{_png_b64()}"},
+                },
                 {"type": "text", "text": "what is this bird?"},
             ],
         }
@@ -586,9 +595,7 @@ def test_vision_adapter_routes_image_url_to_vlm(
                     "content": [
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{_png_b64()}"
-                            },
+                            "image_url": {"url": f"data:image/png;base64,{_png_b64()}"},
                         },
                         {"type": "text", "text": "What bird is this?"},
                     ],
@@ -601,7 +608,9 @@ def test_vision_adapter_routes_image_url_to_vlm(
     assert body["choices"][0]["message"]["content"] == "toucan"
     # Processor should have been used (apply_chat_template on processor).
     assert vision_state.model_kit.processor is not None
-    assert vision_state.model_kit.processor.calls, "processor.apply_chat_template was not called"
+    assert vision_state.model_kit.processor.calls, (
+        "processor.apply_chat_template was not called"
+    )
     chat_messages = vision_state.model_kit.processor.calls[0]["messages"]
     last_message = chat_messages[-1]
     assert isinstance(last_message["content"], list)
@@ -609,7 +618,10 @@ def test_vision_adapter_routes_image_url_to_vlm(
     assert "image" in content_types
     assert "text" in content_types
     # Vision tokenizer was reused, so the processor gained a chat_template.
-    assert vision_state.model_kit.processor.chat_template == vision_state.model_kit.tokenizer.chat_template
+    assert (
+        vision_state.model_kit.processor.chat_template
+        == vision_state.model_kit.tokenizer.chat_template
+    )
 
 
 def test_vision_adapter_streams_with_image_url(
@@ -629,9 +641,7 @@ def test_vision_adapter_streams_with_image_url(
                     "content": [
                         {
                             "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{_png_b64()}"
-                            },
+                            "image_url": {"url": f"data:image/png;base64,{_png_b64()}"},
                         },
                         {"type": "text", "text": "Identify this bird."},
                     ],
@@ -721,9 +731,7 @@ def test_extract_image_payload_rejects_malformed_data_url() -> None:
         _extract_image_payload(
             {
                 "type": "image_url",
-                "image_url": {
-                    "url": "data:image/png;base64,!!!not-valid-base64!!!"
-                },
+                "image_url": {"url": "data:image/png;base64,!!!not-valid-base64!!!"},
             }
         )
         is None
@@ -755,9 +763,7 @@ def test_extract_image_payload_rejects_malformed_bare_string() -> None:
         _extract_image_payload(
             {
                 "type": "image_url",
-                "image_url": {
-                    "url": "not-base64!@#$"
-                },
+                "image_url": {"url": "not-base64!@#$"},
             }
         )
         is None
@@ -767,9 +773,7 @@ def test_extract_image_payload_rejects_malformed_bare_string() -> None:
         _extract_image_payload(
             {
                 "type": "image_url",
-                "image_url": {
-                    "url": f" {_png_b64()} "
-                },
+                "image_url": {"url": f" {_png_b64()} "},
             }
         )
         is None
@@ -1005,9 +1009,7 @@ def test_normalize_responses_input_accepts_string() -> None:
 
 def test_normalize_responses_input_accepts_string_list() -> None:
     """A list of strings becomes one user turn per string."""
-    normalized = _normalize_responses_input(
-        ["first turn", "second turn"]
-    )
+    normalized = _normalize_responses_input(["first turn", "second turn"])
     assert normalized == [
         {"role": "user", "content": "first turn"},
         {"role": "user", "content": "second turn"},
@@ -1116,7 +1118,10 @@ def test_responses_rejects_image_when_model_is_text_only(
                 {
                     "role": "user",
                     "content": [
-                        {"type": "input_image", "image_url": {"url": "data:image/png;base64,AAAA"}},
+                        {
+                            "type": "input_image",
+                            "image_url": {"url": "data:image/png;base64,AAAA"},
+                        },
                         {"type": "input_text", "text": "describe this"},
                     ],
                 }
@@ -1182,13 +1187,12 @@ def test_responses_streams_typed_events_in_canonical_order(
         f"missing canonical Responses prefix in {event_types!r}"
     )
     delta_events = [
-        payload for event_type, payload in events
+        payload
+        for event_type, payload in events
         if event_type == "response.output_text.delta"
     ]
     assert delta_events, f"expected at least one delta in {event_types!r}"
-    delta_text = "".join(
-        delta.get("delta", "") for delta in delta_events
-    )
+    delta_text = "".join(delta.get("delta", "") for delta in delta_events)
     assert delta_text == "abcdefghi"
     # Required canonical Responses suffix (immediately before the
     # terminal ``[DONE]`` marker). Exclude the trailing data-only
@@ -1198,14 +1202,15 @@ def test_responses_streams_typed_events_in_canonical_order(
     typed_event_types = [
         event_type
         for event_type, payload in events
-        if event_type != "data" or not (isinstance(payload, dict) and payload.get("_done"))
+        if event_type != "data"
+        or not (isinstance(payload, dict) and payload.get("_done"))
     ]
     expected_suffix = [
         "response.content_part.done",
         "response.output_item.done",
         "response.completed",
     ]
-    assert typed_event_types[-len(expected_suffix):] == expected_suffix, (
+    assert typed_event_types[-len(expected_suffix) :] == expected_suffix, (
         f"missing canonical Responses suffix in {typed_event_types!r}"
     )
     # The terminal ``[DONE]`` marker is preserved so OpenAI-SDK-style
@@ -1233,9 +1238,7 @@ def test_responses_streams_with_image_url(
                     "content": [
                         {
                             "type": "input_image",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{_png_b64()}"
-                            },
+                            "image_url": {"url": f"data:image/png;base64,{_png_b64()}"},
                         },
                         {"type": "input_text", "text": "Identify this bird."},
                     ],
@@ -1247,7 +1250,8 @@ def test_responses_streams_with_image_url(
         raw = "".join(response.iter_text())
     events = _parse_typed_sse_events(raw)
     delta_events = [
-        payload for event_type, payload in events
+        payload
+        for event_type, payload in events
         if event_type == "response.output_text.delta"
     ]
     joined = "".join(delta.get("delta", "") for delta in delta_events)

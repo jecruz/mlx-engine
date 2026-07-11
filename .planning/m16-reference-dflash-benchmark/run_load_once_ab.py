@@ -9,6 +9,7 @@ then runs the same 3 prompts sequentially in two modes:
 This eliminates per-CLI-invocation model+drafter load overhead (~16 s
 each), so the per-prompt gen_tps reflects true generation cost.
 """
+
 import argparse
 import json
 import time
@@ -57,8 +58,15 @@ def format_speculative(draft_model):
     )
 
 
-def time_one(model, processor, prompt, *, draft_model=None, draft_kind=None,
-             draft_block_size=None):
+def time_one(
+    model,
+    processor,
+    prompt,
+    *,
+    draft_model=None,
+    draft_kind=None,
+    draft_block_size=None,
+):
     """Run one prompt via mlx_vlm.generate and return a dict of metrics."""
     config = model.config
     chat_kwargs = {"enable_thinking": False}
@@ -99,7 +107,9 @@ def time_one(model, processor, prompt, *, draft_model=None, draft_kind=None,
         "generation_tps": getattr(result, "generation_tps", 0.0),
         "peak_memory_gb": getattr(result, "peak_memory", 0.0),
         "output_text": (result.text or "").strip(),
-        "draft_stats": format_speculative(draft_model) if draft_model is not None else None,
+        "draft_stats": format_speculative(draft_model)
+        if draft_model is not None
+        else None,
         "finish_reason": getattr(result, "finish_reason", None),
     }
 
@@ -116,7 +126,10 @@ def main():
     print("=== M16 load-once A/B ===", flush=True)
     print(f"Target: {TARGET}", flush=True)
     print(f"Drafter: {DRAFTER}", flush=True)
-    print(f"Max tokens: {MAX_TOKENS}, Temperature: {TEMPERATURE}, Seed: {SEED}", flush=True)
+    print(
+        f"Max tokens: {MAX_TOKENS}, Temperature: {TEMPERATURE}, Seed: {SEED}",
+        flush=True,
+    )
     print(f"Draft block size: {args.draft_block_size}", flush=True)
     print(f"Prompts: {args.num_prompts}", flush=True)
 
@@ -130,7 +143,10 @@ def main():
     load_t1 = time.monotonic()
     print("[load] Loading drafter (dflash) ...", flush=True)
     draft_model, draft_kind = load_drafter(DRAFTER, kind="dflash")
-    print(f"[load] Drafter loaded in {time.monotonic() - load_t1:.1f}s, kind={draft_kind}", flush=True)
+    print(
+        f"[load] Drafter loaded in {time.monotonic() - load_t1:.1f}s, kind={draft_kind}",
+        flush=True,
+    )
 
     prompts = PROMPTS[: args.num_prompts]
     rows = []
@@ -142,16 +158,25 @@ def main():
             r_base = time_one(model, processor, prompt)
         except Exception as e:
             print(f"  ! ERROR: {type(e).__name__}: {e}", flush=True)
-            r_base = {"error": f"{type(e).__name__}: {e}", "wall_time_s": 0,
-                       "prompt_tokens": 0, "generation_tokens": 0,
-                       "generation_tps": 0, "peak_memory_gb": 0,
-                       "output_text": "", "draft_stats": None}
+            r_base = {
+                "error": f"{type(e).__name__}: {e}",
+                "wall_time_s": 0,
+                "prompt_tokens": 0,
+                "generation_tokens": 0,
+                "generation_tps": 0,
+                "peak_memory_gb": 0,
+                "output_text": "",
+                "draft_stats": None,
+            }
         r_base["mode"] = "baseline"
         r_base["prompt_id"] = i
         r_base["prompt"] = prompt
         rows.append(r_base)
-        print(f"  -> wall={r_base['wall_time_s']:.3f}s, gen_tok={r_base['generation_tokens']}, "
-              f"gen_tps={r_base['generation_tps']:.2f}, peak={r_base['peak_memory_gb']:.1f} GB", flush=True)
+        print(
+            f"  -> wall={r_base['wall_time_s']:.3f}s, gen_tok={r_base['generation_tokens']}, "
+            f"gen_tps={r_base['generation_tps']:.2f}, peak={r_base['peak_memory_gb']:.1f} GB",
+            flush=True,
+        )
         print(f"     out={r_base['output_text']!r}", flush=True)
 
         # DFlash candidate
@@ -167,16 +192,25 @@ def main():
             )
         except Exception as e:
             print(f"  ! ERROR: {type(e).__name__}: {e}", flush=True)
-            r_d = {"error": f"{type(e).__name__}: {e}", "wall_time_s": 0,
-                   "prompt_tokens": 0, "generation_tokens": 0,
-                   "generation_tps": 0, "peak_memory_gb": 0,
-                   "output_text": "", "draft_stats": None}
+            r_d = {
+                "error": f"{type(e).__name__}: {e}",
+                "wall_time_s": 0,
+                "prompt_tokens": 0,
+                "generation_tokens": 0,
+                "generation_tps": 0,
+                "peak_memory_gb": 0,
+                "output_text": "",
+                "draft_stats": None,
+            }
         r_d["mode"] = "dflash"
         r_d["prompt_id"] = i
         r_d["prompt"] = prompt
         rows.append(r_d)
-        print(f"  -> wall={r_d['wall_time_s']:.3f}s, gen_tok={r_d['generation_tokens']}, "
-              f"gen_tps={r_d['generation_tps']:.2f}, peak={r_d['peak_memory_gb']:.1f} GB", flush=True)
+        print(
+            f"  -> wall={r_d['wall_time_s']:.3f}s, gen_tok={r_d['generation_tokens']}, "
+            f"gen_tps={r_d['generation_tps']:.2f}, peak={r_d['peak_memory_gb']:.1f} GB",
+            flush=True,
+        )
         print(f"     out={r_d['output_text']!r}", flush=True)
         if r_d.get("draft_stats"):
             print(f"     draft_stats={r_d['draft_stats']}", flush=True)

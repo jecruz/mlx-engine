@@ -263,7 +263,9 @@ class TestSuffixDecodingRouting(unittest.TestCase):
             yield response
 
         with (
-            patch("mlx_engine.generate.stream_generate", side_effect=fake_stream_generate) as stream_generate,
+            patch(
+                "mlx_engine.generate.stream_generate", side_effect=fake_stream_generate
+            ) as stream_generate,
             patch(
                 "mlx_engine.generate.suffix_stream_generate",
                 side_effect=AssertionError("suffix path should stay disabled"),
@@ -341,7 +343,10 @@ class TestSuffixDecodingRouting(unittest.TestCase):
                 )
 
         fake_vision_kit = type("FakeVisionKit", (), {})
-        with patch("mlx_engine.generate._load_batched_vision_model_kit", return_value=fake_vision_kit):
+        with patch(
+            "mlx_engine.generate._load_batched_vision_model_kit",
+            return_value=fake_vision_kit,
+        ):
             with self.assertRaisesRegex(ValueError, "sequential text generation"):
                 create_generator(
                     fake_vision_kit(),
@@ -467,11 +472,15 @@ class TestSuffixDecodingVerification(unittest.TestCase):
         )
 
         self.assertEqual([response.token for response in responses], [7, 9])
-        self.assertEqual([response.from_draft for response in responses], [False, False])
+        self.assertEqual(
+            [response.from_draft for response in responses], [False, False]
+        )
         self.assertEqual(model.calls, [[1], [7, 8]])
         self.assertEqual(cache[0].trim_calls, [1])
 
-    def test_suffix_proposal_none_or_empty_does_not_duplicate_initial_target_token(self):
+    def test_suffix_proposal_none_or_empty_does_not_duplicate_initial_target_token(
+        self,
+    ):
         scenarios = [
             ("none", None),
             (
@@ -512,7 +521,9 @@ class TestSuffixDecodingVerification(unittest.TestCase):
 
                 self.assertEqual(proposal_calls, 1)
                 self.assertEqual([response.token for response in responses], [7, 8])
-                self.assertEqual([response.from_draft for response in responses], [False, False])
+                self.assertEqual(
+                    [response.from_draft for response in responses], [False, False]
+                )
                 self.assertEqual(model.calls, [[1], [7]])
                 self.assertEqual(cache[0].trim_calls, [])
 

@@ -55,7 +55,9 @@ def _report(
         summary["followup_cache_reuse_ratio"] = {
             "avg": cached_tokens / total_prompt_tokens
         }
-        summary["followup_prefill_ratio"] = {"avg": prefill_tokens / total_prompt_tokens}
+        summary["followup_prefill_ratio"] = {
+            "avg": prefill_tokens / total_prompt_tokens
+        }
     return {"summary": summary}
 
 
@@ -73,8 +75,13 @@ def test_compare_reports_computes_missing_baseline_ratios():
     )
 
     assert result["status"] == "pass"
-    assert result["metrics"]["followup_cache_reuse_ratio_avg"]["baseline"] == 542.0 / 565.0
-    assert result["metrics"]["followup_cache_reuse_ratio_avg"]["candidate"] == 542.0 / 565.0
+    assert (
+        result["metrics"]["followup_cache_reuse_ratio_avg"]["baseline"] == 542.0 / 565.0
+    )
+    assert (
+        result["metrics"]["followup_cache_reuse_ratio_avg"]["candidate"]
+        == 542.0 / 565.0
+    )
     assert all(check["status"] == "pass" for check in result["checks"])
 
 

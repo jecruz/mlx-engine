@@ -273,9 +273,7 @@ def test_cache_store_terminal_kv_preserves_exact_boundary_state(cache_store):
     assert boundary_state.item() == chunks[2].end
 
 
-def test_cache_store_terminal_packed_final_kv_can_be_disabled(
-    cache_store, monkeypatch
-):
+def test_cache_store_terminal_packed_final_kv_can_be_disabled(cache_store, monkeypatch):
     """Operators can disable terminal-packed final KV with an explicit env flag."""
     monkeypatch.setenv("MLX_ENGINE_VLM_TERMINAL_PACKED_FINAL_KV", "0")
     prompt_input_ids = list(range((3 * C) + 100))
@@ -348,9 +346,7 @@ def test_cache_store_logs_profiled_record_load_timing(
     monkeypatch.setattr(
         cache_store_module,
         "log_batched_timing",
-        lambda logger, event, **fields: events.append(
-            {"event": event, **fields}
-        ),
+        lambda logger, event, **fields: events.append({"event": event, **fields}),
     )
     cache_store.load_restore_plan(restore_plan)
 
@@ -387,9 +383,7 @@ def test_cache_store_logs_restore_materialization_counters(
     monkeypatch.setattr(
         cache_store_module,
         "log_batched_timing",
-        lambda logger, event, **fields: events.append(
-            {"event": event, **fields}
-        ),
+        lambda logger, event, **fields: events.append({"event": event, **fields}),
     )
     cache_store.load_restore_plan(restore_plan)
 
@@ -448,9 +442,7 @@ def test_cache_store_logs_restore_rotating_cost_model(
     monkeypatch.setattr(
         cache_store_module,
         "log_batched_timing",
-        lambda logger, event, **fields: events.append(
-            {"event": event, **fields}
-        ),
+        lambda logger, event, **fields: events.append({"event": event, **fields}),
     )
     cache_store.load_restore_plan(restore_plan)
 
@@ -464,18 +456,22 @@ def test_cache_store_logs_restore_rotating_cost_model(
     assert cost_model["cached_tokens"] == restore_detail["cached_tokens"]
     assert cost_model["chunks"] == restore_detail["chunks"]
     assert cost_model["records"] == restore_detail["records"]
-    assert cost_model["rotating_record_count"] == restore_detail[
-        "record_count_by_kind"
-    ][RECORD_KIND_ROTATING_DELTA]
-    assert cost_model["rotating_record_bytes"] == restore_detail[
-        "record_bytes_by_kind"
-    ][RECORD_KIND_ROTATING_DELTA]
-    assert cost_model["rotating_eval_target_count"] == restore_detail[
-        "eval_target_count_by_kind"
-    ][RECORD_KIND_ROTATING_DELTA]
-    assert cost_model["rotating_materialized_bytes"] == restore_detail[
-        "materialized_bytes_by_kind"
-    ][RECORD_KIND_ROTATING_DELTA]
+    assert (
+        cost_model["rotating_record_count"]
+        == restore_detail["record_count_by_kind"][RECORD_KIND_ROTATING_DELTA]
+    )
+    assert (
+        cost_model["rotating_record_bytes"]
+        == restore_detail["record_bytes_by_kind"][RECORD_KIND_ROTATING_DELTA]
+    )
+    assert (
+        cost_model["rotating_eval_target_count"]
+        == restore_detail["eval_target_count_by_kind"][RECORD_KIND_ROTATING_DELTA]
+    )
+    assert (
+        cost_model["rotating_materialized_bytes"]
+        == restore_detail["materialized_bytes_by_kind"][RECORD_KIND_ROTATING_DELTA]
+    )
     assert cost_model["load_chunks_ms"] == restore_detail["load_chunks_ms"]
     assert cost_model["assemble_ms"] == restore_detail["assemble_ms"]
     assert cost_model["eval_collect_ms"] == restore_detail["eval_collect_ms"]
@@ -483,9 +479,10 @@ def test_cache_store_logs_restore_rotating_cost_model(
     assert cost_model["eval_ms"] == restore_detail["eval_ms"]
     assert cost_model["rotating_reducible_overhead"] is False
     assert cost_model["rotating_reducible_overhead_decision"] == "no-go"
-    assert "final-state materialization surface" in cost_model[
-        "rotating_reducible_overhead_reason"
-    ]
+    assert (
+        "final-state materialization surface"
+        in cost_model["rotating_reducible_overhead_reason"]
+    )
 
 
 def test_restore_rotating_cost_model_marks_equal_bytes_as_no_go():
@@ -605,9 +602,7 @@ def test_cache_store_diagnostic_mixed_restore_materializes_before_handoff(
     monkeypatch.setattr(
         cache_store_module,
         "log_batched_timing",
-        lambda logger, event, **fields: events.append(
-            {"event": event, **fields}
-        ),
+        lambda logger, event, **fields: events.append({"event": event, **fields}),
     )
 
     loaded = cache_store.load_restore_plan(restore_plan)
@@ -852,7 +847,10 @@ def test_cache_store_eviction_preserves_shorter_prefix_restore(cache_store):
     loaded = cache_store.load_restore_plan(restore_plan)
 
     assert loaded.cached_prefix_len >= first_chunk.end
-    assert cache_store.snapshot_stats().total_bytes <= cache_store.snapshot_stats().max_bytes
+    assert (
+        cache_store.snapshot_stats().total_bytes
+        <= cache_store.snapshot_stats().max_bytes
+    )
 
 
 def test_cache_store_eviction_preserves_shorter_state_checkpoint_restore(cache_store):

@@ -269,14 +269,36 @@ def test_prompt_cache_store_receives_persistent_cache_options(monkeypatch, tmp_p
         def close(self):
             pass
 
-    monkeypatch.setattr(model_kit_module, "fix_qwen2_5_vl_image_processor", lambda path: None)
-    monkeypatch.setattr(model_kit_module, "fix_qwen2_vl_preprocessor", lambda path: None)
-    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_config", lambda *args, **kwargs: {"model_type": "qwen2_vl"})
-    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_image_processor", lambda *args, **kwargs: None)
-    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_processor", lambda *args, **kwargs: SimpleNamespace())
+    monkeypatch.setattr(
+        model_kit_module, "fix_qwen2_5_vl_image_processor", lambda path: None
+    )
+    monkeypatch.setattr(
+        model_kit_module, "fix_qwen2_vl_preprocessor", lambda path: None
+    )
+    monkeypatch.setattr(
+        model_kit_module.mlx_vlm.utils,
+        "load_config",
+        lambda *args, **kwargs: {"model_type": "qwen2_vl"},
+    )
+    monkeypatch.setattr(
+        model_kit_module.mlx_vlm.utils,
+        "load_image_processor",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        model_kit_module.mlx_vlm.utils,
+        "load_processor",
+        lambda *args, **kwargs: SimpleNamespace(),
+    )
     monkeypatch.setattr(model_kit_module, "VlmPromptCacheStore", FakePromptCacheStore)
-    monkeypatch.setattr(BatchedVisionModelKit, "_init_tokenizer_only", lambda self: None)
-    monkeypatch.setattr(BatchedVisionModelKit, "_ensure_channel_first_if_fast_processor", lambda self: None)
+    monkeypatch.setattr(
+        BatchedVisionModelKit, "_init_tokenizer_only", lambda self: None
+    )
+    monkeypatch.setattr(
+        BatchedVisionModelKit,
+        "_ensure_channel_first_if_fast_processor",
+        lambda self: None,
+    )
 
     BatchedVisionModelKit(
         tmp_path,
@@ -305,14 +327,36 @@ def test_prompt_cache_store_defaults_namespace_to_model_path(monkeypatch, tmp_pa
         def close(self):
             pass
 
-    monkeypatch.setattr(model_kit_module, "fix_qwen2_5_vl_image_processor", lambda path: None)
-    monkeypatch.setattr(model_kit_module, "fix_qwen2_vl_preprocessor", lambda path: None)
-    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_config", lambda *args, **kwargs: {"model_type": "qwen2_vl"})
-    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_image_processor", lambda *args, **kwargs: None)
-    monkeypatch.setattr(model_kit_module.mlx_vlm.utils, "load_processor", lambda *args, **kwargs: SimpleNamespace())
+    monkeypatch.setattr(
+        model_kit_module, "fix_qwen2_5_vl_image_processor", lambda path: None
+    )
+    monkeypatch.setattr(
+        model_kit_module, "fix_qwen2_vl_preprocessor", lambda path: None
+    )
+    monkeypatch.setattr(
+        model_kit_module.mlx_vlm.utils,
+        "load_config",
+        lambda *args, **kwargs: {"model_type": "qwen2_vl"},
+    )
+    monkeypatch.setattr(
+        model_kit_module.mlx_vlm.utils,
+        "load_image_processor",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        model_kit_module.mlx_vlm.utils,
+        "load_processor",
+        lambda *args, **kwargs: SimpleNamespace(),
+    )
     monkeypatch.setattr(model_kit_module, "VlmPromptCacheStore", FakePromptCacheStore)
-    monkeypatch.setattr(BatchedVisionModelKit, "_init_tokenizer_only", lambda self: None)
-    monkeypatch.setattr(BatchedVisionModelKit, "_ensure_channel_first_if_fast_processor", lambda self: None)
+    monkeypatch.setattr(
+        BatchedVisionModelKit, "_init_tokenizer_only", lambda self: None
+    )
+    monkeypatch.setattr(
+        BatchedVisionModelKit,
+        "_ensure_channel_first_if_fast_processor",
+        lambda self: None,
+    )
 
     BatchedVisionModelKit(
         tmp_path,

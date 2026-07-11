@@ -75,7 +75,9 @@ class TestGenerateSpecPrefillCleanup(unittest.TestCase):
         def fake_stream_generate(**_kwargs):
             yield stream_result
 
-        with patch("mlx_engine.generate.stream_generate", side_effect=fake_stream_generate):
+        with patch(
+            "mlx_engine.generate.stream_generate", side_effect=fake_stream_generate
+        ):
             results = list(
                 _sequential_generation(
                     kit,
@@ -106,7 +108,9 @@ class TestGenerateSpecPrefillCleanup(unittest.TestCase):
             stream_calls.append(kwargs)
             yield stream_result
 
-        with patch("mlx_engine.generate.stream_generate", side_effect=fake_stream_generate):
+        with patch(
+            "mlx_engine.generate.stream_generate", side_effect=fake_stream_generate
+        ):
             list(
                 _sequential_generation(
                     kit,

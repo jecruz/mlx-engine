@@ -109,9 +109,7 @@ def _report_to_dict(report) -> dict[str, object]:
         "route_blockers": list(report.route_blockers),
         "resource_blockers": list(report.resource_blockers),
         "blockers": list(report.blockers),
-        "listener_evidence": [
-            _evidence_to_dict(ev) for ev in report.listener_evidence
-        ],
+        "listener_evidence": [_evidence_to_dict(ev) for ev in report.listener_evidence],
     }
 
 

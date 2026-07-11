@@ -12,6 +12,8 @@ def resolve_chat_template_args(
     template_args = dict(default_template_args)
     if isinstance(request_template_args, dict):
         template_args.update(request_template_args)
-    if "enable_thinking" not in template_args and getattr(tokenizer, "has_thinking", False):
+    if "enable_thinking" not in template_args and getattr(
+        tokenizer, "has_thinking", False
+    ):
         template_args["enable_thinking"] = False
     return template_args

@@ -127,7 +127,9 @@ class PromptCacheIOThread:
         request_prefix_chunks: list[PromptPrefixChunk],
     ) -> bool:
         save_prefix_chunks = pending_save.prefix_chunks
-        if not save_prefix_chunks or len(save_prefix_chunks) > len(request_prefix_chunks):
+        if not save_prefix_chunks or len(save_prefix_chunks) > len(
+            request_prefix_chunks
+        ):
             return False
         return all(
             saved.key == requested.key

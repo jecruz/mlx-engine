@@ -145,7 +145,10 @@ def build_gate_report(
         check_result(
             "readable_report_exists",
             readable_report_exists and readable_report_bytes > 0,
-            value={"exists": readable_report_exists, "size_bytes": readable_report_bytes},
+            value={
+                "exists": readable_report_exists,
+                "size_bytes": readable_report_bytes,
+            },
             required="existing non-empty Markdown report",
             evidence=str(readable_report_path),
         ),
@@ -182,7 +185,9 @@ def build_gate_report(
             "comparison": str(comparison_path),
             "readable_report": str(readable_report_path),
             "preflight": str(preflight_path),
-            "live_validation": str(live_validation_path) if live_validation_path else None,
+            "live_validation": str(live_validation_path)
+            if live_validation_path
+            else None,
             "min_samples": min_samples,
         },
         "checks": checks,
@@ -219,7 +224,15 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2))
     print(f"Wrote LFM2.5 text-cache promotion gate to {args.output}")
-    print(json.dumps({"status": report["status"], "promotion_status": report["promotion_status"]}, indent=2))
+    print(
+        json.dumps(
+            {
+                "status": report["status"],
+                "promotion_status": report["promotion_status"],
+            },
+            indent=2,
+        )
+    )
     return 0 if report["status"] == "pass" else 1
 
 

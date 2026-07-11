@@ -116,15 +116,15 @@ def test_load_model_defaults_to_faster_sequential_prefill_for_text(
     assert kit.kwargs["prefill_step_size"] == expected_step_size
 
 
-def test_load_model_requires_vision_config_before_routing_to_vlm(
-    tmp_path, monkeypatch
-):
+def test_load_model_requires_vision_config_before_routing_to_vlm(tmp_path, monkeypatch):
     from mlx_engine import generate
 
     _write_text_config(tmp_path)
     monkeypatch.setattr(generate, "ModelKit", _FakeSequentialModelKit)
     monkeypatch.setattr(generate, "BatchedModelKit", _FakeBatchedModelKit)
-    monkeypatch.setattr(generate, "_load_batched_vision_model_kit", lambda: _FakeBatchedVisionModelKit)
+    monkeypatch.setattr(
+        generate, "_load_batched_vision_model_kit", lambda: _FakeBatchedVisionModelKit
+    )
     monkeypatch.setattr(generate, "_is_known_vlm_model_type", lambda model_type: True)
     monkeypatch.setattr(generate, "sanitize_eos_tokens", lambda model_kit: None)
     monkeypatch.setattr(
@@ -151,7 +151,9 @@ def test_load_model_routes_known_vlm_with_vision_config_to_batched_vision(
     )
     monkeypatch.setattr(generate, "ModelKit", _FakeSequentialModelKit)
     monkeypatch.setattr(generate, "BatchedModelKit", _FakeBatchedModelKit)
-    monkeypatch.setattr(generate, "_load_batched_vision_model_kit", lambda: _FakeBatchedVisionModelKit)
+    monkeypatch.setattr(
+        generate, "_load_batched_vision_model_kit", lambda: _FakeBatchedVisionModelKit
+    )
     monkeypatch.setattr(generate, "_is_known_vlm_model_type", lambda model_type: True)
     monkeypatch.setattr(generate, "sanitize_eos_tokens", lambda model_kit: None)
     monkeypatch.setattr(
@@ -178,7 +180,9 @@ def test_load_model_passes_persistent_prompt_cache_options_to_vlm(
     )
     monkeypatch.setattr(generate, "ModelKit", _FakeSequentialModelKit)
     monkeypatch.setattr(generate, "BatchedModelKit", _FakeBatchedModelKit)
-    monkeypatch.setattr(generate, "_load_batched_vision_model_kit", lambda: _FakeBatchedVisionModelKit)
+    monkeypatch.setattr(
+        generate, "_load_batched_vision_model_kit", lambda: _FakeBatchedVisionModelKit
+    )
     monkeypatch.setattr(generate, "_is_known_vlm_model_type", lambda model_type: True)
     monkeypatch.setattr(generate, "sanitize_eos_tokens", lambda model_kit: None)
 

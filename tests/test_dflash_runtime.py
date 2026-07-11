@@ -96,7 +96,9 @@ class FakeDraftModel:
 
     def reset(self, model):
         self.reset_calls.append(model)
-        return [SimpleNamespace(lengths=mx.array([0])) for _ in self.config.target_layer_ids]
+        return [
+            SimpleNamespace(lengths=mx.array([0])) for _ in self.config.target_layer_ids
+        ]
 
     def draft_block(self, last_bonus, hidden, cache, block_size, sampler, token_dtype):
         self.draft_lens.append((last_bonus, block_size))
@@ -128,7 +130,9 @@ class FakeTargetModel:
         seq_len = len(seq_tokens)
         prompt_cache = kwargs["cache"]
         base_lengths = tuple(len(layer.history) for layer in prompt_cache)
-        expected_tokens = self._prompt_tokens if self.call_index == 0 else self._spec_input_tokens
+        expected_tokens = (
+            self._prompt_tokens if self.call_index == 0 else self._spec_input_tokens
+        )
         output_tokens = (
             (self._spec_input_tokens[0],)
             if self.call_index == 0
@@ -159,9 +163,13 @@ class FakeTargetModel:
             )
             for layer, base_length in zip(prompt_cache, base_lengths)
         ]
-        return SimpleNamespace(logits=logits, hidden_states=hidden, gdn_states=gdn_states)
+        return SimpleNamespace(
+            logits=logits, hidden_states=hidden, gdn_states=gdn_states
+        )
 
-    def rollback_speculative_cache(self, prompt_cache, gdn_states, accepted, block_size):
+    def rollback_speculative_cache(
+        self, prompt_cache, gdn_states, accepted, block_size
+    ):
         self.rollback_calls.append((accepted, block_size, len(gdn_states)))
         for layer, gdn_state in zip(prompt_cache, gdn_states):
             keep = gdn_state.base_history_len + accepted + 1
@@ -288,12 +296,15 @@ class _TargetOnlySequenceModel:
                             lengths.shape, len(history), dtype=lengths.dtype
                         )
 
-        vocab_size = max(
-            max(seq_tokens),
-            bonus_token,
-            *(self._next_tokens or [0]),
-            255,
-        ) + 8
+        vocab_size = (
+            max(
+                max(seq_tokens),
+                bonus_token,
+                *(self._next_tokens or [0]),
+                255,
+            )
+            + 8
+        )
         logits = mx.full((1, seq_len, vocab_size), -100.0)
         logits[:, seq_len - 1, bonus_token] = 100.0
         hidden = [
@@ -315,7 +326,9 @@ class _TargetOnlySequenceModel:
             gdn_states=gdn_states,
         )
 
-    def rollback_speculative_cache(self, prompt_cache, gdn_states, accepted, block_size):
+    def rollback_speculative_cache(
+        self, prompt_cache, gdn_states, accepted, block_size
+    ):
         # Should not be called in the max_draft_tokens=1 path because
         # the drafter never proposes any tokens. Record the call so
         # tests can fail if rollback is incorrectly invoked.
@@ -326,9 +339,7 @@ class _TargetOnlySequenceModel:
                 continue
             keep = max(
                 0,
-                int(getattr(gdn_state, "base_history_len", 0))
-                + accepted
-                + 1,
+                int(getattr(gdn_state, "base_history_len", 0)) + accepted + 1,
             )
             layer.history = history[:keep]
             lengths = getattr(layer, "lengths", None)
@@ -348,8 +359,7 @@ class _TrackingDraftModel:
 
     def __init__(self, target_layer_ids: list[int] | None = None):
         self.config = SimpleNamespace(
-            target_layer_ids=target_layer_ids
-            or [1, 10, 18, 27, 35, 44, 52, 61],
+            target_layer_ids=target_layer_ids or [1, 10, 18, 27, 35, 44, 52, 61],
             block_size=1,
         )
         self.draft_block_calls: list[int] = []
@@ -359,7 +369,9 @@ class _TrackingDraftModel:
 
     def reset(self, model):
         self.reset_calls.append(model)
-        return [SimpleNamespace(lengths=mx.array([0])) for _ in self.config.target_layer_ids]
+        return [
+            SimpleNamespace(lengths=mx.array([0])) for _ in self.config.target_layer_ids
+        ]
 
     def draft_block(self, last_bonus, hidden, cache, block_size, sampler, token_dtype):
         self.draft_block_calls.append(block_size)
@@ -510,7 +522,7 @@ class TestMaxDraftTokensOneContinuation(unittest.TestCase):
         # runtime does not stop on EOS directly; it stops at
         # max_tokens. None of the emitted tokens are drafter proposals.
         self.assertEqual(emitted_ids[: len(next_tokens)], next_tokens)
-        for token_id in emitted_ids[len(next_tokens):]:
+        for token_id in emitted_ids[len(next_tokens) :]:
             self.assertEqual(token_id, eos)
         self.assertEqual(emitted_from_draft, [False] * len(emitted_ids))
         # Drafter was never invoked.
@@ -602,9 +614,7 @@ class TestMaxDraftTokensOneContinuation(unittest.TestCase):
 
     def test_every_target_verify_call_uses_target_verify_true(self):
         """All per-round target calls carry target_verify=True."""
-        kit = _TargetOnlyKit(
-            next_tokens=[11, 12, 13, 14], prompt_tokens=[1]
-        )
+        kit = _TargetOnlyKit(next_tokens=[11, 12, 13, 14], prompt_tokens=[1])
         draft_model = _TrackingDraftModel()
 
         list(
@@ -638,9 +648,7 @@ class TestMaxDraftTokensOneContinuation(unittest.TestCase):
 
     def test_cache_advances_one_token_per_round(self):
         """Each bs=1 round appends exactly one token to the live cache."""
-        kit = _TargetOnlyKit(
-            next_tokens=[11, 12, 13, 14, 15], prompt_tokens=[1]
-        )
+        kit = _TargetOnlyKit(next_tokens=[11, 12, 13, 14, 15], prompt_tokens=[1])
         draft_model = _TrackingDraftModel()
 
         list(
@@ -772,13 +780,16 @@ class TestDFlashRuntime(unittest.TestCase):
                             max_draft_tokens=len(case["draft_tokens"]) + 1,
                         ),
                         dflash_draft_model=draft_model,
-                        proposal_observer=lambda history, proposal: observed_proposals.append(
+                        proposal_observer=lambda history,
+                        proposal: observed_proposals.append(
                             (tuple(history), tuple(proposal))
                         ),
                     )
                 )
 
-                emitted_ids = [token.id for result in results for token in result.tokens]
+                emitted_ids = [
+                    token.id for result in results for token in result.tokens
+                ]
                 emitted_from_draft = [
                     token.from_draft for result in results for token in result.tokens
                 ]
@@ -789,16 +800,16 @@ class TestDFlashRuntime(unittest.TestCase):
                 expected_emitted_ids = (
                     [11] + draft_tokens[:accepted] + [spec_output_tokens[accepted]]
                 )
-                expected_from_draft = (
-                    [False] + [True] * accepted + [False]
-                )
+                expected_from_draft = [False] + [True] * accepted + [False]
                 expected_history = [1, 11] + draft_tokens[:accepted]
 
                 self.assertEqual(emitted_ids, expected_emitted_ids)
                 self.assertEqual(emitted_from_draft, expected_from_draft)
                 self.assertEqual(observed_proposals, [((11,), tuple(draft_tokens))])
                 self.assertEqual(len(kit.model.calls), 2)
-                self.assertTrue(all(call[1]["target_verify"] for call in kit.model.calls))
+                self.assertTrue(
+                    all(call[1]["target_verify"] for call in kit.model.calls)
+                )
                 # Capture layer ids default to range(layer_count); for the
                 # default proven layout that is range(64).
                 expected_capture_ids = list(range(sum(DFLASH_PROVEN_QWEN35_LAYOUT)))
@@ -813,7 +824,9 @@ class TestDFlashRuntime(unittest.TestCase):
                 expected_layer_count = sum(DFLASH_PROVEN_QWEN35_LAYOUT)
                 self.assertEqual(
                     kit.model.rollback_calls,
-                    [] if case["rollback"] is None else [case["rollback"] + (expected_layer_count,)],
+                    []
+                    if case["rollback"] is None
+                    else [case["rollback"] + (expected_layer_count,)],
                 )
                 self.assertEqual(
                     [list(layer.history) for layer in kit.cache_wrapper.cache],
@@ -825,8 +838,7 @@ class TestDFlashRuntime(unittest.TestCase):
                 kv_lengths = [
                     int(layer.lengths.tolist()[0])
                     for layer in kit.cache_wrapper.cache
-                    if hasattr(layer, "lengths")
-                    and isinstance(layer.lengths, mx.array)
+                    if hasattr(layer, "lengths") and isinstance(layer.lengths, mx.array)
                 ]
                 self.assertEqual(
                     kv_lengths,
@@ -887,7 +899,9 @@ class TestDFlashRuntime(unittest.TestCase):
             rollback_supported=False,
         )
 
-        with self.assertRaisesRegex(DFlashUnavailableError, "rollback_speculative_cache"):
+        with self.assertRaisesRegex(
+            DFlashUnavailableError, "rollback_speculative_cache"
+        ):
             list(
                 dflash_stream_generate(
                     kit,
@@ -1088,7 +1102,9 @@ class TestDFlashPerRoundTelemetry(unittest.TestCase):
         # Find the first non-initial record and confirm it is a
         # fully accepted draft round.
         draft_records = [
-            record for record in records if record.kind != DFLASH_TELEMETRY_KIND_INITIAL_BONUS
+            record
+            for record in records
+            if record.kind != DFLASH_TELEMETRY_KIND_INITIAL_BONUS
         ]
         self.assertEqual(len(draft_records), 1)
         first_draft = draft_records[0]
@@ -1150,7 +1166,9 @@ class TestDFlashPerRoundTelemetry(unittest.TestCase):
         # 2 records: 1 initial bonus + 1 partial rejection.
         self.assertEqual(len(records), 2)
         partial_records = [
-            record for record in records if record.kind == DFLASH_TELEMETRY_KIND_DRAFT_ROUND_PARTIAL
+            record
+            for record in records
+            if record.kind == DFLASH_TELEMETRY_KIND_DRAFT_ROUND_PARTIAL
         ]
         self.assertEqual(
             len(partial_records),
@@ -1242,7 +1260,10 @@ class TestDFlashPerRoundTelemetry(unittest.TestCase):
         # only the first record may be classified as initial bonus.
         self.assertEqual(records[0].kind, DFLASH_TELEMETRY_KIND_INITIAL_BONUS)
         self.assertTrue(
-            all(record.kind == DFLASH_TELEMETRY_KIND_TARGET_ONLY for record in records[1:])
+            all(
+                record.kind == DFLASH_TELEMETRY_KIND_TARGET_ONLY
+                for record in records[1:]
+            )
         )
         # accepted_proposal_tokens_total sums to 0 since bs=1 rounds have no drafts.
         self.assertEqual(sum(record.accepted_count for record in records), 0)
@@ -1283,9 +1304,7 @@ class TestDFlashAdaptiveScheduler(unittest.TestCase):
         # Initial block size is clamped to ``max_draft_tokens`` so a
         # misconfigured ``initial_block_size > max_draft_tokens`` cannot
         # widen the runtime surface.
-        clamped = DFlashAdaptiveScheduler(
-            max_draft_tokens=2, initial_block_size=8
-        )
+        clamped = DFlashAdaptiveScheduler(max_draft_tokens=2, initial_block_size=8)
         self.assertEqual(clamped.current_block_size, 2)
 
     def test_starts_at_one_when_max_draft_tokens_equals_one(self):
@@ -1293,9 +1312,7 @@ class TestDFlashAdaptiveScheduler(unittest.TestCase):
         self.assertEqual(scheduler.current_block_size, 1)
 
     def test_grows_after_fully_accepted_round_within_cap(self):
-        scheduler = DFlashAdaptiveScheduler(
-            max_draft_tokens=4, initial_block_size=2
-        )
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=4, initial_block_size=2)
         # First, run a draft round at bs=2 with the single draft accepted.
         decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
         self.assertEqual(decision.scheduled_block_size, 2)
@@ -1313,9 +1330,7 @@ class TestDFlashAdaptiveScheduler(unittest.TestCase):
         self.assertEqual(decision.scheduled_block_size, 4)
 
     def test_shrinks_after_any_rejection_floored_at_one(self):
-        scheduler = DFlashAdaptiveScheduler(
-            max_draft_tokens=4, initial_block_size=3
-        )
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=4, initial_block_size=3)
         # Reject both drafts at bs=3 -> shrink.
         scheduler.record_round(accepted_count=0, scheduled_block_size=3)
         decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
@@ -1405,9 +1420,7 @@ class TestDFlashAdaptiveScheduler(unittest.TestCase):
         self.assertEqual(decision.scheduled_block_size, 4)
 
     def test_history_does_not_record_target_only_rounds(self):
-        scheduler = DFlashAdaptiveScheduler(
-            max_draft_tokens=4, initial_block_size=2
-        )
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=4, initial_block_size=2)
         # bs == 1 (target-only) rounds should not pollute history.
         scheduler.record_round(accepted_count=0, scheduled_block_size=1)
         scheduler.record_round(accepted_count=1, scheduled_block_size=1)
@@ -1443,9 +1456,7 @@ class TestDFlashAdaptiveScheduler(unittest.TestCase):
         self.assertEqual(decision.scheduled_block_size, 5)
 
     def test_never_exceeds_dflash_block_size(self):
-        scheduler = DFlashAdaptiveScheduler(
-            max_draft_tokens=16, initial_block_size=2
-        )
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=16, initial_block_size=2)
         # Force growth via many full-accept rounds, but ``block_total``
         # caps the scheduler at 4.
         for _ in range(10):
@@ -1460,9 +1471,7 @@ class TestDFlashAdaptiveScheduler(unittest.TestCase):
         self.assertLessEqual(decision.scheduled_block_size, 4)
 
     def test_never_exceeds_configured_max_draft_tokens(self):
-        scheduler = DFlashAdaptiveScheduler(
-            max_draft_tokens=3, initial_block_size=2
-        )
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=3, initial_block_size=2)
         for _ in range(10):
             decision = scheduler.next_block_size(block_total=16, remaining_budget=20)
             scheduler.record_round(
@@ -1474,9 +1483,7 @@ class TestDFlashAdaptiveScheduler(unittest.TestCase):
         self.assertLessEqual(decision.scheduled_block_size, 3)
 
     def test_never_exceeds_remaining_token_budget(self):
-        scheduler = DFlashAdaptiveScheduler(
-            max_draft_tokens=16, initial_block_size=2
-        )
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=16, initial_block_size=2)
         # Remaining budget shrinks over time; the scheduler must clip.
         for budget in (16, 8, 4, 3, 2):
             decision = scheduler.next_block_size(
@@ -1497,9 +1504,7 @@ class TestDFlashAdaptiveScheduler(unittest.TestCase):
         token is still target-verified.
         """
 
-        scheduler = DFlashAdaptiveScheduler(
-            max_draft_tokens=8, initial_block_size=4
-        )
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=8, initial_block_size=4)
         decision = scheduler.next_block_size(block_total=8, remaining_budget=1)
         self.assertEqual(decision.scheduled_block_size, 1)
         self.assertEqual(decision.effective_cap, 1)
@@ -1508,9 +1513,7 @@ class TestDFlashAdaptiveScheduler(unittest.TestCase):
     def test_block_size_zero_collapses_to_floor_one(self):
         """A zero ``block_total`` is floored at 1 instead of returning 0."""
 
-        scheduler = DFlashAdaptiveScheduler(
-            max_draft_tokens=8, initial_block_size=2
-        )
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=8, initial_block_size=2)
         decision = scheduler.next_block_size(block_total=0, remaining_budget=8)
         self.assertEqual(decision.scheduled_block_size, 1)
         self.assertEqual(decision.effective_cap, 1)
@@ -1529,9 +1532,7 @@ class TestDFlashAdaptiveScheduler(unittest.TestCase):
         self.assertEqual(scheduler.history, ())
 
     def test_decision_carries_clip_reason_for_within_caps(self):
-        scheduler = DFlashAdaptiveScheduler(
-            max_draft_tokens=4, initial_block_size=2
-        )
+        scheduler = DFlashAdaptiveScheduler(max_draft_tokens=4, initial_block_size=2)
         decision = scheduler.next_block_size(block_total=4, remaining_budget=10)
         self.assertIsInstance(decision, DFlashSchedulerDecision)
         self.assertEqual(decision.clip_reason, "within_caps")
@@ -1591,8 +1592,7 @@ class _AdaptiveGrowingDraftModel:
 
     def __init__(self, target_layer_ids: list[int] | None = None):
         self.config = SimpleNamespace(
-            target_layer_ids=target_layer_ids
-            or [1, 10, 18, 27, 35, 44, 52, 61],
+            target_layer_ids=target_layer_ids or [1, 10, 18, 27, 35, 44, 52, 61],
             block_size=8,
         )
         self.reset_calls: list[Any] = []
@@ -1603,8 +1603,7 @@ class _AdaptiveGrowingDraftModel:
     def reset(self, model):
         self.reset_calls.append(model)
         return [
-            SimpleNamespace(lengths=mx.array([0]))
-            for _ in self.config.target_layer_ids
+            SimpleNamespace(lengths=mx.array([0])) for _ in self.config.target_layer_ids
         ]
 
     def draft_block(self, last_bonus, hidden, cache, block_size, sampler, token_dtype):
@@ -1628,8 +1627,7 @@ class _AdaptiveRejectingDraftModel:
 
     def __init__(self, target_layer_ids: list[int] | None = None):
         self.config = SimpleNamespace(
-            target_layer_ids=target_layer_ids
-            or [1, 10, 18, 27, 35, 44, 52, 61],
+            target_layer_ids=target_layer_ids or [1, 10, 18, 27, 35, 44, 52, 61],
             block_size=8,
         )
         self.reset_calls: list[Any] = []
@@ -1640,8 +1638,7 @@ class _AdaptiveRejectingDraftModel:
     def reset(self, model):
         self.reset_calls.append(model)
         return [
-            SimpleNamespace(lengths=mx.array([0]))
-            for _ in self.config.target_layer_ids
+            SimpleNamespace(lengths=mx.array([0])) for _ in self.config.target_layer_ids
         ]
 
     def draft_block(self, last_bonus, hidden, cache, block_size, sampler, token_dtype):
@@ -1674,9 +1671,7 @@ class _AdaptiveAlwaysRejectTargetModel:
 
     def __call__(self, tokens, **kwargs):
         seq_tokens = tuple(int(t) for t in tokens.reshape(-1).tolist())
-        kwargs_key = {
-            key: value for key, value in kwargs.items() if key != "cache"
-        }
+        kwargs_key = {key: value for key, value in kwargs.items() if key != "cache"}
         kwargs_key["cache_size"] = len(kwargs.get("cache") or [])
         self.calls.append((seq_tokens, kwargs_key))
 
@@ -1700,11 +1695,14 @@ class _AdaptiveAlwaysRejectTargetModel:
                 if isinstance(history, list):
                     history.extend(seq_tokens)
 
-        vocab_size = max(
-            max(seq_tokens),
-            bonus_token,
-            200,
-        ) + 8
+        vocab_size = (
+            max(
+                max(seq_tokens),
+                bonus_token,
+                200,
+            )
+            + 8
+        )
         logits = mx.full((1, seq_len, vocab_size), -100.0)
         # Every position gets a token that mismatches the drafter's
         # constant 70 so the walk rejects everything.
@@ -1732,7 +1730,9 @@ class _AdaptiveAlwaysRejectTargetModel:
             gdn_states=gdn_states,
         )
 
-    def rollback_speculative_cache(self, prompt_cache, gdn_states, accepted, block_size):
+    def rollback_speculative_cache(
+        self, prompt_cache, gdn_states, accepted, block_size
+    ):
         self.rollback_calls.append((accepted, block_size, len(prompt_cache or [])))
         # Truncate each layer's history to match the post-rollback state.
         for layer, gdn_state in zip(prompt_cache or [], gdn_states or []):
@@ -1741,9 +1741,7 @@ class _AdaptiveAlwaysRejectTargetModel:
                 continue
             keep = max(
                 0,
-                int(getattr(gdn_state, "base_history_len", 0))
-                + accepted
-                + 1,
+                int(getattr(gdn_state, "base_history_len", 0)) + accepted + 1,
             )
             layer.history = history[:keep]
 
@@ -2182,9 +2180,7 @@ class TestAdaptiveSchedulerFallbackDetector(unittest.TestCase):
         self.assertFalse(decision.fallback_engaged)
         self.assertEqual(decision.low_acceptance_threshold, 0.4)
         self.assertEqual(decision.low_acceptance_min_drafts, 4)
-        self.assertEqual(
-            decision.low_acceptance_window_remaining, 4
-        )
+        self.assertEqual(decision.low_acceptance_window_remaining, 4)
         self.assertIsNone(decision.low_acceptance_observed_mean)
         self.assertEqual(decision.pathological_target_only_streak, 0)
         self.assertEqual(decision.pathological_target_only_threshold, 3)
@@ -2193,17 +2189,11 @@ class TestAdaptiveSchedulerFallbackDetector(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "low_acceptance_window"):
             DFlashAdaptiveScheduler(max_draft_tokens=4, low_acceptance_window=0)
         with self.assertRaisesRegex(ValueError, "low_acceptance_threshold"):
-            DFlashAdaptiveScheduler(
-                max_draft_tokens=4, low_acceptance_threshold=-0.1
-            )
+            DFlashAdaptiveScheduler(max_draft_tokens=4, low_acceptance_threshold=-0.1)
         with self.assertRaisesRegex(ValueError, "low_acceptance_threshold"):
-            DFlashAdaptiveScheduler(
-                max_draft_tokens=4, low_acceptance_threshold=1.5
-            )
+            DFlashAdaptiveScheduler(max_draft_tokens=4, low_acceptance_threshold=1.5)
         with self.assertRaisesRegex(ValueError, "low_acceptance_min_drafts"):
-            DFlashAdaptiveScheduler(
-                max_draft_tokens=4, low_acceptance_min_drafts=0
-            )
+            DFlashAdaptiveScheduler(max_draft_tokens=4, low_acceptance_min_drafts=0)
         with self.assertRaisesRegex(ValueError, "pathological_target_only_rounds"):
             DFlashAdaptiveScheduler(
                 max_draft_tokens=4, pathological_target_only_rounds=0
@@ -2478,9 +2468,7 @@ class _AdaptiveAcceptAllTargetModel:
 
     def __call__(self, tokens, **kwargs):
         seq_tokens = tuple(int(t) for t in tokens.reshape(-1).tolist())
-        kwargs_key = {
-            key: value for key, value in kwargs.items() if key != "cache"
-        }
+        kwargs_key = {key: value for key, value in kwargs.items() if key != "cache"}
         kwargs_key["cache_size"] = len(kwargs.get("cache") or [])
         self.calls.append((seq_tokens, kwargs_key))
 
@@ -2503,11 +2491,14 @@ class _AdaptiveAcceptAllTargetModel:
                 if isinstance(history, list):
                     history.extend(seq_tokens)
 
-        vocab_size = max(
-            max(seq_tokens + (101, 102, 103, 104)),
-            bonus_token,
-            200,
-        ) + 8
+        vocab_size = (
+            max(
+                max(seq_tokens + (101, 102, 103, 104)),
+                bonus_token,
+                200,
+            )
+            + 8
+        )
         logits = mx.full((1, seq_len, vocab_size), -100.0)
         # Match every draft position: the drafter emits tokens
         # [100, 100+bs-1) so logits at positions [0..seq_len-2) must
@@ -2537,7 +2528,9 @@ class _AdaptiveAcceptAllTargetModel:
             gdn_states=gdn_states,
         )
 
-    def rollback_speculative_cache(self, prompt_cache, gdn_states, accepted, block_size):
+    def rollback_speculative_cache(
+        self, prompt_cache, gdn_states, accepted, block_size
+    ):
         self.rollback_calls.append((accepted, block_size, len(prompt_cache or [])))
         for layer, gdn_state in zip(prompt_cache or [], gdn_states or []):
             history = getattr(layer, "history", None)
@@ -2545,9 +2538,7 @@ class _AdaptiveAcceptAllTargetModel:
                 continue
             keep = max(
                 0,
-                int(getattr(gdn_state, "base_history_len", 0))
-                + accepted
-                + 1,
+                int(getattr(gdn_state, "base_history_len", 0)) + accepted + 1,
             )
             layer.history = history[:keep]
 

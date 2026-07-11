@@ -156,9 +156,7 @@ class LegacyScanPromptCacheRestorePlanner:
 
         return {
             chunk.key: (
-                []
-                if idx in covered_indices
-                else [selected_by_chunk_key[chunk.key]]
+                [] if idx in covered_indices else [selected_by_chunk_key[chunk.key]]
             )
             for idx, chunk in enumerate(chunks)
         }

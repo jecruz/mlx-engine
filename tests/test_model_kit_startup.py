@@ -18,6 +18,7 @@ class _DummyExecutor:
 def test_modelkit_start_submits_startup_warmup():
     kit = ModelKit.__new__(ModelKit)
     kit._executor = _DummyExecutor()
+
     def warmup():
         pass
 

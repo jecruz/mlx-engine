@@ -169,7 +169,9 @@ def assemble_prompt_cache_chunks(
         record_kind = layout.layer_kinds[layer_idx]
         if record_kind == RECORD_KIND_KV_DELTA:
             # Full-attention layers keep every chunk in prefix order.
-            available_layer_chunks = [cache for cache in layer_chunks if cache is not None]
+            available_layer_chunks = [
+                cache for cache in layer_chunks if cache is not None
+            ]
             if not available_layer_chunks:
                 raise PromptCacheRecordCoverageError(
                     f"missing kv chunks for layer {layer_idx}"
@@ -180,7 +182,9 @@ def assemble_prompt_cache_chunks(
                 assembled.append(_concat_kv_delta_caches(available_layer_chunks))
         elif record_kind == RECORD_KIND_ROTATING_DELTA:
             # Planner loads only chunks that overlap the target sliding window.
-            available_layer_chunks = [cache for cache in layer_chunks if cache is not None]
+            available_layer_chunks = [
+                cache for cache in layer_chunks if cache is not None
+            ]
             if not available_layer_chunks:
                 raise PromptCacheRecordCoverageError(
                     f"missing rotating chunks for layer {layer_idx}"

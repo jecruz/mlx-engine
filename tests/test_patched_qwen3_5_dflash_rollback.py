@@ -83,7 +83,8 @@ class TestPatchedQwen3_5RollbackHook(unittest.TestCase):
             _build_gdn_state(base_history_len),
         ]
 
-        rollback_speculative_cache(prompt_cache,
+        rollback_speculative_cache(
+            prompt_cache,
             gdn_states,
             accepted=0,
             block_size=4,
@@ -113,7 +114,8 @@ class TestPatchedQwen3_5RollbackHook(unittest.TestCase):
             _build_gdn_state(base_history_len),
         ]
 
-        rollback_speculative_cache(prompt_cache,
+        rollback_speculative_cache(
+            prompt_cache,
             gdn_states,
             accepted=2,
             block_size=4,
@@ -148,7 +150,8 @@ class TestPatchedQwen3_5RollbackHook(unittest.TestCase):
             _build_gdn_state(base_history_len),
         ]
 
-        rollback_speculative_cache(prompt_cache,
+        rollback_speculative_cache(
+            prompt_cache,
             gdn_states,
             accepted=3,
             block_size=4,
@@ -167,7 +170,8 @@ class TestPatchedQwen3_5RollbackHook(unittest.TestCase):
             _HistoryCacheLayer(layer_id=1, history=[10, 11, 99, 12, 13]),
         ]
 
-        rollback_speculative_cache(prompt_cache,
+        rollback_speculative_cache(
+            prompt_cache,
             gdn_states=[],
             accepted=1,
             block_size=3,
@@ -206,7 +210,8 @@ class TestPatchedQwen3_5RollbackHook(unittest.TestCase):
             ),
         ]
 
-        rollback_speculative_cache(prompt_cache,
+        rollback_speculative_cache(
+            prompt_cache,
             gdn_states,
             accepted=1,
             block_size=3,
@@ -226,7 +231,8 @@ class TestPatchedQwen3_5RollbackHook(unittest.TestCase):
             _build_gdn_state(base_history_len=4),
         ]
 
-        rollback_speculative_cache(prompt_cache,
+        rollback_speculative_cache(
+            prompt_cache,
             gdn_states,
             accepted=2,
             block_size=4,
@@ -248,7 +254,8 @@ class TestPatchedQwen3_5RollbackHook(unittest.TestCase):
         original = list(prompt_cache[0].history)
         gdn_states = [_build_gdn_state(base_history_len=2)]
 
-        rollback_speculative_cache(prompt_cache,
+        rollback_speculative_cache(
+            prompt_cache,
             gdn_states,
             accepted=-1,
             block_size=2,
@@ -267,7 +274,8 @@ class TestPatchedQwen3_5RollbackHook(unittest.TestCase):
             _build_gdn_state(base_history_len=2),
         ]
 
-        rollback_speculative_cache(prompt_cache,
+        rollback_speculative_cache(
+            prompt_cache,
             gdn_states,
             accepted=0,
             block_size=2,
@@ -305,20 +313,13 @@ class TestPatchedQwen3_5RollbackInvariants(unittest.TestCase):
         """Simulate one DFlash verify + rollback round on the cache."""
         prompt_tokens = list(range(1, base_history_len + 1))
         bonus_token = 99
-        seq_history = (
-            prompt_tokens
-            + [bonus_token]
-            + list(draft_tokens)
-        )
+        seq_history = prompt_tokens + [bonus_token] + list(draft_tokens)
         prompt_cache = [
-            _HistoryCacheLayer(layer_id=i, history=list(seq_history))
-            for i in range(3)
+            _HistoryCacheLayer(layer_id=i, history=list(seq_history)) for i in range(3)
         ]
-        gdn_states = [
-            _build_gdn_state(base_history_len)
-            for _ in prompt_cache
-        ]
-        rollback_speculative_cache(prompt_cache,
+        gdn_states = [_build_gdn_state(base_history_len) for _ in prompt_cache]
+        rollback_speculative_cache(
+            prompt_cache,
             gdn_states,
             accepted=accepted,
             block_size=len(draft_tokens) + 1,
@@ -405,9 +406,7 @@ class _RealQwen3ArraysCache:
         # running gated-delta state in cache[1]. Both are mlx arrays
         # mutated in-place during the forward pass.
         self.cache = [
-            mx.zeros(
-                (1, conv_kernel_size - 1, conv_dim), dtype=mx.bfloat16
-            ),
+            mx.zeros((1, conv_kernel_size - 1, conv_dim), dtype=mx.bfloat16),
             mx.zeros((1, num_v_heads, head_v_dim, head_k_dim), dtype=mx.float32),
         ]
         # Real single-sequence ArraysCache has both attributes set to None.
@@ -467,9 +466,7 @@ def _build_real_arrays_cache_gdn_state(
     )
     for t in range(verify_token_count):
         col = conv_kernel_size - 1 + t
-        token_row = mx.full(
-            (1, 1, conv_dim), -float(t + 1), dtype=mx.bfloat16
-        )
+        token_row = mx.full((1, 1, conv_dim), -float(t + 1), dtype=mx.bfloat16)
         conv_input = mx.concatenate(
             [conv_input[:, :col, :], token_row, conv_input[:, col + 1 :, :]],
             axis=1,
@@ -481,10 +478,10 @@ def _build_real_arrays_cache_gdn_state(
         mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # v placeholder
         mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # a placeholder
         mx.zeros((1, 1, 1), dtype=mx.bfloat16),  # b placeholder
-        mx.zeros((1,), dtype=mx.bfloat16),      # A_log placeholder
-        mx.zeros((1,), dtype=mx.bfloat16),      # dt_bias placeholder
+        mx.zeros((1,), dtype=mx.bfloat16),  # A_log placeholder
+        mx.zeros((1,), dtype=mx.bfloat16),  # dt_bias placeholder
         initial_state,
-        None,                                    # mask placeholder
+        None,  # mask placeholder
         conv_input,
         conv_kernel_size,
         intermediate_states,
@@ -569,10 +566,7 @@ class TestRealQwen3ArraysCacheRollback(unittest.TestCase):
         new_state = prompt_cache[0].cache[1]
         self.assertTrue(
             bool(mx.all(mx.equal(new_state, expected_state)).item()),
-            msg=(
-                "accepted=0 rollback must pick intermediate_states[0] "
-                "for cache[1]"
-            ),
+            msg=("accepted=0 rollback must pick intermediate_states[0] for cache[1]"),
         )
         conv_input = gdn_state[9]
         expected_conv = conv_input[
@@ -585,8 +579,7 @@ class TestRealQwen3ArraysCacheRollback(unittest.TestCase):
         self.assertTrue(
             bool(mx.all(mx.equal(new_conv, expected_conv)).item()),
             msg=(
-                "accepted=0 rollback must pick the conv window after "
-                "1 token processed"
+                "accepted=0 rollback must pick the conv window after 1 token processed"
             ),
         )
         # lengths / left_padding must stay None so the cache mode remains
@@ -668,10 +661,7 @@ class TestRealQwen3ArraysCacheRollback(unittest.TestCase):
         self.assertEqual(new_conv.shape, expected_conv.shape)
         self.assertTrue(
             bool(mx.all(mx.equal(new_conv, expected_conv)).item()),
-            msg=(
-                "partial-acceptance rollback must pick the right conv "
-                "window slice"
-            ),
+            msg=("partial-acceptance rollback must pick the right conv window slice"),
         )
 
     def test_full_acceptance_is_a_noop(self):
@@ -750,9 +740,7 @@ class TestRealQwen3ArraysCacheRollback(unittest.TestCase):
         back via the new GDN-aware path. Rejected proposal tokens must
         not leak into either subset of the live cache state.
         """
-        kv_layers = [
-            _KVCacheLikeLayer(layer_id=i, num_tokens=8) for i in range(16)
-        ]
+        kv_layers = [_KVCacheLikeLayer(layer_id=i, num_tokens=8) for i in range(16)]
         arrays_layers: list[_RealQwen3ArraysCache] = []
         arrays_gdn_states = []
         for i in range(48):
@@ -867,8 +855,7 @@ class TestRealQwen3ArraysCacheRollback(unittest.TestCase):
         # left untouched.
         rollback_speculative_cache(
             prompt_cache,
-            [(None, None, None, None, None, None, None, None, None,
-              None, 3, None)],
+            [(None, None, None, None, None, None, None, None, None, None, 3, None)],
             accepted=1,
             block_size=4,
         )

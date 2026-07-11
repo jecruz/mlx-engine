@@ -309,7 +309,9 @@ def max_tokens_from_value(value: Any) -> int:
     return max_tokens
 
 
-def format_prompt(model_kit, body: dict[str, Any], default_template_args: dict[str, Any]) -> list[int]:
+def format_prompt(
+    model_kit, body: dict[str, Any], default_template_args: dict[str, Any]
+) -> list[int]:
     messages = normalize_messages(body.get("messages"))
     template_args = resolve_chat_template_args(
         getattr(model_kit, "tokenizer", None),
@@ -384,9 +386,7 @@ def build_generation_request(
             "type": MESSAGE_TYPE_CHAT_COMPLETIONS,
             "requestId": request_id,
             "model": (
-                body.get("model")
-                if isinstance(body.get("model"), str)
-                else model_name
+                body.get("model") if isinstance(body.get("model"), str) else model_name
             ),
             "promptTokens": format_prompt(model_kit, body, default_template_args),
             "maxTokens": max_tokens_from_value(body.get("max_tokens")),
@@ -396,9 +396,7 @@ def build_generation_request(
                 "topP": optional_float(body.get("top_p")),
                 "topK": optional_int(body.get("top_k")),
                 "minP": optional_float(body.get("min_p")),
-                "repetitionPenalty": optional_float(
-                    body.get("repetition_penalty")
-                ),
+                "repetitionPenalty": optional_float(body.get("repetition_penalty")),
                 "repetitionContextSize": optional_int(
                     body.get("repetition_context_size")
                 ),
@@ -521,7 +519,9 @@ class DistributedEngineHandler(BaseHTTPRequestHandler):
         text_parts = []
         finish_reason = "stop"
         try:
-            for text, next_finish_reason in run_generation_request(self.model_kit, request):
+            for text, next_finish_reason in run_generation_request(
+                self.model_kit, request
+            ):
                 text_parts.append(text)
                 if next_finish_reason is not None:
                     finish_reason = next_finish_reason
@@ -550,7 +550,9 @@ class DistributedEngineHandler(BaseHTTPRequestHandler):
                 },
             )
         except (BrokenPipeError, ConnectionResetError):
-            logger.warning("Client disconnected after non-streaming generation completed")
+            logger.warning(
+                "Client disconnected after non-streaming generation completed"
+            )
 
     def write_sse(self, body: dict[str, Any]) -> None:
         self.wfile.write(f"data: {json.dumps(body)}\n\n".encode("utf-8"))
@@ -569,7 +571,9 @@ class DistributedEngineHandler(BaseHTTPRequestHandler):
 
         finish_reason = "stop"
         try:
-            for text, next_finish_reason in run_generation_request(self.model_kit, request):
+            for text, next_finish_reason in run_generation_request(
+                self.model_kit, request
+            ):
                 if next_finish_reason is not None:
                     finish_reason = next_finish_reason
                 if len(text) == 0:
@@ -592,7 +596,9 @@ class DistributedEngineHandler(BaseHTTPRequestHandler):
                             }
                         )
                     except (BrokenPipeError, ConnectionResetError):
-                        logger.warning("Client disconnected during streaming generation; draining request")
+                        logger.warning(
+                            "Client disconnected during streaming generation; draining request"
+                        )
                         client_connected = False
         except Exception:
             logger.exception("Generation failed")
@@ -618,7 +624,9 @@ class DistributedEngineHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
-                logger.warning("Client disconnected after streaming generation completed")
+                logger.warning(
+                    "Client disconnected after streaming generation completed"
+                )
 
 
 def run_worker_loop(rank: int, model_kit) -> None:

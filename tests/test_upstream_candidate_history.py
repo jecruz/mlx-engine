@@ -45,14 +45,31 @@ def test_render_history_includes_scan_table_and_branch_change_counts():
         _scan(
             "aaa1111",
             "2026-07-09T00:00:00Z",
-            [{"branch": "upstream/a", "head": "a1", "changed_files": ["M\ta.py"], "unmatched_patch_ids": []}],
+            [
+                {
+                    "branch": "upstream/a",
+                    "head": "a1",
+                    "changed_files": ["M\ta.py"],
+                    "unmatched_patch_ids": [],
+                }
+            ],
         ),
         _scan(
             "bbb2222",
             "2026-07-09T01:00:00Z",
             [
-                {"branch": "upstream/a", "head": "a2", "changed_files": ["M\ta.py", "M\tb.py"], "unmatched_patch_ids": []},
-                {"branch": "upstream/b", "head": "b1", "changed_files": ["M\tc.py"], "unmatched_patch_ids": ["+ b1 fix"]},
+                {
+                    "branch": "upstream/a",
+                    "head": "a2",
+                    "changed_files": ["M\ta.py", "M\tb.py"],
+                    "unmatched_patch_ids": [],
+                },
+                {
+                    "branch": "upstream/b",
+                    "head": "b1",
+                    "changed_files": ["M\tc.py"],
+                    "unmatched_patch_ids": ["+ b1 fix"],
+                },
             ],
         ),
     ]
@@ -60,9 +77,16 @@ def test_render_history_includes_scan_table_and_branch_change_counts():
     markdown = HISTORY.render_history(scans, title="History")
 
     assert "# History" in markdown
-    assert "| 2026-07-09T00:00:00Z (aaa1111) | `aaa1111` | `up-1` | `or-1` | 1 |" in markdown
-    assert "- Branch deltas: changed `1`, new `1`, removed `0`, unchanged `0`" in markdown
-    assert "| `upstream/a` | `a1` | `a2` | changed | small | 1 | 2 | 0 | 0 |" in markdown
+    assert (
+        "| 2026-07-09T00:00:00Z (aaa1111) | `aaa1111` | `up-1` | `or-1` | 1 |"
+        in markdown
+    )
+    assert (
+        "- Branch deltas: changed `1`, new `1`, removed `0`, unchanged `0`" in markdown
+    )
+    assert (
+        "| `upstream/a` | `a1` | `a2` | changed | small | 1 | 2 | 0 | 0 |" in markdown
+    )
     assert "| `upstream/b` | `` | `b1` | new | small | 0 | 1 | 0 | 1 |" in markdown
 
 

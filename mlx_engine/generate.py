@@ -267,7 +267,6 @@ def _handle_stop_string_detected(
     )
 
 
-
 def _is_known_vlm_model_type(model_type: str) -> bool:
     """Check if model_type is a known mlx-vlm vision architecture.
 
@@ -383,7 +382,9 @@ def load_model(
     )
     model_path = Path(model_path)
     config_json = json.loads((model_path / "config.json").read_text())
-    model_type = config_json.get("model_type", "").lower().replace("-", "_").replace(".", "_")
+    model_type = (
+        config_json.get("model_type", "").lower().replace("-", "_").replace(".", "_")
+    )
     is_vlm = "vision_config" in config_json and _is_known_vlm_model_type(model_type)
     parallel_requested = max_seq_nums is not None and max_seq_nums > 1
     kv_bits, kv_group_size, quantized_kv_start = get_kv_cache_quantization_params(
@@ -508,6 +509,7 @@ def load_model(
             raise ValueError(
                 "VLM prompt cache save admission is only supported for VLM models"
             )
+
         def is_batchable() -> bool:
             # 0. Ensure the load isn't vocab only
             if vocab_only:
@@ -534,7 +536,9 @@ def load_model(
         # If max_seq_nums is set to 1, use ModelKit instead of BatchedModelKit. This gives users an escape hatch,
         # which they could use to enable spec decoding. We can remove this additional restriction once we add
         # spec decoding support to the batched backend
-        use_batched_kit = max_seq_nums is not None and max_seq_nums > 1 and is_batchable()
+        use_batched_kit = (
+            max_seq_nums is not None and max_seq_nums > 1 and is_batchable()
+        )
         if not use_batched_kit:
             prefill_step_size = resolve_sequential_text_prefill_step_size(
                 prefill_step_size,
@@ -729,9 +733,7 @@ def create_generator(
                 kv_bits=getattr(model_kit, "kv_bits", None),
                 kv_group_size=getattr(model_kit, "kv_group_size", None),
                 quantized_kv_start=getattr(model_kit, "quantized_kv_start", None),
-                vlm_prompt_cache_storage_root=getattr(
-                    model_kit, "_model_path", None
-                )
+                vlm_prompt_cache_storage_root=getattr(model_kit, "_model_path", None)
                 and getattr(model_kit, "prompt_cache_storage_root", None),
                 vlm_prompt_cache_min_save_tokens=getattr(
                     model_kit, "prompt_cache_min_save_tokens", None
@@ -1167,7 +1169,9 @@ def _sequential_generation(
                     continue
 
                 # Standard yield - yield when a non-empty text segment is available or eos token is hit
-                should_yield, stop_condition = should_yield_token(text, token, tokenizer)
+                should_yield, stop_condition = should_yield_token(
+                    text, token, tokenizer
+                )
                 if (
                     stop_condition is None
                     and generation_result.finish_reason == "length"
@@ -1224,7 +1228,9 @@ def _batched_generation(
     is_distributed_batched = isinstance(model_kit, DistributedModelKit)
     if is_distributed_batched:
         if images_b64 is not None and len(images_b64) > 0:
-            raise ValueError("Distributed batched generation does not support images yet")
+            raise ValueError(
+                "Distributed batched generation does not support images yet"
+            )
         if speculative_decoding_toggle is True or num_draft_tokens is not None:
             raise ValueError(
                 "Distributed batched generation does not support speculative decoding yet"

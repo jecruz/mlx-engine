@@ -78,7 +78,11 @@ def _clone_cache_entry(entry: Any) -> Any:
         return _clone_quantized_kv_cache_entry(entry)
 
     from_state = getattr(type(entry), "from_state", None)
-    if callable(from_state) and hasattr(entry, "state") and hasattr(entry, "meta_state"):
+    if (
+        callable(from_state)
+        and hasattr(entry, "state")
+        and hasattr(entry, "meta_state")
+    ):
         try:
             return from_state(
                 _clone_cache_value(entry.state),
@@ -100,7 +104,9 @@ class FastLRUPromptCache(LRUPromptCache):
         if result.longer is not None and result.common_prefix > short_length:
             cache_entry = self._trie.get(result.model, result.longer)
             if can_trim_prompt_cache(cache_entry.prompt_cache):
-                cache = [_clone_cache_entry(entry) for entry in cache_entry.prompt_cache]
+                cache = [
+                    _clone_cache_entry(entry) for entry in cache_entry.prompt_cache
+                ]
                 prefix = min(len(tokens) - 1, result.common_prefix)
                 num_to_trim = len(result.longer) - prefix
                 trim_prompt_cache(cache, num_to_trim)
@@ -108,9 +114,9 @@ class FastLRUPromptCache(LRUPromptCache):
 
         if short_length > 0:
             cache_entry = self._trie.get(result.model, result.shorter)
-            return [_clone_cache_entry(entry) for entry in cache_entry.prompt_cache], tokens[
-                short_length:
-            ]
+            return [
+                _clone_cache_entry(entry) for entry in cache_entry.prompt_cache
+            ], tokens[short_length:]
 
         return None, tokens
 
@@ -433,9 +439,7 @@ class CacheWrapper:
             if checkpoint_prefix_len is not None and checkpoint_prefix_len <= 0:
                 checkpoint_prefix_len = None
 
-        generation_stream = prepare_mlx_lm_generation_stream(
-            reason="cache-prefill"
-        )
+        generation_stream = prepare_mlx_lm_generation_stream(reason="cache-prefill")
         try:
             with mx.stream(generation_stream):
                 if self._draft_model is not None:

@@ -80,7 +80,9 @@ def change_surface(branch: dict[str, Any]) -> str:
     return "small"
 
 
-def render_scan_diff(baseline: dict[str, Any], candidate: dict[str, Any], *, title: str) -> str:
+def render_scan_diff(
+    baseline: dict[str, Any], candidate: dict[str, Any], *, title: str
+) -> str:
     """Render a scan diff as Markdown."""
     baseline_branches = branch_by_name(baseline)
     candidate_branches = branch_by_name(candidate)
@@ -223,9 +225,7 @@ def main() -> int:
     baseline = load_json(args.baseline)
     candidate = load_json(args.candidate)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(
-        render_scan_diff(baseline, candidate, title=args.title)
-    )
+    args.output.write_text(render_scan_diff(baseline, candidate, title=args.title))
     print(f"Wrote upstream candidate scan diff to {args.output}")
     return 0
 

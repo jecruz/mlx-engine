@@ -68,7 +68,9 @@ def test_change_surface_label_uses_changed_files_and_unmatched_commits():
         == "moderate"
     )
     assert (
-        REPORT.change_surface_label({"changed_files": [f"M\tf{idx}.py" for idx in range(20)]})
+        REPORT.change_surface_label(
+            {"changed_files": [f"M\tf{idx}.py" for idx in range(20)]}
+        )
         == "broad"
     )
 
@@ -78,8 +80,13 @@ def test_render_markdown_includes_summary_table_and_detail_sections():
     markdown = REPORT.render_markdown(_scan_fixture(), title="M62 Scan")
 
     assert "# M62 Scan" in markdown
-    assert "| `upstream/small` | `bbbbbbb` | `small` | 1 | 1 | Improve cache |" in markdown
-    assert "| `upstream/broad` | `ccccccc` | `broad` | 20 | 0 | Large runtime \\| bridge |" in markdown
+    assert (
+        "| `upstream/small` | `bbbbbbb` | `small` | 1 | 1 | Improve cache |" in markdown
+    )
+    assert (
+        "| `upstream/broad` | `ccccccc` | `broad` | 20 | 0 | Large runtime \\| bridge |"
+        in markdown
+    )
     assert "## `upstream/small`" in markdown
     assert "- `M\tcache.py`" in markdown
     assert "- `+ bbbbbbb Improve cache`" in markdown

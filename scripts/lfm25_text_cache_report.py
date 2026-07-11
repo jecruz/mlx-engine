@@ -142,7 +142,13 @@ def render_comparison(path: Path, report: dict[str, Any]) -> list[str]:
             f"{format_value(check.get('threshold'))} |"
         )
 
-    lines.extend(["", "| Metric | Baseline | Candidate | Delta | Delta percent |", "| --- | ---: | ---: | ---: | ---: |"])
+    lines.extend(
+        [
+            "",
+            "| Metric | Baseline | Candidate | Delta | Delta percent |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ]
+    )
     metrics = report.get("metrics", {})
     if isinstance(metrics, dict):
         for name, metric in metrics.items():

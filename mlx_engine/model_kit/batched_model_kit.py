@@ -86,7 +86,11 @@ def _clone_cache_entry(entry):
         clone.offset = entry.offset
         return clone
     from_state = getattr(type(entry), "from_state", None)
-    if callable(from_state) and hasattr(entry, "state") and hasattr(entry, "meta_state"):
+    if (
+        callable(from_state)
+        and hasattr(entry, "state")
+        and hasattr(entry, "meta_state")
+    ):
         try:
             return from_state(
                 _clone_cache_value(entry.state),
@@ -121,9 +125,9 @@ class FastLRUPromptCache(LRUPromptCache):
 
         if short_length > 0:
             cache_entry = self._trie.get(result.model, result.shorter)
-            return [_clone_cache_entry(entry) for entry in cache_entry.prompt_cache], tokens[
-                short_length:
-            ]
+            return [
+                _clone_cache_entry(entry) for entry in cache_entry.prompt_cache
+            ], tokens[short_length:]
 
         return None, tokens
 
@@ -371,7 +375,9 @@ class BatchedModelKit:
         timing_enabled = batched_timing_enabled()
         for index, warmup_case in enumerate(warmup_cases):
             if self._has_pending_startup_request():
-                logger.info("Skipping remaining startup warmup; user request is queued.")
+                logger.info(
+                    "Skipping remaining startup warmup; user request is queued."
+                )
                 break
             warmup_generator = self._make_batch_generator()
             try:
@@ -604,7 +610,8 @@ class BatchedModelKit:
         if timing_enabled:
             log_batched_timing(
                 logger,
-                "generation_stream_prepare", duration_ms=elapsed_ms(stream_start)
+                "generation_stream_prepare",
+                duration_ms=elapsed_ms(stream_start),
             )
         self._startup_complete.set()
         warmup_start = time.perf_counter() if timing_enabled else None
@@ -733,9 +740,7 @@ class BatchedModelKit:
                             prompt_tokens=len(result["cross_prompt_cache_key"]),
                             cached_tokens=result["cached_tokens"],
                             rest_tokens=result["rest_tokens"],
-                            insert_to_first_token_ms=elapsed_ms(
-                                result["inserted_at"]
-                            ),
+                            insert_to_first_token_ms=elapsed_ms(result["inserted_at"]),
                         )
                     detokenizer = result["detokenizer"]
                     result["live_cache_key"].append(r.token)

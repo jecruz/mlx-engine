@@ -20,16 +20,12 @@ from typing import Any, Optional
 
 # Load the smoke script as a module without requiring it to be on PYTHONPATH.
 SCRIPT_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "scripts"
-    / "cheetara_compat_smoke.py"
+    Path(__file__).resolve().parent.parent / "scripts" / "cheetara_compat_smoke.py"
 )
 
 
 def _load_smoke_module():
-    spec = importlib.util.spec_from_file_location(
-        "cheetara_compat_smoke", SCRIPT_PATH
-    )
+    spec = importlib.util.spec_from_file_location("cheetara_compat_smoke", SCRIPT_PATH)
     if spec is None or spec.loader is None:  # pragma: no cover - import sanity
         raise RuntimeError("Failed to load cheetara_compat_smoke module spec")
     module = importlib.util.module_from_spec(spec)
@@ -87,7 +83,9 @@ class _FakeAdapterHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def _send_sse(self, lines: list[str]) -> None:
-        body = "".join(line if line.endswith("\n\n") else line + "\n\n" for line in lines)
+        body = "".join(
+            line if line.endswith("\n\n") else line + "\n\n" for line in lines
+        )
         encoded = body.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -104,31 +102,39 @@ class _FakeAdapterHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - http.server convention
         if self.path == "/health":
-            self._send_json(self.config.get("health_status", 200), {
-                "status": self.config.get("health_status_field", "ok"),
-                "served_model": self.config.get("health_served_model", "cheetara-m7"),
-                "model_path": "/tmp/fake-model",
-                "model_type": "lfm2-vl",
-                "supports_vision": True,
-                "started_at": 1700000000,
-                "now": 1700000010,
-            })
+            self._send_json(
+                self.config.get("health_status", 200),
+                {
+                    "status": self.config.get("health_status_field", "ok"),
+                    "served_model": self.config.get(
+                        "health_served_model", "cheetara-m7"
+                    ),
+                    "model_path": "/tmp/fake-model",
+                    "model_type": "lfm2-vl",
+                    "supports_vision": True,
+                    "started_at": 1700000000,
+                    "now": 1700000010,
+                },
+            )
             return
         if self.path == "/v1/models":
             model_ids = self.config.get("models_returned_ids", ["cheetara-m7"])
-            self._send_json(self.config.get("models_status", 200), {
-                "object": "list",
-                "data": [
-                    {
-                        "id": model_id,
-                        "object": "model",
-                        "created": 1700000000,
-                        "owned_by": "mlx-engine",
-                        "supports_vision": True,
-                    }
-                    for model_id in model_ids
-                ],
-            })
+            self._send_json(
+                self.config.get("models_status", 200),
+                {
+                    "object": "list",
+                    "data": [
+                        {
+                            "id": model_id,
+                            "object": "model",
+                            "created": 1700000000,
+                            "owned_by": "mlx-engine",
+                            "supports_vision": True,
+                        }
+                        for model_id in model_ids
+                    ],
+                },
+            )
             return
         self._send_json(404, {"error": {"message": "not found"}})
 
@@ -137,13 +143,16 @@ class _FakeAdapterHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": {"message": "not found"}})
             return
         if not self._check_bearer():
-            self._send_json(401, {
-                "error": {
-                    "message": "Missing or invalid Authorization header",
-                    "type": "invalid_request_error",
-                    "code": "unauthorized",
-                }
-            })
+            self._send_json(
+                401,
+                {
+                    "error": {
+                        "message": "Missing or invalid Authorization header",
+                        "type": "invalid_request_error",
+                        "code": "unauthorized",
+                    }
+                },
+            )
             return
         length = int(self.headers.get("content-length", "0"))
         raw = self.rfile.read(length) if length else b"{}"
@@ -157,8 +166,15 @@ class _FakeAdapterHandler(BaseHTTPRequestHandler):
             )
             for message in body.get("messages", [])
         )
-        if "auth_probe" in body or body.get("max_tokens", 0) <= 1 and len(body.get("messages", [])) == 1 and not body.get("stream", False):
-            status = self.config.get("auth_probe_status", self.config.get("chat_status", 200))
+        if (
+            "auth_probe" in body
+            or body.get("max_tokens", 0) <= 1
+            and len(body.get("messages", [])) == 1
+            and not body.get("stream", False)
+        ):
+            status = self.config.get(
+                "auth_probe_status", self.config.get("chat_status", 200)
+            )
         else:
             status = self.config.get("chat_status", 200)
         if status != 200:
@@ -187,16 +203,20 @@ class _FakeAdapterHandler(BaseHTTPRequestHandler):
                 }
             )
             for chunk in chunks
-        ] + [json.dumps(
-            {
-                "id": "chatcmpl-fake",
-                "object": "chat.completion.chunk",
-                "created": 1700000000,
-                "model": "cheetara-m7",
-                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-            }
-        )]
-        self._send_sse([f"data: {line}\n\n" for line in rendered] + ["data: [DONE]\n\n"])
+        ] + [
+            json.dumps(
+                {
+                    "id": "chatcmpl-fake",
+                    "object": "chat.completion.chunk",
+                    "created": 1700000000,
+                    "model": "cheetara-m7",
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                }
+            )
+        ]
+        self._send_sse(
+            [f"data: {line}\n\n" for line in rendered] + ["data: [DONE]\n\n"]
+        )
 
 
 class _FakeAdapterServer:
@@ -250,11 +270,13 @@ def test_connect_fails_when_no_models() -> None:
     with _FakeAdapterServer({"models_status": 200}) as server:
         # Override the handler to return an empty list.
         original_models = _FakeAdapterHandler.do_GET
+
         def _patched(self):  # type: ignore[no-redef]
             if self.path == "/v1/models":
                 self._send_json(200, {"object": "list", "data": []})
                 return
             original_models(self)
+
         _FakeAdapterHandler.do_GET = _patched  # type: ignore[method-assign]
         try:
             result = SMOKE._run_connect(server.base_url, "cheetara-m7")
@@ -298,19 +320,30 @@ def test_text_fails_when_no_done_marker() -> None:
                 return
             length = int(self.headers.get("content-length", "0"))
             self.rfile.read(length) if length else b""
-            body_text = "data: " + json.dumps({
-                "id": "chatcmpl-fake",
-                "object": "chat.completion.chunk",
-                "choices": [
-                    {"index": 0, "delta": {"content": "ok"}, "finish_reason": None}
-                ],
-            }) + "\n\n"
+            body_text = (
+                "data: "
+                + json.dumps(
+                    {
+                        "id": "chatcmpl-fake",
+                        "object": "chat.completion.chunk",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": "ok"},
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                )
+                + "\n\n"
+            )
             encoded = body_text.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
             self.wfile.write(encoded)
+
         _FakeAdapterHandler.do_POST = _patched  # type: ignore[method-assign]
         try:
             result = SMOKE._run_text(server.base_url, "cheetara-m7")
